@@ -161,10 +161,37 @@ Composite keys raise `SchemaError` rather than silently misbehaving.
 ### Type system
 
 Primitive matching uses **narwhals dtypes only** — numeric, temporal, string,
-boolean, categorical — via predicates in `dtypes.py`. No logical types, no
-semantic tags, no woodwork. The cost is a lost distinction between an integer
-that is a quantity and an integer that is a category; the benefit is zero extra
-concepts, zero dependencies, and identical behaviour on every backend.
+boolean — via predicates in `dtypes.py`. No logical types, no semantic tags, no
+woodwork. The cost is a lost distinction between an integer that is a quantity
+and an integer that is a category; the benefit is zero extra concepts, zero
+dependencies, and identical behaviour on every backend.
+
+The families are `NUMERIC`, `TEMPORAL`, `STRING`, `BOOLEAN`, and `ANY`. `ANY` is
+required by zero-arity and dtype-agnostic primitives (`count`, `n_unique`).
+
+### Categorical and Enum columns
+
+Narwhals treats `String`, `Categorical`, and `Enum` as three distinct dtypes;
+none compares equal to another, and `.str` accessors fail on the latter two.
+`STRING` therefore matches `String` only.
+
+This is deliberate rather than incidental. Casting a column to `Categorical` is
+an assertion that its values are labels, not text — and a word count or
+character count over a genuine category is meaningless. String-only primitives
+*should* skip these columns.
+
+What must not happen is skipping them **silently**. A user who cast a column to
+`Categorical` upstream to save memory would otherwise get a feature matrix with
+columns quietly missing and nothing to explain why. So when synthesis skips a
+`Categorical` or `Enum` column solely because a requested primitive requires
+`STRING`, it emits `CategoricalDtypeWarning` naming both the column and the
+primitive.
+
+The warning fires from synthesis rather than `add_dataframe`, because only
+synthesis knows which primitives were actually requested. A consequence: with
+the v1 built-in set it never fires, since no built-in requires `STRING`. That is
+correct — nothing is being skipped yet. It becomes live the moment a text
+primitive such as `num_characters` is added.
 
 ## 5. Primitive model
 
@@ -369,6 +396,9 @@ A zero-configuration `dfs()` call therefore does something sensible.
   primitive's input dtypes; order-dependent primitive on a table without
   `row_creation_time`.
 - **`MissingPrimaryKeyWarning`** — as described in §4.
+- **`CategoricalDtypeWarning`** — a `Categorical` or `Enum` column was skipped
+  by a requested primitive that requires `STRING` input. Its own class, so it
+  can be filtered independently.
 
 Every one of these fires during phase 1, from schemas alone, before any query is
 built. The single deliberate exception is backend capability (§5): those surface
