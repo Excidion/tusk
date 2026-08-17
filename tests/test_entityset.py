@@ -82,3 +82,20 @@ def test_self_reference_is_allowed():
     )
     es.add_relationship(parent="employees", child="employees", foreign_key="manager_id")
     assert es.children_of("employees")[0].foreign_key == "manager_id"
+
+
+def test_duplicate_table_name_raises():
+    es = tusk.EntitySet("x").add_dataframe(
+        "t", pl.LazyFrame({"a": [1]}), primary_key="a"
+    )
+    with pytest.raises(SchemaError, match="'t'"):
+        es.add_dataframe("t", pl.LazyFrame({"a": [1]}), primary_key="a")
+
+
+def test_backend_mismatch_raises():
+    pd = pytest.importorskip("pandas")
+    es = tusk.EntitySet("x").add_dataframe(
+        "t", pl.LazyFrame({"a": [1]}), primary_key="a"
+    )
+    with pytest.raises(SchemaError, match="backend"):
+        es.add_dataframe("u", pd.DataFrame({"a": [1]}), primary_key="a")
