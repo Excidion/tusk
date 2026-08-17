@@ -171,6 +171,11 @@ class _Context:
             for base in self._usable(
                 rel.parent, self.build(rel.parent, depth_limit - 1, path + (rel,))
             ):
+                # A DirectFeature carries one column across the join, so it
+                # cannot carry a multi-output parent feature: only that
+                # feature's indexed columns exist to be carried.
+                if base.is_multi_output:
+                    continue
                 out.append(DirectFeature(base, rel))
         return out
 
@@ -321,6 +326,10 @@ class _Context:
         Returns:
             One tuple per valid input combination.
         """
+        # A multi-output feature materializes only its indexed columns
+        # (``QUANTILES(x)[0]`` ...), never the bare stem, so nothing can read
+        # it as an input. It stays a valid output; it is just not stackable.
+        candidates = [f for f in candidates if not f.is_multi_output]
         per_slot = [
             [f for f in candidates if matches(f.dtype, family)]
             for family in primitive.input_dtypes

@@ -88,6 +88,42 @@ def test_transforms_respect_dtype_families(es):
     assert not any(n.startswith("MONTH") for n in names(got))
 
 
+def test_multi_output_feature_is_an_output_but_never_an_input(es):
+    """QUANTILES(x) materializes only ``...[0]``/``[1]``/``[2]``, never the stem.
+
+    Anything stacking on the un-indexed stem compiles to ``nw.col(stem)`` and
+    fails at collect with ColumnNotFoundError, so no feature may take a
+    multi-output feature as a base.
+    """
+    from tusk.primitives import Quantiles
+
+    got = synthesize(
+        es,
+        "customers",
+        agg_primitives=["mean", Quantiles(qs=(0.25, 0.5, 0.75))],
+        trans_primitives=["absolute"],
+        groupby_trans_primitives=[],
+        max_depth=2,
+    )
+    n = names(got)
+    # It is still generated as an output.
+    assert "QUANTILES(sessions.MEAN(transactions.amount))" in n
+    # But nothing consumes it.
+    assert "MEAN(sessions.QUANTILES(transactions.amount))" not in n
+    assert not any("(QUANTILES(" in name for name in n)
+
+    seen = set()
+    stack = list(got)
+    while stack:
+        feature = stack.pop()
+        if feature in seen:
+            continue
+        seen.add(feature)
+        for base in feature.base_features:
+            assert not base.is_multi_output, f"{feature.name} stacks on {base.name}"
+            stack.append(base)
+
+
 def test_transform_stacks_on_aggregation(es):
     got = synthesize(
         es,

@@ -1,7 +1,30 @@
+from datetime import datetime
+
 import polars as pl
 import pytest
 
 import tusk
+from tusk.primitives import Quantiles
+
+
+def test_readme_example_compiles_and_collects(es):
+    """The README's headline call, verbatim, against the README's schema.
+
+    A multi-output primitive at max_depth=2 previously emitted a phantom
+    un-indexed column and raised ColumnNotFoundError here.
+    """
+    feature_matrix, features = tusk.dfs(
+        entityset=es,
+        target_dataframe_name="customers",
+        agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
+        trans_primitives=["month", "weekday"],
+        max_depth=2,
+        cutoff_time=datetime(2026, 1, 1),
+    )
+    got = feature_matrix.collect()
+    expected = {name for f in features for name in f.output_names}
+    assert expected <= set(got.columns)
+    assert any(c.startswith("QUANTILES(") for c in got.columns)
 
 
 def test_dfs_end_to_end(es):

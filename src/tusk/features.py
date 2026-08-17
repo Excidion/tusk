@@ -48,6 +48,21 @@ class Feature:
         """One column name per output; more than one for multi-output primitives."""
         return (self.name,)
 
+    @property
+    def is_multi_output(self) -> bool:
+        """Whether this feature materializes more than one column.
+
+        Only the indexed names in :attr:`output_names` are ever materialized,
+        so a multi-output feature has no single column another primitive could
+        read. It is a valid output of synthesis but never a valid input.
+
+        Deriving this from :attr:`output_names` rather than from a primitive's
+        ``number_of_outputs`` keeps it well defined for
+        :class:`IdentityFeature` and :class:`DirectFeature`, which have no
+        primitive at all.
+        """
+        return len(self.output_names) > 1
+
 
 @dataclass(frozen=True)
 class IdentityFeature(Feature):
