@@ -134,6 +134,7 @@ def _table_frame(
             not know how to compute.
     """
     frame = _base_frame(entityset, table, cutoff_time)
+    needed = {f for f in needed if f.table == table}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
     for relationship in dict.fromkeys(f.relationship for f in aggregations):
