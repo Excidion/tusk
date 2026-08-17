@@ -16,7 +16,7 @@ class Doubled(TransformPrimitive):
     name = "doubled"
     input_dtypes = (F.NUMERIC,)
 
-    def build(self, expr):  # ty: ignore[invalid-method-override]
+    def build(self, expr):
         return expr * 2
 
 
@@ -27,7 +27,7 @@ class Spread(AggregationPrimitive):
     input_dtypes = (F.NUMERIC,)
     output_dtype = nw.Float64
 
-    def build(self, expr):  # ty: ignore[invalid-method-override]
+    def build(self, expr):
         return expr.max() - expr.min()
 
 
@@ -42,7 +42,7 @@ class Pair(AggregationPrimitive):
     def number_of_outputs(self):
         return 2
 
-    def build(self, expr):  # ty: ignore[invalid-method-override]
+    def build(self, expr):
         return [expr.min() * self.scale, expr.max() * self.scale]
 
 

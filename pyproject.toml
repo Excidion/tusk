@@ -61,3 +61,10 @@ check-return-types = false
 # docstring; without this flag pydoclint's DOC301 forbids exactly that
 # whenever the class also has a docstring.
 allow-init-docstring = true
+
+[tool.ty.rules]
+# Primitive.build is variadic in the ABC and fixed-arity in each concrete
+# primitive. Arity is guaranteed by construction: synthesis supplies exactly
+# len(input_dtypes) expressions. Suppressing per-class would mean ~30
+# identical ignores across the built-in primitives.
+invalid-method-override = "ignore"
