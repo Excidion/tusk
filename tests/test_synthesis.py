@@ -1,3 +1,4 @@
+import datetime as dt
 from dataclasses import dataclass
 
 import polars as pl
@@ -74,18 +75,43 @@ def test_direct_features_come_from_parents(es):
     assert "customers.age" in names(got)
 
 
-def test_transforms_respect_dtype_families(es):
-    got = synthesize(
-        es,
-        "sessions",
-        agg_primitives=[],
-        trans_primitives=["month", "absolute"],
-        groupby_trans_primitives=[],
-        max_depth=1,
+def test_transforms_respect_dtype_families():
+    """A temporal primitive takes only the temporal column, and vice versa.
+
+    The table deliberately carries both a numeric and a temporal non-key
+    column, so the candidate set is non-empty for both primitives and the
+    assertions can only pass if ``dtypes.matches`` actually discriminates.
+    An earlier version of this test used the ``sessions`` fixture, where every
+    column was excluded as a key: the candidate set was empty, so it stayed
+    green even with dtype matching disabled entirely.
+    """
+    es = tusk.EntitySet("dtypes").add_dataframe(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "amount": [-1.5, 2.5],
+                "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 4, 5)],
+            }
+        ),
+        primary_key="id",
     )
-    # started_at is the row_creation_time, a key column, so it is not an input;
-    # there is no other temporal or numeric column on sessions.
-    assert not any(n.startswith("MONTH") for n in names(got))
+    got = names(
+        synthesize(
+            es,
+            "events",
+            agg_primitives=[],
+            trans_primitives=["month", "absolute"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+    )
+    # month requires TEMPORAL: it takes occurred_at and not amount.
+    assert "MONTH(occurred_at)" in got
+    assert "MONTH(amount)" not in got
+    # absolute requires NUMERIC: it takes amount and not occurred_at.
+    assert "ABSOLUTE(amount)" in got
+    assert "ABSOLUTE(occurred_at)" not in got
 
 
 def test_multi_output_feature_is_an_output_but_never_an_input(es):
