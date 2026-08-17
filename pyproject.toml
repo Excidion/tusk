@@ -72,3 +72,5 @@ include = ["src/tusk/primitives/**", "tests/**"]
 # Scoped rather than project-wide so override checking stays active everywhere
 # else.
 invalid-method-override = "ignore"
+# Dataclass instantiation with field() defaults is not fully tracked by ty 0.0.72
+unknown-argument = "ignore"
