@@ -177,6 +177,7 @@ class _Context:
         for rel in self.entityset.parents_of(table):
             if rel in path:
                 continue
+            excluded_outputs = self.entityset.output_excluded_columns(rel.parent)
             for base in self._usable(
                 rel.parent, self.build(rel.parent, depth_limit - 1, path + (rel,))
             ):
@@ -184,6 +185,18 @@ class _Context:
                 # cannot carry a multi-output parent feature: only that
                 # feature's indexed columns exist to be carried.
                 if base.is_multi_output:
+                    continue
+                # A raw row_creation_time is a legal *input* (it is not in
+                # input_excluded_columns, which is why _usable let it
+                # through), but it is never a legal *output*: carrying it
+                # across the join as a DirectFeature would put the parent's
+                # (or grandparent's, recursively) raw time index straight
+                # into the feature matrix. Derived features over it, such as
+                # MONTH(signed_up_at), are not IdentityFeatures and pass
+                # through untouched.
+                if isinstance(base, IdentityFeature) and (
+                    base.column in excluded_outputs
+                ):
                     continue
                 out.append(DirectFeature(base, rel))
         return out

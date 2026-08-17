@@ -83,6 +83,53 @@ def test_zero_config_generates_transform_features(es):
     assert "signed_up_at" not in names
 
 
+def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
+    """A parent's raw time index must never cross a join as a DirectFeature.
+
+    Regression test for the leak introduced when ``key_columns()`` split into
+    ``input_excluded_columns`` / ``output_excluded_columns``: ``_directs``
+    gated candidate bases through the *input* set, so a parent's raw
+    ``row_creation_time`` -- legitimately eligible as a primitive input --
+    also became eligible as a passthrough column carried onto the child.
+    Derived features over the same column, such as ``MONTH(signed_up_at)``,
+    must still be reachable and still cross the join.
+
+    Covers both one hop (``sessions`` <- ``customers``) and two hops
+    (``transactions`` <- ``sessions`` <- ``customers``), since the leak
+    recurses: a blocked raw column at the first hop can never become a nested
+    base at the second.
+    """
+    matrix, features = tusk.dfs(
+        entityset=es,
+        target_dataframe_name="sessions",
+        agg_primitives=[],
+        trans_primitives=["month"],
+        max_depth=2,
+    )
+    names = {f.name for f in features}
+    assert "customers.signed_up_at" not in names
+    assert "customers.MONTH(signed_up_at)" in names
+    got = matrix.collect()
+    assert "customers.signed_up_at" not in got.columns
+    assert "customers.MONTH(signed_up_at)" in got.columns
+
+    matrix2, features2 = tusk.dfs(
+        entityset=es,
+        target_dataframe_name="transactions",
+        agg_primitives=[],
+        trans_primitives=["month"],
+        max_depth=3,
+    )
+    names2 = {f.name for f in features2}
+    assert "sessions.started_at" not in names2
+    assert "sessions.customers.signed_up_at" not in names2
+    assert "sessions.customers.MONTH(signed_up_at)" in names2
+    got2 = matrix2.collect()
+    assert "sessions.started_at" not in got2.columns
+    assert "sessions.customers.signed_up_at" not in got2.columns
+    assert "sessions.customers.MONTH(signed_up_at)" in got2.columns
+
+
 def test_calculate_feature_matrix_reapplies_definitions(es):
     features = tusk.dfs(
         entityset=es,
