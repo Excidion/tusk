@@ -32,7 +32,7 @@ validation = [
 benchmark = ["relbench>=1.0"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "benchmarks"]
 markers = [
     "differential: cross-checks values against featuretools (opt-in)",
     "benchmark: relbench performance runs (opt-in)",
@@ -58,7 +58,7 @@ exclude = ["tests"]
 
 [tool.pydoclint]
 style = "google"
-exclude = "tests"
+exclude = "tests|benchmarks"
 arg-type-hints-in-docstring = false
 check-return-types = false
 # ruff (D107) and interrogate both require __init__ to carry its own
