@@ -17,3 +17,7 @@ class PrimitiveError(TuskError):
 
 class MissingPrimaryKeyWarning(UserWarning):
     """Warns that a table without a primary key has reduced capabilities."""
+
+
+class CategoricalDtypeWarning(UserWarning):
+    """Warns that a Categorical or Enum column was skipped by a string primitive."""

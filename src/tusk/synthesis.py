@@ -1,0 +1,358 @@
+"""Phase 1: build the feature graph from schemas alone.
+
+Nothing here touches a dataframe, and this module must never import
+:mod:`tusk.compiler`. That separation is what makes the algorithm testable
+without any backend at all.
+"""
+
+from __future__ import annotations
+
+import itertools
+import warnings
+from collections.abc import Iterable, Sequence
+
+import narwhals as nw
+
+from tusk.dtypes import DtypeFamily, matches
+from tusk.entityset import EntitySet, Relationship
+from tusk.exceptions import CategoricalDtypeWarning, PrimitiveError
+from tusk.features import (
+    AggregationFeature,
+    DirectFeature,
+    Feature,
+    GroupByTransformFeature,
+    IdentityFeature,
+    TransformFeature,
+)
+from tusk.primitives.base import Primitive
+from tusk.primitives.registry import resolve_all
+
+
+def synthesize(
+    entityset: EntitySet,
+    target_dataframe_name: str,
+    agg_primitives: Iterable[str | Primitive],
+    trans_primitives: Iterable[str | Primitive],
+    groupby_trans_primitives: Iterable[str | Primitive],
+    max_depth: int,
+) -> list[Feature]:
+    """Generate feature definitions for a target table.
+
+    Args:
+        entityset: The schema to walk.
+        target_dataframe_name: Table to build features for.
+        agg_primitives: Aggregation primitives, as names or instances.
+        trans_primitives: Transform primitives, as names or instances.
+        groupby_trans_primitives: Transform primitives applied within
+            foreign-key groups.
+        max_depth: Maximum number of stacked primitive applications.
+
+    Returns:
+        Feature definitions on the target table, deduplicated and excluding the
+        target's own key columns; ``entityset.schema()`` raises
+        :class:`~tusk.exceptions.SchemaError` if the target table is unknown.
+    """
+    entityset.schema(target_dataframe_name)
+    context = _Context(
+        entityset=entityset,
+        agg=resolve_all(agg_primitives),
+        trans=resolve_all(trans_primitives),
+        groupby=resolve_all(groupby_trans_primitives),
+    )
+    features = context.build(target_dataframe_name, max_depth, ())
+    keys = entityset.key_columns(target_dataframe_name)
+    kept = [
+        f for f in features if not (isinstance(f, IdentityFeature) and f.column in keys)
+    ]
+    return list(dict.fromkeys(kept))
+
+
+class _Context:
+    """Carries the entity set and resolved primitives through the recursion."""
+
+    def __init__(
+        self,
+        entityset: EntitySet,
+        agg: Sequence[Primitive],
+        trans: Sequence[Primitive],
+        groupby: Sequence[Primitive],
+    ) -> None:
+        """Store the walk's inputs.
+
+        Args:
+            entityset: The schema to walk.
+            agg: Resolved aggregation primitives.
+            trans: Resolved transform primitives.
+            groupby: Resolved groupby-transform primitives.
+        """
+        self.entityset = entityset
+        self.agg = agg
+        self.trans = trans
+        self.groupby = groupby
+        self._categorical_warned: set[tuple[str, str, str]] = set()
+
+    def build(
+        self, table: str, depth_limit: int, path: tuple[Relationship, ...]
+    ) -> list[Feature]:
+        """Build every feature on ``table`` of depth at most ``depth_limit``.
+
+        Args:
+            table: Table to build features for.
+            depth_limit: Maximum depth of returned features.
+            path: Relationships already traversed, never traversed again.
+
+        Returns:
+            Feature definitions on the table, deduplicated.
+        """
+        schema = self.entityset.schema(table)
+        features: list[Feature] = [
+            IdentityFeature(table, column, dtype)
+            for column, dtype in schema.dtypes.items()
+        ]
+
+        if depth_limit > 0:
+            features.extend(self._aggregations(table, depth_limit, path))
+            features.extend(self._directs(table, depth_limit, path))
+            features.extend(self._transforms(table, features, depth_limit))
+            features.extend(
+                self._groupby_transforms(table, features, depth_limit, path)
+            )
+
+        return list(dict.fromkeys(features))
+
+    def _aggregations(
+        self, table: str, depth_limit: int, path: tuple[Relationship, ...]
+    ) -> list[Feature]:
+        """Aggregate each child table's features up into this table.
+
+        Args:
+            table: The parent table.
+            depth_limit: Maximum depth of returned features.
+            path: Relationships already traversed.
+
+        Returns:
+            Aggregation features on the table.
+        """
+        out: list[Feature] = []
+        for rel in self.entityset.children_of(table):
+            if rel in path:
+                continue
+            child_features = self.build(rel.child, depth_limit - 1, path + (rel,))
+            usable = self._usable(rel.child, child_features)
+            for primitive in self.agg:
+                if not primitive.input_dtypes:
+                    out.append(AggregationFeature(primitive, (), rel))
+                    continue
+                for combo in self._combinations(primitive, usable):
+                    out.append(AggregationFeature(primitive, combo, rel))
+        return out
+
+    def _directs(
+        self, table: str, depth_limit: int, path: tuple[Relationship, ...]
+    ) -> list[Feature]:
+        """Join each parent table's features down onto this table.
+
+        Args:
+            table: The child table.
+            depth_limit: Maximum depth of returned features.
+            path: Relationships already traversed.
+
+        Returns:
+            Direct features on the table.
+        """
+        out: list[Feature] = []
+        for rel in self.entityset.parents_of(table):
+            if rel in path:
+                continue
+            for base in self._usable(
+                rel.parent, self.build(rel.parent, depth_limit - 1, path + (rel,))
+            ):
+                out.append(DirectFeature(base, rel))
+        return out
+
+    def _transforms(
+        self, table: str, existing: Sequence[Feature], depth_limit: int
+    ) -> list[Feature]:
+        """Apply transform primitives to features already on this table.
+
+        Args:
+            table: The table being built.
+            existing: Features produced so far.
+            depth_limit: Maximum depth of returned features.
+
+        Returns:
+            Transform features on the table; ``_check_ordering`` raises
+            :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
+            primitive is requested for a table with no ``row_creation_time``.
+        """
+        usable = self._usable(table, existing)
+        out: list[Feature] = []
+        for primitive in self.trans:
+            self._check_ordering(primitive, table)
+            for combo in self._combinations(primitive, usable):
+                feature = TransformFeature(primitive, combo)
+                if feature.depth <= depth_limit:
+                    out.append(feature)
+        return out
+
+    def _groupby_transforms(
+        self,
+        table: str,
+        existing: Sequence[Feature],
+        depth_limit: int,
+        path: tuple[Relationship, ...],
+    ) -> list[Feature]:
+        """Apply transform primitives within each foreign-key group.
+
+        Args:
+            table: The table being built.
+            existing: Features produced so far.
+            depth_limit: Maximum depth of returned features.
+            path: Relationships already traversed.
+
+        Returns:
+            Groupby-transform features on the table; ``_check_ordering``
+            raises :class:`~tusk.exceptions.PrimitiveError` if an
+            order-dependent primitive is requested for a table with no
+            ``row_creation_time``.
+        """
+        if not self.groupby:
+            return []
+        usable = self._usable(table, existing)
+        out: list[Feature] = []
+        for rel in self.entityset.parents_of(table):
+            if rel in path:
+                continue
+            for primitive in self.groupby:
+                self._check_ordering(primitive, table)
+                for combo in self._combinations(primitive, usable):
+                    feature = GroupByTransformFeature(primitive, combo, rel)
+                    if feature.depth <= depth_limit:
+                        out.append(feature)
+        return out
+
+    def _warn_categorical(
+        self, primitive: Primitive, candidates: Sequence[Feature]
+    ) -> None:
+        """Warn when a Categorical or Enum column is skipped by a STRING slot.
+
+        Casting a column to ``Categorical`` asserts that its values are labels
+        rather than text, so a string primitive skipping it is correct. Skipping
+        it *silently* is not: the user would get a feature matrix with columns
+        quietly missing and nothing to explain why.
+
+        Each (primitive, column) pair warns at most once per synthesis run.
+
+        Args:
+            primitive: The primitive whose inputs are being matched.
+            candidates: Features available as inputs.
+        """
+        if DtypeFamily.STRING not in primitive.input_dtypes:
+            return
+        for feature in candidates:
+            if feature.dtype not in (nw.Categorical, nw.Enum):
+                continue
+            key = (primitive.name, feature.table, feature.name)
+            if key in self._categorical_warned:
+                continue
+            self._categorical_warned.add(key)
+            warnings.warn(
+                f"column {feature.name!r} on {feature.table!r} has dtype "
+                f"{feature.dtype}, so primitive {primitive.name!r} (which requires "
+                f"a string input) will not be applied to it. Cast the column to "
+                f"String if you want text primitives to use it.",
+                CategoricalDtypeWarning,
+                stacklevel=2,
+            )
+
+    def _check_ordering(self, primitive: Primitive, table: str) -> None:
+        """Reject order-dependent primitives on tables that cannot be ordered.
+
+        Narwhals requires ``order_by`` for these expressions on lazy backends,
+        and the ordering column is the table's ``row_creation_time``. Checking
+        here keeps the failure in phase 1, before any query is built.
+
+        Args:
+            primitive: The primitive being applied.
+            table: The table it would be applied to.
+
+        Raises:
+            PrimitiveError: If the primitive is order-dependent and the table
+                has no ``row_creation_time``.
+        """
+        if not getattr(primitive, "order_dependent", False):
+            return
+        if self.entityset.schema(table).row_creation_time is None:
+            raise PrimitiveError(
+                f"primitive {primitive.name!r} is order-dependent, so table "
+                f"{table!r} needs a row_creation_time"
+            )
+
+    def _usable(self, table: str, features: Sequence[Feature]) -> list[Feature]:
+        """Drop key columns, which are structural rather than measurements.
+
+        Args:
+            table: The table the features belong to.
+            features: Candidate features.
+
+        Returns:
+            Features usable as primitive inputs.
+        """
+        keys = self.entityset.key_columns(table)
+        return [
+            f
+            for f in features
+            if not (isinstance(f, IdentityFeature) and f.column in keys)
+        ]
+
+    def _combinations(
+        self, primitive: Primitive, candidates: Sequence[Feature]
+    ) -> list[tuple[Feature, ...]]:
+        """Enumerate input tuples a primitive accepts.
+
+        Args:
+            primitive: The primitive to match inputs for.
+            candidates: Available features.
+
+        Returns:
+            One tuple per valid input combination.
+        """
+        per_slot = [
+            [f for f in candidates if matches(f.dtype, family)]
+            for family in primitive.input_dtypes
+        ]
+        self._warn_categorical(primitive, candidates)
+        if any(not slot for slot in per_slot):
+            return []
+
+        combos: list[tuple[Feature, ...]]
+        if len(per_slot) == 1:
+            combos = [(f,) for f in per_slot[0]]
+        else:
+            combos = [c for c in itertools.product(*per_slot) if len(set(c)) == len(c)]
+            if primitive.commutative:
+                seen: set[frozenset[Feature]] = set()
+                deduped = []
+                for combo in combos:
+                    key = frozenset(combo)
+                    if key not in seen:
+                        seen.add(key)
+                        deduped.append(combo)
+                combos = deduped
+
+        if not primitive.stack_on_self:
+            combos = [c for c in combos if not any(_uses(f, primitive) for f in c)]
+        return combos
+
+
+def _uses(feature: Feature, primitive: Primitive) -> bool:
+    """Report whether a feature was produced by a given primitive.
+
+    Args:
+        feature: The feature to inspect.
+        primitive: The primitive to look for.
+
+    Returns:
+        True if the feature's own primitive matches.
+    """
+    return getattr(feature, "primitive", None) == primitive
