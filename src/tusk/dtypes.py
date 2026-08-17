@@ -32,6 +32,9 @@ def matches(dtype: nw.dtypes.DType, family: DtypeFamily) -> bool:
 
     Returns:
         True if the dtype belongs to the family.
+
+    Raises:
+        ValueError: If family is not a recognized DtypeFamily member.
     """
     if family is DtypeFamily.ANY:
         return True
@@ -41,4 +44,6 @@ def matches(dtype: nw.dtypes.DType, family: DtypeFamily) -> bool:
         return bool(dtype.is_temporal())
     if family is DtypeFamily.STRING:
         return dtype == nw.String
-    return dtype == nw.Boolean
+    if family is DtypeFamily.BOOLEAN:
+        return dtype == nw.Boolean
+    raise ValueError(f"Unrecognized DtypeFamily: {family}")

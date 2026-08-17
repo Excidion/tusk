@@ -26,3 +26,9 @@ F = DtypeFamily
 )
 def test_matches(dtype, family, expected):
     assert matches(dtype, family) is expected
+
+
+def test_matches_unknown_family():
+    """Test that ValueError is raised for an unrecognized family."""
+    with pytest.raises(ValueError, match="Unrecognized DtypeFamily"):
+        matches(nw.Int64(), object())  # type: ignore
