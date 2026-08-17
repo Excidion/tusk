@@ -13,7 +13,12 @@ import narwhals as nw
 
 from tusk.entityset import EntitySet
 from tusk.exceptions import SchemaError
-from tusk.features import Feature, IdentityFeature, TransformFeature
+from tusk.features import (
+    AggregationFeature,
+    Feature,
+    GroupByTransformFeature,
+    TransformFeature,
+)
 
 
 def compile_features(
@@ -109,6 +114,10 @@ def _table_frame(
 ) -> nw.LazyFrame:
     """Build a frame for ``table`` carrying a column for every needed feature.
 
+    Aggregations are folded in first, batched by relationship so that feature
+    count does not drive join count; row-wise features are then applied in
+    depth order, so each one's inputs already exist as columns.
+
     Args:
         entityset: The entity set holding the frames.
         table: Table to build.
@@ -119,10 +128,71 @@ def _table_frame(
         A lazy frame with the table's own columns plus the needed features.
     """
     frame = _base_frame(entityset, table, cutoff_time)
-    derived = [f for f in needed if not isinstance(f, IdentityFeature)]
-    for feature in sorted(derived, key=lambda f: f.depth):
+
+    aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
+    for relationship in dict.fromkeys(f.relationship for f in aggregations):
+        batch = [f for f in aggregations if f.relationship == relationship]
+        frame = _add_aggregations(
+            frame, entityset, table, relationship, batch, cutoff_time
+        )
+
+    row_wise = [
+        f for f in needed if isinstance(f, (TransformFeature, GroupByTransformFeature))
+    ]
+    for feature in sorted(row_wise, key=lambda f: f.depth):
         frame = _apply(frame, feature)
     return frame
+
+
+def _add_aggregations(
+    frame: nw.LazyFrame,
+    entityset: EntitySet,
+    table: str,
+    relationship: Any,
+    batch: Sequence[AggregationFeature],
+    cutoff_time: Any,
+) -> nw.LazyFrame:
+    """Fold one child table's aggregations into the parent with a single join.
+
+    Args:
+        frame: The parent frame being built.
+        entityset: The entity set holding the frames.
+        table: The parent table's name.
+        relationship: The relationship being aggregated across.
+        batch: Every aggregation feature using that relationship.
+        cutoff_time: The cutoff, or None.
+
+    Returns:
+        The parent frame with the batch's columns joined on.
+    """
+    child_needed: set[Feature] = set()
+    for feature in batch:
+        child_needed.update(_closure(feature.base_features))
+    child = _table_frame(entityset, relationship.child, child_needed, cutoff_time)
+
+    exprs = []
+    for feature in batch:
+        inputs = [nw.col(b.name) for b in feature.base_features]
+        built = feature.primitive.outputs(*inputs)
+        exprs.extend(
+            e.alias(n) for e, n in zip(built, feature.output_names, strict=True)
+        )
+
+    grouped = child.group_by(relationship.foreign_key).agg(*exprs)
+    frame = frame.join(
+        grouped,
+        left_on=entityset.schema(table).primary_key,
+        right_on=relationship.foreign_key,
+        how="left",
+    )
+
+    defaults = [
+        nw.col(name).fill_null(feature.primitive.default_value).alias(name)
+        for feature in batch
+        if feature.primitive.default_value is not None
+        for name in feature.output_names
+    ]
+    return frame.with_columns(*defaults) if defaults else frame
 
 
 def _apply(frame: nw.LazyFrame, feature: Feature) -> nw.LazyFrame:
