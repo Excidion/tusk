@@ -528,6 +528,37 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 
 
+def test_unmatched_warns_even_when_slots_are_individually_satisfiable():
+    """A pair primitive with only one eligible column must still warn.
+
+    ``add_numeric`` needs two *distinct* numeric columns. With exactly one
+    numeric column reachable anywhere in this schema, every per-slot
+    candidate list is non-empty, but no valid pair combination exists, so
+    zero features are generated on either table. Recording "matched" as soon
+    as slots are non-empty -- before ``combos`` is actually built -- would
+    mark the primitive matched on the strength of a combination that never
+    materializes, suppressing the warning this primitive genuinely earns.
+    """
+    from tusk.exceptions import UnmatchedPrimitiveWarning
+
+    es = (
+        tusk.EntitySet("x")
+        .add_dataframe("p", pl.LazyFrame({"id": [1], "n": [1.0]}), primary_key="id")
+        .add_dataframe("c", pl.LazyFrame({"id": [1], "p_id": [1]}), primary_key="id")
+        .add_relationship(parent="p", child="c", foreign_key="p_id")
+    )
+    with pytest.warns(UnmatchedPrimitiveWarning, match="'add_numeric'"):
+        got = synthesize(
+            es,
+            "c",
+            agg_primitives=[],
+            trans_primitives=["add_numeric"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+    assert not any(name.startswith("ADD_NUMERIC") for name in names(got))
+
+
 def test_zero_config_run_warns_about_nothing(es, recwarn):
     """Every default primitive finds a home on the standard three-table schema."""
     from tusk.exceptions import UnmatchedPrimitiveWarning

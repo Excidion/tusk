@@ -391,10 +391,6 @@ class _Context:
             for family in primitive.input_dtypes
         ]
         self._warn_categorical(primitive, candidates)
-        if any(not slot for slot in per_slot):
-            self._unmatched.setdefault((primitive.name, table), None)
-            return []
-        self._matched.add(primitive.name)
 
         combos: list[tuple[Feature, ...]]
         if len(per_slot) == 1:
@@ -413,6 +409,18 @@ class _Context:
 
         if not primitive.stack_on_self:
             combos = [c for c in combos if not any(_uses(f, primitive) for f in c)]
+
+        # Only a primitive that actually produced a feature here counts as
+        # matched: dtype-compatible slots are not enough on their own (e.g. a
+        # commutative pair primitive with exactly one eligible column has a
+        # non-empty slot but zero valid combos). Recording every table with
+        # zero combos as unmatched -- not just the empty-slot case -- is what
+        # lets warn_unmatched catch a primitive that never produced a single
+        # feature anywhere.
+        if combos:
+            self._matched.add(primitive.name)
+        else:
+            self._unmatched.setdefault((primitive.name, table), None)
         return combos
 
 
