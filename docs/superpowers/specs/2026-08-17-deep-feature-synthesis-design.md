@@ -65,11 +65,17 @@ type; `features` is a list of inspectable `Feature` objects.
 Defaults and return contract:
 
 - `max_depth=2`, matching featuretools.
-- `cutoff_time=None` means no time filtering is applied.
+- `cutoff_time=None` means no time filtering is applied. A cutoff filters the
+  **target** table as well as its relatives (§8), so the matrix can have fewer
+  rows than the target: a row that did not exist yet at the cutoff has no
+  features to compute. This matches featuretools. With `features_only=True` the
+  cutoff is ignored entirely, since nothing is computed and feature definitions
+  do not record it.
 - `features_only=True` returns the feature list alone, not a tuple.
-- The feature matrix has **one row per target row**, keyed by the target's
-  `primary_key`. The target table must therefore have a `primary_key`; a
-  positional correspondence would be meaningless on a lazy frame.
+- The feature matrix has **one row per visible target row**, keyed by the
+  target's `primary_key`. The target table must therefore have a
+  `primary_key`; a positional correspondence would be meaningless on a lazy
+  frame.
 
 `calculate_feature_matrix` exists because the two-phase architecture provides it
 for free, and it is the reason users care about `features_only`: fit a feature
@@ -255,11 +261,20 @@ via a set with no bookkeeping.
 | `DirectFeature` | a parent's feature joined onto the child | `customers.age` |
 | `GroupByTransformFeature` | transform applied within FK groups | `CUM_SUM(amount) by customer_id` |
 
-Each exposes `.name`, `.dtype`, `.depth`, `.table`, `.base_features`, and
-`.output_names`. Multi-output primitives yield indexed names:
-`N_MOST_COMMON(product)[0]` … `[2]`.
+Each exposes `.name`, `.dtype`, `.depth`, `.table`, `.base_features`,
+`.output_names`, and `.is_multi_output`. Multi-output primitives yield indexed
+names: `N_MOST_COMMON(product)[0]` … `[2]`.
 
 `.dtype` is derived statically from primitive metadata, never from data.
+
+**A multi-output feature is a valid output but never an input.** Only its
+indexed columns are materialized; the un-indexed stem
+(`QUANTILES(transactions.amount)`) never exists, so there is no single column
+another primitive could read, and `.dtype` — being singular — cannot describe
+it either. `.is_multi_output` is derived from `len(.output_names)` rather than
+from a primitive's `number_of_outputs`, so it is defined for `IdentityFeature`
+and `DirectFeature`, which have no primitive. A `DirectFeature` is filtered on
+the same grounds: it carries exactly one column across a join.
 
 **Depth rule:** identity features are depth 0; every primitive application adds
 1. `SUM(sessions.MEAN(transactions.amount))` is depth 2. Featuretools has
@@ -291,8 +306,24 @@ Two rules carry the algorithm:
   `MEAN(customer_id)` is noise. Foreign keys remain usable as groupby keys and
   as inputs to `count` and `n_unique`.
 
-Beyond those, stacking is governed by `stack_on_self` and by dtype-family
-matching, which naturally blocks nonsense such as `MONTH(MEAN(...))`.
+**Two exclusion sets, not one.** The rule above is about *inputs*, and the
+`row_creation_time` is deliberately **not** in it: it is a measurement, and
+`MONTH(signed_up_at)` — §6's own exemplar `TransformFeature` — and
+`MAX(occurred_at)` are exactly the features DFS exists to find. Excluding it
+would leave a zero-configuration run, whose transform defaults are all
+temporal, with no transform features at all.
+
+A second, larger set governs *output* passthrough: the raw columns that never
+appear in the feature matrix are the join keys **plus** the
+`row_creation_time`. Passing the time index through as a feature invites target
+leakage, and featuretools drops it for the same reason. Only the raw column is
+dropped; features derived from it are unaffected. `EntitySet` exposes these as
+`input_excluded_columns()` and `output_excluded_columns()`; conflating them is
+the mistake the split exists to prevent.
+
+Beyond those, stacking is governed by `stack_on_self`, by the multi-output rule
+in §6, and by dtype-family matching, which naturally blocks nonsense such as
+`MONTH(MEAN(...))`.
 
 Identical features produced along different routes deduplicate by structural
 equality.
@@ -307,8 +338,11 @@ equality.
    sub-features actually needed.
 2. **Cutoff first.** For each table carrying a `row_creation_time`, apply
    `filter(nw.col(rct) <= cutoff)` before anything else, so it pushes to the
-   scan. Tables without one are timeless and pass through unfiltered —
-   documented, not warned. Cutoff effects do not cascade across relationships.
+   scan. This includes the target table, so the matrix may be shorter than the
+   target. Tables without one are timeless and pass through unfiltered —
+   documented, not warned, which makes a cutoff a silent no-op on an entity set
+   that declares no `row_creation_time` anywhere. Cutoff effects do not cascade
+   across relationships.
 3. **Compile bottom-up**, deepest table first. Per table: `with_columns()` for
    transforms, then fold in aggregations from children.
 4. **Batch.** All aggregation features sharing a `(child table, relationship
@@ -409,13 +443,21 @@ A zero-configuration `dfs()` call therefore does something sensible.
 - **`SchemaError`** — unknown table or column; composite key; backend mismatch;
   missing `primary_key` on a relationship parent or on the DFS target; a
   relationship graph that cannot terminate.
-- **`PrimitiveError`** — unknown primitive name; no columns matching a
-  primitive's input dtypes; order-dependent primitive on a table without
-  `row_creation_time`.
+- **`PrimitiveError`** — unknown primitive name; order-dependent primitive on a
+  table without `row_creation_time`.
 - **`MissingPrimaryKeyWarning`** — as described in §4.
 - **`CategoricalDtypeWarning`** — a `Categorical` or `Enum` column was skipped
   by a requested primitive that requires `STRING` input. Its own class, so it
   can be filtered independently.
+- **`UnmatchedPrimitiveWarning`** — a requested primitive found no column
+  matching its input dtypes anywhere in the walk. This **warns rather than
+  raises**: raising would break a zero-configuration `dfs()` on any schema that
+  happens to lack a dtype family, and the case is the same shape as
+  `CategoricalDtypeWarning` — skipping is correct, skipping *silently* is the
+  bug. A primitive that produced features somewhere is not reported, since
+  being inapplicable to one table among several is ordinary; each surviving
+  (primitive, table) pair warns once per run. Its own class, so it can be
+  filtered independently.
 
 Every one of these fires during phase 1, from schemas alone, before any query is
 built. The single deliberate exception is backend capability (§5): those surface
@@ -456,6 +498,15 @@ parquet or feather fixtures in any case.
 Generate small synthetic multi-table data, run featuretools on pandas and tusk
 on polars, compare overlapping feature values. This is the sharpest available
 signal that DFS was reimplemented *correctly* rather than merely plausibly.
+
+It must therefore cover **deep** synthesis, not just depth-1 aggregation over a
+single relationship: three tables at `max_depth=2`, cross-checking stacked
+aggregations and nested empty groups. Depth-1 over two tables is the easy part,
+and the defects this tier is meant to catch do not live there.
+
+Where the two tools genuinely disagree, the disagreement is recorded and
+argued, not smoothed over by adjusting tusk or loosening a tolerance.
+Featuretools is a reference, not an oracle.
 
 This tier is temporary. It exists to validate the algorithm during development
 and is removed once the library settles — concretely, once the differential
