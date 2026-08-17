@@ -181,16 +181,30 @@ class Median(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class NUnique(AggregationPrimitive):
-    """Number of distinct values in a column."""
+    """Number of distinct *known* values in a column; nulls are not a value."""
 
     name = "n_unique"
     input_dtypes = (F.ANY,)
     output_dtype = nw.Int64
+    # No rows means 0 distinct values -- and, by the same logic, so does a
+    # group whose only rows are null.
     default_value = 0
     stack_on_self = False
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-count expression.
+        """Build the distinct-count expression, excluding null.
+
+        Polars counts null as one more distinct value, which contradicts this
+        primitive's own ``default_value``: a customer whose only session had no
+        transactions would report 0 rows and 1 distinct value at once.
+        featuretools' ``NUM_UNIQUE`` excludes nulls, so counting them would
+        also diverge silently on any data containing them.
+
+        Subtracting a null indicator is deliberate rather than
+        ``expr.drop_nulls().n_unique()``: ``drop_nulls`` is a length-changing
+        (filtration) expression, and narwhals rejects those inside a lazy
+        ``group_by().agg()`` on backends that cannot express them. Both
+        operands here are plain reductions.
 
         Args:
             expr: The column to count distinct values of.
@@ -198,7 +212,7 @@ class NUnique(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return expr.n_unique().cast(nw.Int64)
+        return (expr.n_unique() - expr.is_null().any().cast(nw.Int64)).cast(nw.Int64)
 
 
 @register

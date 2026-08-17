@@ -3,7 +3,7 @@ import narwhals as nw
 from tusk.compiler import compile_features
 from tusk.entityset import Relationship
 from tusk.features import AggregationFeature, IdentityFeature
-from tusk.primitives.aggregation import Count, Mean, Quantiles, Sum
+from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
 
 CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
@@ -39,6 +39,24 @@ def test_depth_two_aggregation_values(es):
     feature = AggregationFeature(Mean(), (sessions_mean,), CUSTOMER_SESSION)
     got = collect([feature], es)
     assert got[feature.name].to_list() == [8.5, None, None]
+
+
+def test_n_unique_does_not_count_null_as_a_distinct_value(es):
+    """A group whose only values are null has 0 known distinct values, not 1.
+
+    Customer 2's only session is 30, which has no transactions, so
+    MEAN(transactions.amount) is null there. Polars counts that null as a
+    distinct value, which would contradict NUnique's own default_value of 0
+    and diverge from featuretools' NUM_UNIQUE.
+
+    Customer 1 has sessions 10 (mean 2.0) and 20 (mean 15.0): two distinct
+    non-null values. Customer 3 has no sessions at all, so the left join
+    leaves null and default_value fills 0.
+    """
+    sessions_mean = AggregationFeature(Mean(), (AMOUNT,), SESSION_TX)
+    feature = AggregationFeature(NUnique(), (sessions_mean,), CUSTOMER_SESSION)
+    got = collect([feature], es)
+    assert got[feature.name].to_list() == [2, 0, 0]
 
 
 def test_multi_output_aggregation_produces_one_column_per_output(es):
