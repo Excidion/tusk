@@ -23,7 +23,9 @@ def register(cls: type[Primitive]) -> type[Primitive]:
         The class unchanged, so this works as a decorator.
 
     Raises:
-        PrimitiveError: If the name is already registered.
+        PrimitiveError: If the name is already registered to a different
+            class. Re-registering the same class under its own name is a
+            no-op.
     """
     if cls.name in _REGISTRY and _REGISTRY[cls.name] is not cls:
         raise PrimitiveError(f"primitive name {cls.name!r} is already registered")

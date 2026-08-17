@@ -94,6 +94,12 @@ class Primitive(ABC):
             One expression per output column.
         """
         built = self.build(*inputs)
+        # Checking Sequence rather than (list, tuple) is deliberately broader
+        # than build()'s declared `nw.Expr | Sequence[nw.Expr]`: it is what
+        # lets ty narrow this branch exhaustively. build() is only ever
+        # implemented to return an nw.Expr or a list/tuple of them (see
+        # tests/test_primitives_base.py), so a str or range never actually
+        # reaches here in practice.
         if isinstance(built, Sequence):
             return tuple(built)
         return (built,)

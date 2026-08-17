@@ -62,9 +62,13 @@ check-return-types = false
 # whenever the class also has a docstring.
 allow-init-docstring = true
 
-[tool.ty.rules]
+[[tool.ty.overrides]]
+include = ["src/tusk/primitives/**", "tests/**"]
+
+[tool.ty.overrides.rules]
 # Primitive.build is variadic in the ABC and fixed-arity in each concrete
 # primitive. Arity is guaranteed by construction: synthesis supplies exactly
-# len(input_dtypes) expressions. Suppressing per-class would mean ~30
-# identical ignores across the built-in primitives.
+# len(input_dtypes) expressions to outputs(), which is build()'s only caller.
+# Scoped rather than project-wide so override checking stays active everywhere
+# else.
 invalid-method-override = "ignore"
