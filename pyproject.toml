@@ -56,3 +56,7 @@ style = "google"
 exclude = "tests"
 arg-type-hints-in-docstring = false
 check-return-types = false
+# ruff (D107) and interrogate both require __init__ to carry its own
+# docstring; without this flag pydoclint's DOC301 forbids exactly that
+# whenever the class also has a docstring.
+allow-init-docstring = true

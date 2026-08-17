@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from tusk import exceptions
+from tusk.entityset import EntitySet, Relationship, TableSchema
+
 __version__ = "0.1.0"
 
-__all__ = ["__version__"]
+__all__ = ["__version__", "EntitySet", "Relationship", "TableSchema", "exceptions"]
