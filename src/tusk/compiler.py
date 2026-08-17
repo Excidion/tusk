@@ -11,12 +11,14 @@ from typing import Any
 
 import narwhals as nw
 
-from tusk.entityset import EntitySet
+from tusk.entityset import EntitySet, Relationship
 from tusk.exceptions import SchemaError
 from tusk.features import (
     AggregationFeature,
+    DirectFeature,
     Feature,
     GroupByTransformFeature,
+    IdentityFeature,
     TransformFeature,
 )
 
@@ -126,6 +128,10 @@ def _table_frame(
 
     Returns:
         A lazy frame with the table's own columns plus the needed features.
+
+    Raises:
+        SchemaError: If ``needed`` contains a feature type this compiler does
+            not know how to compute.
     """
     frame = _base_frame(entityset, table, cutoff_time)
 
@@ -136,11 +142,27 @@ def _table_frame(
             frame, entityset, table, relationship, batch, cutoff_time
         )
 
+    directs = [f for f in needed if isinstance(f, DirectFeature)]
+    for relationship in dict.fromkeys(f.relationship for f in directs):
+        batch = [f for f in directs if f.relationship == relationship]
+        frame = _add_directs(frame, entityset, relationship, batch, cutoff_time)
+
     row_wise = [
         f for f in needed if isinstance(f, (TransformFeature, GroupByTransformFeature))
     ]
     for feature in sorted(row_wise, key=lambda f: f.depth):
         frame = _apply(frame, feature)
+
+    handled = (
+        IdentityFeature,
+        AggregationFeature,
+        DirectFeature,
+        TransformFeature,
+        GroupByTransformFeature,
+    )
+    unhandled = [f for f in needed if not isinstance(f, handled)]
+    if unhandled:
+        raise SchemaError(f"cannot compile feature type {type(unhandled[0]).__name__}")
     return frame
 
 
@@ -148,7 +170,7 @@ def _add_aggregations(
     frame: nw.LazyFrame,
     entityset: EntitySet,
     table: str,
-    relationship: Any,
+    relationship: Relationship,
     batch: Sequence[AggregationFeature],
     cutoff_time: Any,
 ) -> nw.LazyFrame:
@@ -193,6 +215,48 @@ def _add_aggregations(
         for name in feature.output_names
     ]
     return frame.with_columns(*defaults) if defaults else frame
+
+
+def _add_directs(
+    frame: nw.LazyFrame,
+    entityset: EntitySet,
+    relationship: Relationship,
+    batch: Sequence[DirectFeature],
+    cutoff_time: Any,
+) -> nw.LazyFrame:
+    """Join one parent table's features down onto the child with a single join.
+
+    Args:
+        frame: The child frame being built.
+        entityset: The entity set holding the frames.
+        relationship: The relationship being traversed.
+        batch: Every direct feature using that relationship.
+        cutoff_time: The cutoff, or None.
+
+    Returns:
+        The child frame with the batch's columns joined on.
+
+    Raises:
+        SchemaError: If the parent table has no primary key.
+    """
+    parent_key = entityset.schema(relationship.parent).primary_key
+    if parent_key is None:
+        raise SchemaError(f"parent table {relationship.parent!r} needs a primary_key")
+    parent_needed: set[Feature] = set()
+    for feature in batch:
+        parent_needed.update(_closure(feature.base_features))
+    parent = _table_frame(entityset, relationship.parent, parent_needed, cutoff_time)
+
+    selected = [nw.col(parent_key)]
+    for feature in batch:
+        selected.append(nw.col(feature.base_feature.name).alias(feature.name))
+
+    return frame.join(
+        parent.select(*selected),
+        left_on=relationship.foreign_key,
+        right_on=parent_key,
+        how="left",
+    )
 
 
 def _apply(frame: nw.LazyFrame, feature: Feature) -> nw.LazyFrame:
