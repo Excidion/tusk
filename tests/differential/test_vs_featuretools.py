@@ -12,15 +12,17 @@ takes ``dataframe_name=``, ``dataframe=``, ``index=`` keywords, and
 ``(parent_dataframe_name, parent_column_name, child_dataframe_name,
 child_column_name)``. Both match what this file assumed.
 
-On synthetic data with empty groups (customers with no sessions), tusk and
-featuretools *disagree* on SUM: tusk fills empty aggregations with the
-primitive's declared ``default_value`` (``None``/null for SUM, per
-``tusk.primitives.aggregation.Sum``), while featuretools fills empty SUM
-groups with ``0.0``. COUNT agrees (both use 0) because tusk's Count primitive
-declares ``default_value = 0``. This is a deliberate, spec-pinned semantic
-choice in tusk (see ``tests/test_compiler_aggregation.py``), not a bug -- the
-tests below assert both sides' actual behavior explicitly rather than papering
-over the difference.
+On synthetic data with empty groups (customers with no sessions), this suite
+originally caught tusk and featuretools *disagreeing* on SUM: tusk left an
+empty group's SUM null while featuretools filled it with 0.0. That was
+adjudicated: sum over an empty set is 0, the additive identity, and tusk
+already reports COUNT = 0 for the same rows -- asserting a known-zero count
+alongside an unknown total was internally inconsistent. ``Sum`` now declares
+``default_value = 0`` (see ``tusk/primitives/aggregation.py``), so SUM agrees
+with featuretools on empty groups too; that agreement is now a guarded
+invariant below rather than a documented divergence. MEAN/MIN/MAX remain
+null on empty groups on both sides, since those are genuinely undefined over
+an empty set (0/0, and min/max of nothing).
 """
 
 import numpy as np
@@ -103,6 +105,7 @@ def matrices(synthetic):
     ("tusk_name", "featuretools_name"),
     [
         ("COUNT(sessions)", "COUNT(sessions)"),
+        ("SUM(sessions.value)", "SUM(sessions.value)"),
         ("MEAN(sessions.value)", "MEAN(sessions.value)"),
         ("MIN(sessions.value)", "MIN(sessions.value)"),
         ("MAX(sessions.value)", "MAX(sessions.value)"),
@@ -111,9 +114,9 @@ def matrices(synthetic):
 def test_values_match_featuretools(matrices, tusk_name, featuretools_name):
     """These primitives agree on every row, including empty groups.
 
-    COUNT's empty-group default is 0 on both sides. MEAN/MIN/MAX are
-    undefined on an empty group and both tools represent that as NaN/null,
-    which ``assert_series_equal`` treats as equal.
+    COUNT and SUM both default to 0 for an empty group, on both sides.
+    MEAN/MIN/MAX are undefined on an empty group and both tools represent
+    that as NaN/null, which ``assert_series_equal`` treats as equal.
     """
     ours, theirs = matrices
     pd.testing.assert_series_equal(
@@ -123,47 +126,36 @@ def test_values_match_featuretools(matrices, tusk_name, featuretools_name):
     )
 
 
-def test_sum_matches_on_populated_groups(matrices, synthetic):
-    """SUM agrees with featuretools everywhere a group actually has rows.
+def test_empty_groups_agree_on_count_and_sum(matrices, synthetic):
+    """Both tools default COUNT and SUM to 0 for a customer with no sessions.
 
-    The empty-group case is where the two tools diverge; see
-    ``test_empty_groups_diverge_on_sum`` below.
+    This is the guarded invariant that replaced a real, adjudicated
+    disagreement: tusk's ``Sum`` primitive previously had no declared
+    ``default_value`` and left empty groups null, while featuretools filled
+    them with 0.0. tusk now declares ``default_value = 0`` on ``Sum`` to
+    match -- sum over an empty set is 0, the additive identity, and it would
+    be inconsistent to report a known-zero COUNT alongside an unknown SUM.
     """
-    customers, sessions = synthetic
-    ours, theirs = matrices
-    populated = sorted(set(sessions["customer_id"]) & set(customers["id"]))
-    assert populated
-    ours_sum = ours.loc[populated, "SUM(sessions.value)"].reset_index(drop=True)
-    theirs_sum = theirs.loc[populated, "SUM(sessions.value)"].reset_index(drop=True)
-    pd.testing.assert_series_equal(
-        ours_sum.astype(float), theirs_sum.astype(float), check_names=False
-    )
-
-
-def test_empty_groups_agree_on_count(matrices, synthetic):
-    """Both tools default COUNT to 0 for a customer with no sessions."""
     customers, sessions = synthetic
     ours, theirs = matrices
     childless = sorted(set(customers["id"]) - set(sessions["customer_id"]))
     assert childless
     assert (ours.loc[childless, "COUNT(sessions)"] == 0).all()
     assert (theirs.loc[childless, "COUNT(sessions)"] == 0).all()
+    assert (ours.loc[childless, "SUM(sessions.value)"] == 0).all()
+    assert (theirs.loc[childless, "SUM(sessions.value)"] == 0).all()
 
 
-def test_empty_groups_diverge_on_sum(matrices, synthetic):
-    """Documented, expected disagreement: tusk gives null, featuretools gives 0.0.
-
-    tusk's ``Sum`` primitive has no declared ``default_value``, so the
-    compiler leaves empty groups null (see ``tusk/primitives/aggregation.py``
-    and ``tests/test_compiler_aggregation.py::test_empty_group_gets_null_for_mean``,
-    which pins the same behavior for MEAN). featuretools instead fills empty
-    SUM aggregations with 0.0. Both are internally consistent semantic
-    choices; tusk's is intentional per spec and is not adjusted to match
-    featuretools here.
-    """
+def test_empty_groups_stay_null_for_mean_min_max(matrices, synthetic):
+    """MEAN/MIN/MAX are genuinely undefined over an empty set on both sides."""
     customers, sessions = synthetic
     ours, theirs = matrices
     childless = sorted(set(customers["id"]) - set(sessions["customer_id"]))
     assert childless
-    assert ours.loc[childless, "SUM(sessions.value)"].isna().all()
-    assert (theirs.loc[childless, "SUM(sessions.value)"] == 0.0).all()
+    for column in (
+        "MEAN(sessions.value)",
+        "MIN(sessions.value)",
+        "MAX(sessions.value)",
+    ):
+        assert ours.loc[childless, column].isna().all()
+        assert theirs.loc[childless, column].isna().all()

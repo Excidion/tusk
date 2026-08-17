@@ -55,6 +55,13 @@ class Sum(AggregationPrimitive):
 
     name = "sum"
     input_dtypes = (F.NUMERIC,)
+    # Sum over an empty group is 0, the additive identity -- not unknown. We
+    # already report COUNT = 0 for the same rows, asserting we know there were
+    # zero child rows; a null total would contradict that known-zero count.
+    # Do not remove this to "fix" a perceived inconsistency with MEAN/MIN/MAX:
+    # those are genuinely undefined over an empty set (0/0, and min/max of
+    # nothing), which is why they stay null.
+    default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the sum expression.
