@@ -1,16 +1,58 @@
 [project]
 name = "tusk"
 version = "0.1.0"
-description = "Add your description here"
+description = "Deep feature synthesis for narwhals lazy dataframes"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["narwhals>=2.24"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tusk"]
 
 [dependency-groups]
 dev = [
     "interrogate>=1.7.0",
     "pre-commit-uv>=4.3.0",
     "pydoclint>=0.9.1",
+    "pytest>=8.0",
+    "polars>=1.43",
     "ruff>=0.16.3",
     "ty>=0.0.72",
 ]
+validation = ["featuretools>=1.31", "pandas>=2.0"]
+benchmark = ["relbench>=1.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "differential: cross-checks values against featuretools (opt-in)",
+    "benchmark: relbench performance runs (opt-in)",
+]
+addopts = "-m 'not differential and not benchmark'"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.interrogate]
+fail-under = 100
+ignore-init-module = true
+ignore-private = true
+ignore-magic = true
+ignore-nested-functions = true
+exclude = ["tests"]
+
+[tool.pydoclint]
+style = "google"
+exclude = "tests"
+arg-type-hints-in-docstring = false
+check-return-types = false
