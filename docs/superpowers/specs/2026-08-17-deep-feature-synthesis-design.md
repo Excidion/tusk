@@ -30,7 +30,7 @@ Three goals drive every tradeoff below:
 
 ```python
 import tusk
-from tusk.primitives import NthMostCommon
+from tusk.primitives import Quantiles
 
 es = tusk.EntitySet("retail")
 es.add_dataframe("customers", customers_lf,
@@ -46,7 +46,7 @@ es.add_relationship(parent="sessions", child="transactions", foreign_key="sessio
 feature_matrix, features = tusk.dfs(
     entityset=es,
     target_dataframe_name="customers",
-    agg_primitives=["mean", "count", NthMostCommon(n=3)],
+    agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
     trans_primitives=["month", "weekday"],
     groupby_trans_primitives=["cum_sum"],
     max_depth=2,
@@ -196,7 +196,7 @@ requires this metadata statically:
 
 `return_dtype` and `number_of_outputs` are a method and a property rather than
 class attributes because both may depend on instance parameters (`max` preserves
-its input dtype; `NthMostCommon(n=3)` yields three columns).
+its input dtype; `Quantiles(qs=(0.25, 0.5, 0.75))` yields three columns).
 
 ### Extension
 
@@ -328,7 +328,14 @@ order-dependent transforms are supported.
 ## 9. Built-in primitives
 
 **Aggregation:** `count`, `sum`, `mean`, `min`, `max`, `std`, `median`,
-`n_unique`, `percent_true`, `n_most_common` (multi-output).
+`n_unique`, `percent_true`, `quantiles` (multi-output).
+
+`quantiles` is the v1 multi-output primitive rather than featuretools'
+`n_most_common`. Narwhals rejects length-changing expressions such as `mode()`
+inside a lazy `group_by().agg()` — *"Length-changing expressions are not
+supported for use in LazyFrame"* — so mode-based primitives have no portable
+lazy implementation. `Quantiles(qs=(0.25, 0.5, 0.75))` exercises the same
+multi-output machinery and is expressible as `expr.quantile(q)`.
 
 **Transform:** `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
 `absolute`, `natural_log`.
@@ -386,10 +393,12 @@ parquet or feather fixtures in any case.
 - **Phase 2 against hand-computed values** on a customers/sessions/transactions
   fixture, including empty groups, null-only groups, single-row groups, and
   ties — the cases real data contains only by accident.
-- **Laziness is tested behaviorally, not by grepping for `.collect()`.** Build
-  an EntitySet over a scan of a nonexistent file, run `dfs()`, assert it returns
-  normally, and assert the error appears only at `.collect()`. Anything that
-  materializes early fails this test.
+- **Laziness is tested behaviorally, not by grepping for `.collect()`.** Scan a
+  real parquet file, build the EntitySet, **delete the file**, then run `dfs()`:
+  assert it returns normally and that `FileNotFoundError` appears only at
+  `.collect()`. Anything that materializes early fails this test. (Scanning a
+  nonexistent file instead would fail at `add_dataframe()`, since reading the
+  schema touches the file.)
 - **Batching guard.** Assert that N aggregation features from one child table
   produce exactly one join in `explain()`. Polars-specific and white-box, but it
   is the only way to keep the compiler's central performance property from
