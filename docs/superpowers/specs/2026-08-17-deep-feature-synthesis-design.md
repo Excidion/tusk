@@ -371,6 +371,23 @@ multi-output machinery and is expressible as `expr.quantile(q)`.
 `time_since_previous`. Narwhals has no `cum_mean`; if wanted it must be composed
 from `cum_sum / cum_count`, so it is left out of v1.
 
+### What may go in `groupby_trans_primitives`
+
+Only **group-aware** primitives — ones whose expression reduces or scans across
+the group. The built-in order-dependent primitives above all qualify.
+
+Every other built-in transform is **elementwise** (`absolute`, `month`,
+`add_numeric`, …), and narwhals rejects `.over()` on an elementwise expression:
+`InvalidOperationError: Cannot apply over to elementwise expression`. Passing one
+in `groupby_trans_primitives` therefore fails — but it fails at expression-build
+time, raising synchronously out of `compile_features` rather than at `collect()`,
+so the user learns immediately rather than after a long query.
+
+This leaves the grouped, non-order-dependent window path reachable only by
+user-defined primitives. That is the intended extension point: a primitive such
+as `x / x.sum()` ("share of group total") is group-aware without being
+order-dependent, and is exactly what that path exists to serve.
+
 **Multi-input arithmetic** — `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric` — ships but stays **out of the defaults**.
 On a twenty-column table these generate hundreds of features, and featuretools
