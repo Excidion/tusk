@@ -15,7 +15,11 @@ import narwhals as nw
 
 from tusk.dtypes import DtypeFamily, matches
 from tusk.entityset import EntitySet, Relationship
-from tusk.exceptions import CategoricalDtypeWarning, PrimitiveError
+from tusk.exceptions import (
+    CategoricalDtypeWarning,
+    PrimitiveError,
+    UnmatchedPrimitiveWarning,
+)
 from tusk.features import (
     AggregationFeature,
     DirectFeature,
@@ -55,6 +59,8 @@ def synthesize(
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
             because a requested primitive requires a string input.
+        UnmatchedPrimitiveWarning: If a requested primitive matched no column
+            of its input dtypes anywhere in the walk.
     """
     entityset.schema(target_dataframe_name)
     context = _Context(
@@ -64,6 +70,7 @@ def synthesize(
         groupby=resolve_all(groupby_trans_primitives),
     )
     features = context.build(target_dataframe_name, max_depth, ())
+    context.warn_unmatched()
     keys = entityset.output_excluded_columns(target_dataframe_name)
     kept = [
         f for f in features if not (isinstance(f, IdentityFeature) and f.column in keys)
@@ -94,6 +101,8 @@ class _Context:
         self.trans = trans
         self.groupby = groupby
         self._categorical_warned: set[tuple[str, str, str]] = set()
+        self._matched: set[str] = set()
+        self._unmatched: dict[tuple[str, str], None] = {}
 
     def build(
         self, table: str, depth_limit: int, path: tuple[Relationship, ...]
@@ -147,7 +156,7 @@ class _Context:
                 if not primitive.input_dtypes:
                     out.append(AggregationFeature(primitive, (), rel))
                     continue
-                for combo in self._combinations(primitive, usable):
+                for combo in self._combinations(primitive, usable, rel.child):
                     out.append(AggregationFeature(primitive, combo, rel))
         return out
 
@@ -198,7 +207,7 @@ class _Context:
         out: list[Feature] = []
         for primitive in self.trans:
             self._check_ordering(primitive, table)
-            for combo in self._combinations(primitive, usable):
+            for combo in self._combinations(primitive, usable, table):
                 feature = TransformFeature(primitive, combo)
                 if feature.depth <= depth_limit:
                     out.append(feature)
@@ -234,11 +243,36 @@ class _Context:
                 continue
             for primitive in self.groupby:
                 self._check_ordering(primitive, table)
-                for combo in self._combinations(primitive, usable):
+                for combo in self._combinations(primitive, usable, table):
                     feature = GroupByTransformFeature(primitive, combo, rel)
                     if feature.depth <= depth_limit:
                         out.append(feature)
         return out
+
+    def warn_unmatched(self) -> None:
+        """Warn about requested primitives that matched nothing anywhere.
+
+        Skipping is the right behaviour -- raising would break a
+        zero-configuration ``dfs()`` on any schema missing a dtype family --
+        but skipping silently leaves the user with a primitive they asked for,
+        no column, and no explanation.
+
+        A primitive that produced features somewhere is not reported: it being
+        inapplicable to one particular table is ordinary, and warning about it
+        would bury the genuinely unusable case in noise. Each surviving
+        (primitive, table) pair warns once.
+        """
+        for primitive_name, table in self._unmatched:
+            if primitive_name in self._matched:
+                continue
+            warnings.warn(
+                f"primitive {primitive_name!r} was requested but no column on "
+                f"table {table!r} matches its input dtypes, so it generated no "
+                f"features there. Check the column dtypes, or drop the "
+                f"primitive from the request.",
+                UnmatchedPrimitiveWarning,
+                stacklevel=4,
+            )
 
     def _warn_categorical(
         self, primitive: Primitive, candidates: Sequence[Feature]
@@ -322,13 +356,15 @@ class _Context:
         ]
 
     def _combinations(
-        self, primitive: Primitive, candidates: Sequence[Feature]
+        self, primitive: Primitive, candidates: Sequence[Feature], table: str
     ) -> list[tuple[Feature, ...]]:
         """Enumerate input tuples a primitive accepts.
 
         Args:
             primitive: The primitive to match inputs for.
             candidates: Available features.
+            table: Table the candidates live on, recorded so an unmatched
+                primitive can be named alongside it once the walk finishes.
 
         Returns:
             One tuple per valid input combination.
@@ -343,7 +379,9 @@ class _Context:
         ]
         self._warn_categorical(primitive, candidates)
         if any(not slot for slot in per_slot):
+            self._unmatched.setdefault((primitive.name, table), None)
             return []
+        self._matched.add(primitive.name)
 
         combos: list[tuple[Feature, ...]]
         if len(per_slot) == 1:

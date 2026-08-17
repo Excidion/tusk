@@ -461,6 +461,81 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
     assert not [w for w in recwarn if issubclass(w.category, CategoricalDtypeWarning)]
 
 
+def test_requested_primitive_with_no_matching_column_warns():
+    """Asking for a primitive and silently getting nothing is the bug.
+
+    Warning rather than raising is deliberate: raising would break a
+    zero-configuration ``dfs()`` on any schema that happens to lack a dtype
+    family.
+    """
+    from tusk.exceptions import UnmatchedPrimitiveWarning
+
+    es = tusk.EntitySet("x").add_dataframe(
+        "t", pl.LazyFrame({"id": [1, 2], "n": [1.0, 2.0]}), primary_key="id"
+    )
+    with pytest.warns(UnmatchedPrimitiveWarning, match="'month'.*'t'"):
+        got = synthesize(
+            es,
+            "t",
+            agg_primitives=[],
+            trans_primitives=["month", "absolute"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+    # The primitive that did match is unaffected.
+    assert "ABSOLUTE(n)" in names(got)
+
+
+def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
+    """`mean` is inapplicable to `sessions` alone, which is ordinary, not a bug.
+
+    Warning per (primitive, table) regardless of the whole-run outcome would
+    bury the genuinely unusable case in noise, so a primitive that produced
+    features anywhere is never reported.
+    """
+    from tusk.exceptions import UnmatchedPrimitiveWarning
+
+    es = (
+        tusk.EntitySet("x")
+        .add_dataframe("p", pl.LazyFrame({"id": [1]}), primary_key="id")
+        # numeric: mean matches here
+        .add_dataframe(
+            "c", pl.LazyFrame({"id": [1], "p_id": [1], "n": [1.0]}), primary_key="id"
+        )
+        # temporal only: mean matches nothing here
+        .add_dataframe(
+            "d",
+            pl.LazyFrame(
+                {"id": [1], "p_id": [1], "seen_at": [dt.datetime(2024, 1, 1)]}
+            ),
+            primary_key="id",
+        )
+        .add_relationship(parent="p", child="c", foreign_key="p_id")
+        .add_relationship(parent="p", child="d", foreign_key="p_id")
+    )
+    got = names(
+        synthesize(
+            es,
+            "p",
+            agg_primitives=["mean"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=2,
+        )
+    )
+    assert "MEAN(c.n)" in got
+    assert not any(name.startswith("MEAN(d.") for name in got)
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
+
+
+def test_zero_config_run_warns_about_nothing(es, recwarn):
+    """Every default primitive finds a home on the standard three-table schema."""
+    from tusk.exceptions import UnmatchedPrimitiveWarning
+
+    tusk.dfs(entityset=es, target_dataframe_name="customers", features_only=True)
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
+
+
 def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one():
     es = tusk.EntitySet("x").add_dataframe(
         "t", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id"
