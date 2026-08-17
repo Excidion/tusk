@@ -51,6 +51,10 @@ def synthesize(
         Feature definitions on the target table, deduplicated and excluding the
         target's own key columns; ``entityset.schema()`` raises
         :class:`~tusk.exceptions.SchemaError` if the target table is unknown.
+
+    Warns:
+        CategoricalDtypeWarning: If a Categorical or Enum column is skipped
+            because a requested primitive requires a string input.
     """
     entityset.schema(target_dataframe_name)
     context = _Context(

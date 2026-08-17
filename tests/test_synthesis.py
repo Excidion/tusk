@@ -113,17 +113,67 @@ def test_groupby_transform_features(es):
     assert "CUM_SUM(amount) by session_id" in names(got)
 
 
-def test_stack_on_self_is_respected(es):
+def test_stack_on_self_is_respected():
+    # count is zero-arity and short-circuits in _aggregations before
+    # _combinations is ever reached, so it cannot exercise the stack_on_self
+    # filter. n_unique is non-zero-arity (input_dtypes=(F.ANY,)) with
+    # stack_on_self=False, so it actually routes through _combinations.
+    es = (
+        tusk.EntitySet("nu")
+        .add_dataframe("a", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_dataframe(
+            "b", pl.LazyFrame({"id": [1], "a_id": [1], "x": [1.0]}), primary_key="id"
+        )
+        .add_dataframe(
+            "c", pl.LazyFrame({"id": [1], "b_id": [1], "y": [1.0]}), primary_key="id"
+        )
+        .add_relationship(parent="a", child="b", foreign_key="a_id")
+        .add_relationship(parent="b", child="c", foreign_key="b_id")
+    )
     got = synthesize(
         es,
-        "customers",
-        agg_primitives=["count"],
+        "a",
+        agg_primitives=["n_unique"],
         trans_primitives=[],
         groupby_trans_primitives=[],
         max_depth=2,
     )
-    assert "COUNT(sessions)" in names(got)
-    assert not any(n.startswith("COUNT(sessions.COUNT") for n in names(got))
+    n = names(got)
+    # b.x is a plain (non-derived) column, so N_UNIQUE(b.x) is unaffected.
+    assert "N_UNIQUE(b.x)" in n
+    # N_UNIQUE(c.y) aggregated onto b is itself an n_unique output; stacking
+    # n_unique on top of it must be filtered out.
+    assert not any(name.startswith("N_UNIQUE(b.N_UNIQUE") for name in n)
+
+
+def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
+    # add_numeric/subtract_numeric are the only built-ins with two input
+    # slots, so they are the only way to exercise the else branch of
+    # `if len(per_slot) == 1` in _combinations: itertools.product, the
+    # duplicate-feature filter, and the commutative frozenset dedup.
+    es = tusk.EntitySet("arith").add_dataframe(
+        "t", pl.LazyFrame({"id": [1], "a": [1.0], "b": [2.0]}), primary_key="id"
+    )
+    got = synthesize(
+        es,
+        "t",
+        agg_primitives=[],
+        trans_primitives=["add_numeric", "subtract_numeric"],
+        groupby_trans_primitives=[],
+        max_depth=1,
+    )
+    n = names(got)
+    # commutative=True: only one argument order is generated.
+    assert "ADD_NUMERIC(a, b)" in n
+    assert "ADD_NUMERIC(b, a)" not in n
+    # commutative=False: both argument orders are generated.
+    assert "SUBTRACT_NUMERIC(a, b)" in n
+    assert "SUBTRACT_NUMERIC(b, a)" in n
+    # a feature is never paired with itself.
+    assert "ADD_NUMERIC(a, a)" not in n
+    assert "ADD_NUMERIC(b, b)" not in n
+    assert "SUBTRACT_NUMERIC(a, a)" not in n
+    assert "SUBTRACT_NUMERIC(b, b)" not in n
 
 
 def test_self_referential_schema_terminates():
@@ -245,15 +295,33 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     assert "SHOUT(cat)" not in names(got)
 
 
-def test_no_categorical_warning_when_no_string_primitive_requested(es, recwarn):
-    """Default primitives require no STRING input, so nothing is skipped."""
+def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
+    """A Categorical column is present, but no STRING primitive is requested.
+
+    Using the shared ``es`` fixture here would not distinguish "no warning
+    because no STRING primitive was requested" from "no warning because
+    there was nothing categorical to warn about" -- it has no Categorical
+    columns at all. This schema has one, so the assertion actually tests
+    what the test name claims.
+    """
     from tusk.exceptions import CategoricalDtypeWarning
 
+    es = tusk.EntitySet("x").add_dataframe(
+        "t",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "n": [1.0, 2.0],
+                "cat": pl.Series(["a", "b"], dtype=pl.Categorical),
+            }
+        ),
+        primary_key="id",
+    )
     synthesize(
         es,
-        "customers",
-        agg_primitives=["count"],
-        trans_primitives=[],
+        "t",
+        agg_primitives=[],
+        trans_primitives=["absolute"],
         groupby_trans_primitives=[],
         max_depth=1,
     )
