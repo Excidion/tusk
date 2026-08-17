@@ -235,8 +235,9 @@ class EntitySet:
         Foreign keys remain usable as groupby keys.
 
         The ``row_creation_time`` is deliberately **not** here. It is a real
-        measurement — ``MONTH(signed_up_at)`` and ``MAX(occurred_at)`` are
-        exactly the features DFS exists to find — and excluding it would leave
+        measurement — ``MONTH(signed_up_at)``-style temporal transforms, and
+        ``N_UNIQUE`` or ``CUM_COUNT`` over a temporal column, are exactly the
+        features this split unblocks — and excluding it would leave
         a zero-configuration run with no transform features at all. Contrast
         :meth:`output_excluded_columns`, which does exclude it; conflating the
         two sets is a bug this split exists to prevent.

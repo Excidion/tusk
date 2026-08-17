@@ -308,10 +308,13 @@ Two rules carry the algorithm:
 
 **Two exclusion sets, not one.** The rule above is about *inputs*, and the
 `row_creation_time` is deliberately **not** in it: it is a measurement, and
-`MONTH(signed_up_at)` — §6's own exemplar `TransformFeature` — and
-`MAX(occurred_at)` are exactly the features DFS exists to find. Excluding it
-would leave a zero-configuration run, whose transform defaults are all
-temporal, with no transform features at all.
+`MONTH(signed_up_at)` — §6's own exemplar `TransformFeature` — plus
+`N_UNIQUE` or `CUM_COUNT` over a temporal column, are exactly the features
+this split unblocks. (`MAX` stays out of reach: its `input_dtypes` is
+numeric-only, so no temporal column can ever satisfy it, split or no split.)
+Excluding `row_creation_time` from the input set would leave a
+zero-configuration run, whose transform defaults are all temporal, with no
+transform features at all.
 
 A second, larger set governs *output* passthrough: the raw columns that never
 appear in the feature matrix are the join keys **plus** the

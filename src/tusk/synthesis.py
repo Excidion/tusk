@@ -349,9 +349,9 @@ class _Context:
 
         Only the primary key and foreign keys go: the ``row_creation_time`` is
         a genuine measurement and stays available as a primitive input, which
-        is what makes ``MONTH(signed_up_at)`` and ``MAX(occurred_at)``
-        reachable. It is dropped later, from the matrix's raw passthrough
-        columns only (see
+        is what makes ``MONTH(signed_up_at)``-style temporal transforms, and
+        ``N_UNIQUE`` or ``CUM_COUNT`` over a temporal column, reachable. It is
+        dropped later, from the matrix's raw passthrough columns only (see
         :meth:`~tusk.entityset.EntitySet.output_excluded_columns`).
 
         Args:
