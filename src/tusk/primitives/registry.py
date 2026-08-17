@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from tusk.dtypes import DtypeFamily
 from tusk.exceptions import PrimitiveError
 from tusk.primitives.base import Primitive, TransformPrimitive
 
 _REGISTRY: dict[str, type[Primitive]] = {}
+_P = TypeVar("_P", bound=Primitive)
 
 
-def register(cls: type[Primitive]) -> type[Primitive]:
+def register(cls: type[_P]) -> type[_P]:
     """Register a primitive class under its ``name``.
 
     Args:
