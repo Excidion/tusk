@@ -63,6 +63,26 @@ def test_defaults_are_applied(es):
     assert not any(n.startswith("ADD_NUMERIC") for n in names)
 
 
+def test_zero_config_generates_transform_features(es):
+    """The defaults are temporal-only transforms, so they need a temporal input.
+
+    Every non-key column on this schema that a default transform can read is a
+    row_creation_time. Excluding those from primitive inputs left a zero-config
+    run with aggregations and passthrough columns but not one transform.
+    """
+    features = tusk.dfs(
+        entityset=es, target_dataframe_name="customers", features_only=True
+    )
+    names = {f.name for f in features}
+    assert {"YEAR(signed_up_at)", "MONTH(signed_up_at)", "WEEKDAY(signed_up_at)"} <= (
+        names
+    )
+    # Stacked over the child's own row_creation_time as well.
+    assert "MEAN(sessions.MONTH(started_at))" in names
+    # The raw time index is still not a feature.
+    assert "signed_up_at" not in names
+
+
 def test_calculate_feature_matrix_reapplies_definitions(es):
     features = tusk.dfs(
         entityset=es,

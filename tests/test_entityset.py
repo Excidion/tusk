@@ -25,8 +25,19 @@ def test_relationship_accessors(es):
     assert es.children_of("transactions") == []
 
 
-def test_key_columns_include_pk_fk_and_time(es):
-    assert es.key_columns("sessions") == frozenset({"id", "customer_id", "started_at"})
+def test_input_exclusions_are_join_keys_only(es):
+    # sessions has primary_key "id" and one parent relationship whose foreign
+    # key is "customer_id". started_at is the row_creation_time, which is a
+    # measurement, not a join key, so it stays available to primitives.
+    assert es.input_excluded_columns("sessions") == frozenset({"id", "customer_id"})
+
+
+def test_output_exclusions_add_the_row_creation_time(es):
+    # The matrix drops the time index as a raw passthrough column, on top of
+    # the join keys. Features derived from it are unaffected.
+    assert es.output_excluded_columns("sessions") == frozenset(
+        {"id", "customer_id", "started_at"}
+    )
 
 
 def test_missing_primary_key_warns():

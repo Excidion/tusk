@@ -64,7 +64,7 @@ def synthesize(
         groupby=resolve_all(groupby_trans_primitives),
     )
     features = context.build(target_dataframe_name, max_depth, ())
-    keys = entityset.key_columns(target_dataframe_name)
+    keys = entityset.output_excluded_columns(target_dataframe_name)
     kept = [
         f for f in features if not (isinstance(f, IdentityFeature) and f.column in keys)
     ]
@@ -298,7 +298,14 @@ class _Context:
             )
 
     def _usable(self, table: str, features: Sequence[Feature]) -> list[Feature]:
-        """Drop key columns, which are structural rather than measurements.
+        """Drop join keys, which identify rows rather than measuring anything.
+
+        Only the primary key and foreign keys go: the ``row_creation_time`` is
+        a genuine measurement and stays available as a primitive input, which
+        is what makes ``MONTH(signed_up_at)`` and ``MAX(occurred_at)``
+        reachable. It is dropped later, from the matrix's raw passthrough
+        columns only (see
+        :meth:`~tusk.entityset.EntitySet.output_excluded_columns`).
 
         Args:
             table: The table the features belong to.
@@ -307,7 +314,7 @@ class _Context:
         Returns:
             Features usable as primitive inputs.
         """
-        keys = self.entityset.key_columns(table)
+        keys = self.entityset.input_excluded_columns(table)
         return [
             f
             for f in features

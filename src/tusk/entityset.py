@@ -227,25 +227,53 @@ class EntitySet:
         """
         return [r for r in self._relationships if r.child == name]
 
-    def key_columns(self, name: str) -> frozenset[str]:
-        """Return columns excluded from use as primitive inputs.
+    def input_excluded_columns(self, name: str) -> frozenset[str]:
+        """Return columns that may not be fed to a primitive as an input.
 
-        Primary keys, foreign keys, and the row creation time are structural,
-        not measurements: ``MEAN(customer_id)`` is noise.
+        Join keys only: the primary key and every foreign key. They identify
+        rows rather than measure anything, so ``MEAN(customer_id)`` is noise.
+        Foreign keys remain usable as groupby keys.
+
+        The ``row_creation_time`` is deliberately **not** here. It is a real
+        measurement — ``MONTH(signed_up_at)`` and ``MAX(occurred_at)`` are
+        exactly the features DFS exists to find — and excluding it would leave
+        a zero-configuration run with no transform features at all. Contrast
+        :meth:`output_excluded_columns`, which does exclude it; conflating the
+        two sets is a bug this split exists to prevent.
 
         Args:
             name: Table name.
 
         Returns:
-            The table's structural column names.
+            The table's join-key column names.
         """
         schema = self.schema(name)
-        keys: set[str] = {
-            column
-            for column in (schema.primary_key, schema.row_creation_time)
-            if column is not None
-        }
+        keys: set[str] = set()
+        if schema.primary_key is not None:
+            keys.add(schema.primary_key)
         keys.update(r.foreign_key for r in self.parents_of(name))
+        return frozenset(keys)
+
+    def output_excluded_columns(self, name: str) -> frozenset[str]:
+        """Return raw columns that never appear in the feature matrix.
+
+        Everything in :meth:`input_excluded_columns`, plus the
+        ``row_creation_time``: passing the time index through as a feature
+        invites target leakage, and featuretools drops it from the matrix for
+        the same reason. Derived features *over* the row creation time, such as
+        ``MONTH(signed_up_at)``, are unaffected — only the raw column is
+        dropped.
+
+        Args:
+            name: Table name.
+
+        Returns:
+            Column names to omit from the feature matrix.
+        """
+        schema = self.schema(name)
+        keys = set(self.input_excluded_columns(name))
+        if schema.row_creation_time is not None:
+            keys.add(schema.row_creation_time)
         return frozenset(keys)
 
 

@@ -114,6 +114,77 @@ def test_transforms_respect_dtype_families():
     assert "ABSOLUTE(occurred_at)" not in got
 
 
+def test_row_creation_time_is_available_as_a_transform_input(es):
+    """MONTH(signed_up_at) is the spec's own exemplar TransformFeature.
+
+    signed_up_at is the customers table's row_creation_time. It is a
+    measurement, not a join key, so primitives may read it -- while the raw
+    column itself still stays out of the feature matrix.
+    """
+    got = names(
+        synthesize(
+            es,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["month", "year", "weekday"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+    )
+    assert "MONTH(signed_up_at)" in got
+    assert "YEAR(signed_up_at)" in got
+    assert "WEEKDAY(signed_up_at)" in got
+    assert "signed_up_at" not in got
+
+
+def test_aggregations_can_reach_a_temporal_column(es):
+    """A child's row_creation_time is aggregable, not structurally excluded.
+
+    ``n_unique`` (family ANY) reaches ``occurred_at`` directly. ``LAST_TIME``
+    stands in for a MAX-shaped reduction over a temporal column: the built-in
+    ``max`` declares ``input_dtypes=(NUMERIC,)`` and so still skips temporal
+    columns, which is a property of that primitive's declared family, not of
+    the key-exclusion rule this test is about.
+    """
+    from tusk.dtypes import DtypeFamily as F
+    from tusk.primitives.base import AggregationPrimitive
+    from tusk.primitives.registry import register
+
+    @register
+    @dataclass(frozen=True)
+    class LastTime(AggregationPrimitive):
+        """Most recent value of a temporal column."""
+
+        name = "last_time"
+        input_dtypes = (F.TEMPORAL,)
+
+        def build(self, expr):
+            """Build the maximum expression.
+
+            Args:
+                expr: The temporal column to reduce.
+
+            Returns:
+                A narwhals expression.
+            """
+            return expr.max()
+
+    got = names(
+        synthesize(
+            es,
+            "sessions",
+            agg_primitives=["n_unique", "last_time", "max"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+    )
+    assert "LAST_TIME(transactions.occurred_at)" in got
+    assert "N_UNIQUE(transactions.occurred_at)" in got
+    # The numeric column is unaffected.
+    assert "MAX(transactions.amount)" in got
+
+
 def test_multi_output_feature_is_an_output_but_never_an_input(es):
     """QUANTILES(x) materializes only ``...[0]``/``[1]``/``[2]``, never the stem.
 
