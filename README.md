@@ -43,8 +43,8 @@ feature_matrix, features = tusk.dfs(
 ```
 
 `feature_matrix` comes back in the frame type you put in — lazy in, lazy out —
-so nothing is computed until you collect it. `features` is a list of inspectable
-definitions you can re-apply to new data:
+so if you passed lazy frames, nothing is computed until you collect it.
+`features` is a list of inspectable definitions you can re-apply to new data:
 
 ```python
 matrix = tusk.calculate_feature_matrix(features, es_new)
@@ -52,14 +52,23 @@ matrix = tusk.calculate_feature_matrix(features, es_new)
 
 ## Differences from featuretools
 
-- **Lazy throughout.** Tusk never collects; you decide when to compute.
+- **Lazy in, lazy out.** Feed tusk lazy frames and it returns a lazy frame:
+  it builds one query plan and never collects, so you decide when to compute.
+  Feed it eager frames and it returns an eager frame, collecting once at the
+  end — that single `collect()` is the only one in the library.
 - **Any narwhals backend**, not just pandas. One entity set uses one backend.
 - **`primary_key` and `row_creation_time`** rather than `index` and
   `time_index`. Narwhals has no index concept, and `row_creation_time` names
   what the column means: when the row became knowable.
 - **Three-argument relationships.** `add_relationship(parent=, child=,
   foreign_key=)` — the parent side is always the parent's primary key.
-- **One global `cutoff_time`**, not per-row cutoff times.
+- **One global `cutoff_time`**, not per-row cutoff times. It filters the
+  target table too, so the matrix can have fewer rows than the target — a row
+  that did not exist yet at the cutoff has no features to compute. Tables with
+  no `row_creation_time` are timeless and pass through unfiltered, so a cutoff
+  on an entity set that declares none is silently a no-op. With
+  `features_only=True` the cutoff is ignored entirely, since nothing is
+  computed and feature definitions do not record it.
 - **`primary_key` is optional**, but a table without one cannot be a
   relationship parent or a DFS target, and order-dependent primitives on it
   have non-deterministic tiebreaks. You get a `MissingPrimaryKeyWarning`.
@@ -80,6 +89,34 @@ Passing `agg_primitives=None` or `trans_primitives=None` selects a sensible
 default subset. Arithmetic primitives are excluded from the defaults because
 they generate hundreds of features on wide tables.
 
+A multi-output primitive such as `quantiles` produces indexed columns —
+`QUANTILES(transactions.amount)[0]`, `[1]`, `[2]` — and nothing else stacks on
+it: there is no single column for another primitive to read. It is a valid
+output at any depth, just never an input.
+
+### Empty groups
+
+Aggregating a group with no rows is the most surprising correct behaviour in
+the library, so it is worth stating plainly. After the left join, a customer
+with no sessions gets:
+
+| Primitive | Value | Why |
+|---|---|---|
+| `COUNT` | `0` | We know there were zero rows. |
+| `N_UNIQUE` | `0` | Zero rows hold zero distinct values. Nulls are not values either, so a group of only nulls is also `0`. |
+| `SUM` | `0` | The additive identity. |
+| `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
+
+The split is not arbitrary. Reporting `COUNT = 0` asserts we *know* there were
+no rows; a null `SUM` beside it would claim the total is unknown, which
+contradicts a known-zero count. `MEAN` has no such defence — there is no
+number that is the average of nothing — so it stays null. Each value lives on
+the primitive as `default_value` rather than as a special case in the compiler.
+
+featuretools agrees on `COUNT` and `SUM`, and also leaves `MEAN`/`MIN`/`MAX`
+null. It differs on `N_UNIQUE`, which it leaves as `NaN`; tusk reports `0` for
+the reason above.
+
 ### What can go in `groupby_trans_primitives`
 
 Only **group-aware** primitives — ones whose expression reduces or scans
@@ -91,9 +128,11 @@ Every other built-in transform (`absolute`, `month`, `add_numeric`, …) is
 **elementwise** rather than group-aware, and narwhals rejects `.over()` on an
 elementwise expression: `InvalidOperationError: Cannot apply over to
 elementwise expression`. Passing one of these in `groupby_trans_primitives`
-therefore fails — but synchronously, at expression-build time out of `dfs()`,
-not later at `.collect()`, so you learn immediately rather than after a long
-query.
+therefore fails — but at expression-build time, not later at `.collect()`, so
+you learn immediately rather than after a long query. The failure surfaces
+synchronously out of `dfs()` only when it compiles, i.e. `features_only=False`;
+with `features_only=True` synthesis happily emits the definition and the error
+waits until you call `calculate_feature_matrix()` on it.
 
 This leaves the grouped, non-order-dependent path reachable only by
 user-defined primitives — that's the intended extension point. A primitive

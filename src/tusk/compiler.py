@@ -38,7 +38,10 @@ def compile_features(
 
     Returns:
         A lazy frame with the target's primary key plus one column per feature
-        output. Building it calls ``_apply``, whose ``_order_by`` helper raises
+        output, and one row per target row visible at ``cutoff_time`` -- which
+        may be fewer rows than the target table holds, since the target is
+        filtered like any other table. Building it calls ``_apply``, whose
+        ``_order_by`` helper raises
         :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
         primitive among ``features`` is applied to a table with no
         ``row_creation_time``.
@@ -94,7 +97,15 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
 def _base_frame(entityset: EntitySet, table: str, cutoff_time: Any) -> nw.LazyFrame:
     """Return a table's frame with the cutoff filter applied.
 
-    Tables without a ``row_creation_time`` are timeless and pass through.
+    Tables without a ``row_creation_time`` are timeless and pass through
+    unfiltered -- documented rather than warned, per spec section 8. An entity
+    set that declares no ``row_creation_time`` anywhere therefore treats a
+    cutoff as a silent no-op.
+
+    The target table is filtered like any other, so a cutoff can leave the
+    feature matrix with fewer rows than the target table has. That matches
+    featuretools: a row that did not exist yet at the cutoff has no features to
+    compute.
 
     Args:
         entityset: The entity set holding the frames.
