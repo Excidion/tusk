@@ -1,5 +1,6 @@
 import narwhals as nw
 import polars as pl
+import pyarrow as pa
 import pytest
 
 import tusk
@@ -93,9 +94,8 @@ def test_duplicate_table_name_raises():
 
 
 def test_backend_mismatch_raises():
-    pd = pytest.importorskip("pandas")
     es = tusk.EntitySet("x").add_dataframe(
         "t", pl.LazyFrame({"a": [1]}), primary_key="a"
     )
-    with pytest.raises(SchemaError, match="backend"):
-        es.add_dataframe("u", pd.DataFrame({"a": [1]}), primary_key="a")
+    with pytest.raises(SchemaError, match="polars.*pyarrow|pyarrow.*polars"):
+        es.add_dataframe("u", pa.table({"a": [1]}), primary_key="a")
