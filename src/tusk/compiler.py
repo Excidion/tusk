@@ -12,7 +12,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.entityset import EntitySet, Relationship
-from tusk.exceptions import SchemaError
+from tusk.exceptions import PrimitiveError, SchemaError
 from tusk.features import (
     AggregationFeature,
     DirectFeature,
@@ -152,7 +152,7 @@ def _table_frame(
         f for f in needed if isinstance(f, (TransformFeature, GroupByTransformFeature))
     ]
     for feature in sorted(row_wise, key=lambda f: f.depth):
-        frame = _apply(frame, feature)
+        frame = _apply(frame, feature, entityset)
 
     handled = (
         IdentityFeature,
@@ -260,12 +260,18 @@ def _add_directs(
     )
 
 
-def _apply(frame: nw.LazyFrame, feature: Feature) -> nw.LazyFrame:
-    """Add a derived feature's columns to a frame.
+def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.LazyFrame:
+    """Add a row-wise feature's columns to a frame.
+
+    Order-dependent primitives are wrapped in ``.over(..., order_by=...)``
+    rather than relying on a frame-level sort: on lazy backends a sort is not
+    guaranteed to survive later operations, and narwhals requires ``order_by``
+    for these expressions in any case.
 
     Args:
         frame: The frame to extend.
         feature: The feature to compute.
+        entityset: The entity set, used to find ordering columns.
 
     Returns:
         The extended frame.
@@ -273,9 +279,47 @@ def _apply(frame: nw.LazyFrame, feature: Feature) -> nw.LazyFrame:
     Raises:
         SchemaError: If the feature type is not handled here.
     """
-    if isinstance(feature, TransformFeature):
-        inputs = [nw.col(b.name) for b in feature.base_features]
-        exprs = feature.primitive.outputs(*inputs)
-        named = [e.alias(n) for e, n in zip(exprs, feature.output_names, strict=True)]
-        return frame.with_columns(*named)
-    raise SchemaError(f"cannot compile feature type {type(feature).__name__}")
+    if not isinstance(feature, (TransformFeature, GroupByTransformFeature)):
+        raise SchemaError(f"cannot compile feature type {type(feature).__name__}")
+
+    inputs = [nw.col(b.name) for b in feature.base_features]
+    exprs = list(feature.primitive.outputs(*inputs))
+
+    partition = (
+        [feature.relationship.foreign_key]
+        if isinstance(feature, GroupByTransformFeature)
+        else []
+    )
+    if getattr(feature.primitive, "order_dependent", False):
+        order_by = _order_by(entityset, feature.table, feature.primitive.name)
+        exprs = [e.over(*partition, order_by=order_by) for e in exprs]
+    elif partition:
+        exprs = [e.over(*partition) for e in exprs]
+
+    named = [e.alias(n) for e, n in zip(exprs, feature.output_names, strict=True)]
+    return frame.with_columns(*named)
+
+
+def _order_by(entityset: EntitySet, table: str, primitive_name: str) -> tuple[str, ...]:
+    """Build the ordering key for an order-dependent expression.
+
+    Args:
+        entityset: The entity set holding the schemas.
+        table: The table being ordered.
+        primitive_name: Used in the error message.
+
+    Returns:
+        The row creation time, followed by the primary key when one exists.
+
+    Raises:
+        PrimitiveError: If the table has no ``row_creation_time``.
+    """
+    schema = entityset.schema(table)
+    if schema.row_creation_time is None:
+        raise PrimitiveError(
+            f"primitive {primitive_name!r} is order-dependent, so table {table!r} "
+            f"needs a row_creation_time"
+        )
+    if schema.primary_key is None:
+        return (schema.row_creation_time,)
+    return (schema.row_creation_time, schema.primary_key)
