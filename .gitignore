@@ -10,3 +10,7 @@ wheels/
 .venv
 # roborev snapshots
 /.roborev/
+
+# agent worktrees and scratch
+/.claude/worktrees/
+/.superpowers/
