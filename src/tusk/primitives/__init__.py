@@ -20,21 +20,25 @@ from tusk.primitives.aggregation import (
     Std,
     Sum,
 )
+from tusk.primitives.transform import TRANS_DEFAULTS, AddNumeric, MultiplyNumeric
 
 __all__ = [
     "AGG_DEFAULTS",
+    "AddNumeric",
     "AggregationPrimitive",
     "Count",
     "Max",
     "Mean",
     "Median",
     "Min",
+    "MultiplyNumeric",
     "NUnique",
     "PercentTrue",
     "Primitive",
     "Quantiles",
     "Std",
     "Sum",
+    "TRANS_DEFAULTS",
     "TransformPrimitive",
     "register",
     "resolve",
