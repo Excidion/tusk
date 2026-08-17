@@ -13,14 +13,21 @@ def names(features):
 
 
 def test_depth_one_aggregations(es):
-    got = synthesize(
-        es,
-        "customers",
-        agg_primitives=["count", "mean"],
-        trans_primitives=[],
-        groupby_trans_primitives=[],
-        max_depth=1,
-    )
+    """``mean`` has nothing to match on ``sessions`` -- its only non-key
+    column is temporal -- which is correct and expected here, so the warning
+    is asserted rather than left to surface in ``pytest -q`` output.
+    """
+    from tusk.exceptions import UnmatchedPrimitiveWarning
+
+    with pytest.warns(UnmatchedPrimitiveWarning, match="'mean'.*'sessions'"):
+        got = synthesize(
+            es,
+            "customers",
+            agg_primitives=["count", "mean"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
     assert names(got) == {"age", "COUNT(sessions)"}
 
 
