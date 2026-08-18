@@ -1,13 +1,15 @@
-from dataclasses import dataclass
+import pickle
+from dataclasses import FrozenInstanceError, dataclass, is_dataclass
 
 import narwhals as nw
 import polars as pl
 import pytest
 
+import tusk.primitives  # noqa: F401  -- registers the built-in primitives
 from tusk.dtypes import DtypeFamily as F
 from tusk.exceptions import PrimitiveError
 from tusk.primitives.base import AggregationPrimitive, TransformPrimitive
-from tusk.primitives.registry import register, resolve, resolve_all, transform_primitive
+from tusk.primitives.registry import _REGISTRY, register, resolve, resolve_all
 
 
 @register
@@ -91,12 +93,18 @@ def test_expressions_actually_evaluate():
     assert got.to_native()["s"][0] == 3.0
 
 
-def test_decorator_sugar_registers_a_working_primitive():
-    @transform_primitive(name="negated", input_dtypes=(F.NUMERIC,))
-    def negated(expr):
-        return -expr
+def test_every_registered_primitive_is_a_frozen_dataclass():
+    for name in _REGISTRY:
+        primitive = resolve(name)
+        assert is_dataclass(primitive), f"{name} is not a dataclass"
+        with pytest.raises(FrozenInstanceError):
+            setattr(primitive, "name", "mutated")  # noqa: B010
 
-    lf = nw.from_native(pl.LazyFrame({"a": [1.0]}))
-    expr = resolve("negated").outputs(nw.col("a"))[0].alias("n")
-    got = lf.with_columns(expr).collect()
-    assert got.to_native()["n"][0] == -1.0
+
+def test_every_registered_primitive_round_trips_through_pickle():
+    # Primitives built by a metaprogramming helper rather than a class body
+    # land in the wrong module and silently break any process-parallel or
+    # cached use. Instantiating via the registry keeps this honest.
+    for name in _REGISTRY:
+        primitive = resolve(name)
+        assert pickle.loads(pickle.dumps(primitive)) == primitive

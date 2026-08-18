@@ -13,147 +13,219 @@ import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
 from tusk.primitives.base import TransformPrimitive
-from tusk.primitives.registry import register, transform_primitive
+from tusk.primitives.registry import register
 
 TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "weekday")
 
 
-@transform_primitive(name="year", input_dtypes=(F.TEMPORAL,), output_dtype=nw.Int32)
-def year(expr: nw.Expr) -> nw.Expr:
-    """Calendar year.
+@register
+@dataclass(frozen=True)
+class Year(TransformPrimitive):
+    """Calendar year."""
 
-    Args:
-        expr: A temporal expression.
+    name = "year"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Int32
 
-    Returns:
-        A narwhals expression of the calendar year.
-    """
-    return expr.dt.year()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the calendar-year expression.
 
+        Args:
+            expr: A temporal expression.
 
-@transform_primitive(name="month", input_dtypes=(F.TEMPORAL,), output_dtype=nw.Int8)
-def month(expr: nw.Expr) -> nw.Expr:
-    """Calendar month, 1-12.
-
-    Args:
-        expr: A temporal expression.
-
-    Returns:
-        A narwhals expression of the calendar month.
-    """
-    return expr.dt.month()
+        Returns:
+            A narwhals expression of the calendar year.
+        """
+        return expr.dt.year()
 
 
-@transform_primitive(name="day", input_dtypes=(F.TEMPORAL,), output_dtype=nw.Int8)
-def day(expr: nw.Expr) -> nw.Expr:
-    """Day of month, 1-31.
+@register
+@dataclass(frozen=True)
+class Month(TransformPrimitive):
+    """Calendar month, 1-12."""
 
-    Args:
-        expr: A temporal expression.
+    name = "month"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Int8
 
-    Returns:
-        A narwhals expression of the day of month.
-    """
-    return expr.dt.day()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the calendar-month expression.
 
+        Args:
+            expr: A temporal expression.
 
-@transform_primitive(name="hour", input_dtypes=(F.TEMPORAL,), output_dtype=nw.Int8)
-def hour(expr: nw.Expr) -> nw.Expr:
-    """Hour of day, 0-23.
-
-    Args:
-        expr: A temporal expression.
-
-    Returns:
-        A narwhals expression of the hour of day.
-    """
-    return expr.dt.hour()
+        Returns:
+            A narwhals expression of the calendar month.
+        """
+        return expr.dt.month()
 
 
-@transform_primitive(name="weekday", input_dtypes=(F.TEMPORAL,), output_dtype=nw.Int8)
-def weekday(expr: nw.Expr) -> nw.Expr:
-    """ISO weekday, 1 (Monday) to 7 (Sunday).
+@register
+@dataclass(frozen=True)
+class Day(TransformPrimitive):
+    """Day of month, 1-31."""
 
-    Args:
-        expr: A temporal expression.
+    name = "day"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Int8
 
-    Returns:
-        A narwhals expression of the ISO weekday.
-    """
-    return expr.dt.weekday()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the day-of-month expression.
 
+        Args:
+            expr: A temporal expression.
 
-@transform_primitive(
-    name="is_weekend", input_dtypes=(F.TEMPORAL,), output_dtype=nw.Boolean
-)
-def is_weekend(expr: nw.Expr) -> nw.Expr:
-    """Whether the date falls on a Saturday or Sunday.
-
-    Args:
-        expr: A temporal expression.
-
-    Returns:
-        A narwhals boolean expression.
-    """
-    return expr.dt.weekday() >= 6
+        Returns:
+            A narwhals expression of the day of month.
+        """
+        return expr.dt.day()
 
 
-@transform_primitive(name="absolute", input_dtypes=(F.NUMERIC,))
-def absolute(expr: nw.Expr) -> nw.Expr:
-    """Absolute value.
+@register
+@dataclass(frozen=True)
+class Hour(TransformPrimitive):
+    """Hour of day, 0-23."""
 
-    Args:
-        expr: A numeric expression.
+    name = "hour"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Int8
 
-    Returns:
-        A narwhals expression with absolute values.
-    """
-    return expr.abs()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the hour-of-day expression.
 
+        Args:
+            expr: A temporal expression.
 
-@transform_primitive(
-    name="natural_log", input_dtypes=(F.NUMERIC,), output_dtype=nw.Float64
-)
-def natural_log(expr: nw.Expr) -> nw.Expr:
-    """Natural logarithm. Non-positive inputs yield null or negative infinity.
-
-    Args:
-        expr: A numeric expression.
-
-    Returns:
-        A narwhals expression of natural logarithms.
-    """
-    return expr.log()
+        Returns:
+            A narwhals expression of the hour of day.
+        """
+        return expr.dt.hour()
 
 
-@transform_primitive(name="subtract_numeric", input_dtypes=(F.NUMERIC, F.NUMERIC))
-def subtract_numeric(left: nw.Expr, right: nw.Expr) -> nw.Expr:
-    """Difference of two numeric columns.
+@register
+@dataclass(frozen=True)
+class Weekday(TransformPrimitive):
+    """ISO weekday, 1 (Monday) to 7 (Sunday)."""
 
-    Args:
-        left: First numeric expression.
-        right: Second numeric expression.
+    name = "weekday"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Int8
 
-    Returns:
-        A narwhals expression of the difference.
-    """
-    return left - right
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the ISO-weekday expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the ISO weekday.
+        """
+        return expr.dt.weekday()
 
 
-@transform_primitive(
-    name="divide_numeric", input_dtypes=(F.NUMERIC, F.NUMERIC), output_dtype=nw.Float64
-)
-def divide_numeric(left: nw.Expr, right: nw.Expr) -> nw.Expr:
-    """Ratio of two numeric columns.
+@register
+@dataclass(frozen=True)
+class IsWeekend(TransformPrimitive):
+    """Whether the date falls on a Saturday or Sunday."""
 
-    Args:
-        left: First numeric expression (numerator).
-        right: Second numeric expression (denominator).
+    name = "is_weekend"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Boolean
 
-    Returns:
-        A narwhals expression of the ratio.
-    """
-    return left / right
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the weekend-indicator expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        return expr.dt.weekday() >= 6
+
+
+@register
+@dataclass(frozen=True)
+class Absolute(TransformPrimitive):
+    """Absolute value."""
+
+    name = "absolute"
+    input_dtypes = (F.NUMERIC,)
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the absolute-value expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression with absolute values.
+        """
+        return expr.abs()
+
+
+@register
+@dataclass(frozen=True)
+class NaturalLog(TransformPrimitive):
+    """Natural logarithm. Non-positive inputs yield null or negative infinity."""
+
+    name = "natural_log"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the natural-logarithm expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of natural logarithms.
+        """
+        return expr.log()
+
+
+@register
+@dataclass(frozen=True)
+class SubtractNumeric(TransformPrimitive):
+    """Difference of two numeric columns."""
+
+    name = "subtract_numeric"
+    input_dtypes = (F.NUMERIC, F.NUMERIC)
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the subtraction expression.
+
+        Args:
+            left: First numeric expression.
+            right: Second numeric expression.
+
+        Returns:
+            A narwhals expression of the difference.
+        """
+        return left - right
+
+
+@register
+@dataclass(frozen=True)
+class DivideNumeric(TransformPrimitive):
+    """Ratio of two numeric columns."""
+
+    name = "divide_numeric"
+    input_dtypes = (F.NUMERIC, F.NUMERIC)
+    output_dtype = nw.Float64
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the division expression.
+
+        Args:
+            left: First numeric expression (numerator).
+            right: Second numeric expression (denominator).
+
+        Returns:
+            A narwhals expression of the ratio.
+        """
+        return left / right
 
 
 @register
@@ -200,86 +272,129 @@ class MultiplyNumeric(TransformPrimitive):
         return left * right
 
 
-@transform_primitive(name="cum_sum", input_dtypes=(F.NUMERIC,), order_dependent=True)
-def cum_sum(expr: nw.Expr) -> nw.Expr:
-    """Running total in row-creation order.
+@register
+@dataclass(frozen=True)
+class CumSum(TransformPrimitive):
+    """Running total in row-creation order."""
 
-    Args:
-        expr: A numeric expression.
+    name = "cum_sum"
+    input_dtypes = (F.NUMERIC,)
+    order_dependent = True
 
-    Returns:
-        A narwhals expression of cumulative sum.
-    """
-    return expr.cum_sum()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cumulative-sum expression.
 
+        Args:
+            expr: A numeric expression.
 
-@transform_primitive(
-    name="cum_count", input_dtypes=(F.ANY,), output_dtype=nw.Int64, order_dependent=True
-)
-def cum_count(expr: nw.Expr) -> nw.Expr:
-    """Running count of non-null values in row-creation order.
-
-    Args:
-        expr: An expression.
-
-    Returns:
-        A narwhals expression of cumulative count.
-    """
-    return expr.cum_count().cast(nw.Int64)
+        Returns:
+            A narwhals expression of cumulative sum.
+        """
+        return expr.cum_sum()
 
 
-@transform_primitive(name="cum_min", input_dtypes=(F.NUMERIC,), order_dependent=True)
-def cum_min(expr: nw.Expr) -> nw.Expr:
-    """Running minimum in row-creation order.
+@register
+@dataclass(frozen=True)
+class CumCount(TransformPrimitive):
+    """Running count of non-null values in row-creation order."""
 
-    Args:
-        expr: A numeric expression.
+    name = "cum_count"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Int64
+    order_dependent = True
 
-    Returns:
-        A narwhals expression of cumulative minimum.
-    """
-    return expr.cum_min()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cumulative-count expression.
 
+        Args:
+            expr: An expression.
 
-@transform_primitive(name="cum_max", input_dtypes=(F.NUMERIC,), order_dependent=True)
-def cum_max(expr: nw.Expr) -> nw.Expr:
-    """Running maximum in row-creation order.
-
-    Args:
-        expr: A numeric expression.
-
-    Returns:
-        A narwhals expression of cumulative maximum.
-    """
-    return expr.cum_max()
+        Returns:
+            A narwhals expression of cumulative count.
+        """
+        return expr.cum_count().cast(nw.Int64)
 
 
-@transform_primitive(name="diff", input_dtypes=(F.NUMERIC,), order_dependent=True)
-def diff(expr: nw.Expr) -> nw.Expr:
-    """Change from the previous row in row-creation order.
+@register
+@dataclass(frozen=True)
+class CumMin(TransformPrimitive):
+    """Running minimum in row-creation order."""
 
-    Args:
-        expr: A numeric expression.
+    name = "cum_min"
+    input_dtypes = (F.NUMERIC,)
+    order_dependent = True
 
-    Returns:
-        A narwhals expression of differences.
-    """
-    return expr.diff()
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cumulative-minimum expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of cumulative minimum.
+        """
+        return expr.cum_min()
 
 
-@transform_primitive(
-    name="time_since_previous",
-    input_dtypes=(F.TEMPORAL,),
-    output_dtype=nw.Float64,
-    order_dependent=True,
-)
-def time_since_previous(expr: nw.Expr) -> nw.Expr:
-    """Seconds elapsed since the previous row in row-creation order.
+@register
+@dataclass(frozen=True)
+class CumMax(TransformPrimitive):
+    """Running maximum in row-creation order."""
 
-    Args:
-        expr: A temporal expression.
+    name = "cum_max"
+    input_dtypes = (F.NUMERIC,)
+    order_dependent = True
 
-    Returns:
-        A narwhals expression of time elapsed in seconds.
-    """
-    return expr.diff().dt.total_seconds().cast(nw.Float64)
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cumulative-maximum expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of cumulative maximum.
+        """
+        return expr.cum_max()
+
+
+@register
+@dataclass(frozen=True)
+class Diff(TransformPrimitive):
+    """Change from the previous row in row-creation order."""
+
+    name = "diff"
+    input_dtypes = (F.NUMERIC,)
+    order_dependent = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the row-difference expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of differences.
+        """
+        return expr.diff()
+
+
+@register
+@dataclass(frozen=True)
+class TimeSincePrevious(TransformPrimitive):
+    """Seconds elapsed since the previous row in row-creation order."""
+
+    name = "time_since_previous"
+    input_dtypes = (F.TEMPORAL,)
+    output_dtype = nw.Float64
+    order_dependent = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the elapsed-seconds expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of time elapsed in seconds.
+        """
+        return expr.diff().dt.total_seconds().cast(nw.Float64)

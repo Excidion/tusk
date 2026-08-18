@@ -103,6 +103,10 @@ Transform: `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`, `absolute`,
 Order-dependent (require a `row_creation_time`): `cum_sum`, `cum_count`,
 `cum_min`, `cum_max`, `diff`, `time_since_previous`.
 
+Every name above is also an importable class — `from tusk.primitives import
+Year, CumSum` — and takes the same form as a user-defined one; see [Custom
+primitives](#custom-primitives).
+
 Passing `agg_primitives=None` or `trans_primitives=None` selects a sensible
 default subset. Arithmetic primitives are excluded from the defaults because
 they generate hundreds of features on wide tables.
@@ -209,3 +213,8 @@ class Range(AggregationPrimitive):
 
 Then pass `"range"` or `Range()` to `dfs()`. Parameters are ordinary dataclass
 fields.
+
+There is no second, shorter way to declare one. Every built-in primitive is a
+frozen dataclass written out like this, so `Year` and `Count` are the same kind
+of object as `Range` — nothing in tusk can reach a definition path your own code
+cannot.

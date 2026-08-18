@@ -1,14 +1,12 @@
-"""Name-to-primitive registry and the decorator sugar for simple primitives."""
+"""Name-to-primitive registry."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
-from typing import Any, TypeVar
+from collections.abc import Iterable
+from typing import TypeVar
 
-from tusk.dtypes import DtypeFamily
 from tusk.exceptions import PrimitiveError
-from tusk.primitives.base import Primitive, TransformPrimitive
+from tusk.primitives.base import Primitive
 
 _REGISTRY: dict[str, type[Primitive]] = {}
 _P = TypeVar("_P", bound=Primitive)
@@ -66,59 +64,3 @@ def resolve_all(specs: Iterable[str | Primitive]) -> tuple[Primitive, ...]:
         Primitive instances in the given order.
     """
     return tuple(resolve(spec) for spec in specs)
-
-
-def transform_primitive(
-    *,
-    name: str,
-    input_dtypes: tuple[DtypeFamily, ...],
-    output_dtype: Any = None,
-    order_dependent: bool = False,
-) -> Callable[[Callable[..., Any]], type[Primitive]]:
-    """Build and register a transform primitive from a plain function.
-
-    Sugar for the zero-parameter case only; parameterized primitives should
-    subclass :class:`~tusk.primitives.base.TransformPrimitive` directly so
-    the parameters can be dataclass fields.
-
-    Args:
-        name: Registry key.
-        input_dtypes: One dtype family per input.
-        output_dtype: Fixed output dtype, or None to preserve the first
-            input's.
-        order_dependent: Whether the expression needs an explicit ordering.
-
-    Returns:
-        A decorator producing a registered primitive class.
-    """
-
-    def decorate(fn: Callable[..., Any]) -> type[Primitive]:
-        def build(self: Primitive, *inputs: Any) -> Any:
-            """Delegate to the decorated function.
-
-            Args:
-                self: The primitive instance; unused, since the decorated
-                    function is stateless.
-                *inputs: One expression per declared input.
-
-            Returns:
-                The decorated function's expression.
-            """
-            return fn(*inputs)
-
-        fn_name = getattr(fn, "__name__", name)
-        cls = type(
-            fn_name,
-            (TransformPrimitive,),
-            {
-                "__doc__": fn.__doc__ or f"The {name} transform primitive.",
-                "name": name,
-                "input_dtypes": input_dtypes,
-                "output_dtype": output_dtype,
-                "order_dependent": order_dependent,
-                "build": build,
-            },
-        )
-        return register(dataclass(frozen=True)(cls))
-
-    return decorate
