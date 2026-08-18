@@ -253,23 +253,37 @@ not need.
 Frozen dataclasses with structural equality, so duplicate sub-features collapse
 via a set with no bookkeeping.
 
-| Type | Meaning | Example name |
-|---|---|---|
-| `IdentityFeature` | a raw column | `amount` |
-| `TransformFeature` | primitive over same-table features | `MONTH(signed_up_at)` |
-| `AggregationFeature` | primitive over a child's feature, grouped by FK | `MEAN(transactions.amount)` |
-| `DirectFeature` | a parent's feature joined onto the child | `customers.age` |
-| `GroupByTransformFeature` | transform applied within FK groups | `CUM_SUM(amount) by customer_id` |
+| Type | Meaning | Column name | Display name |
+|---|---|---|---|
+| `IdentityFeature` | a raw column | `amount` | `amount` |
+| `TransformFeature` | primitive over same-table features | `MONTH__signed_up_at` | `MONTH(signed_up_at)` |
+| `AggregationFeature` | primitive over a child's feature, grouped by FK | `MEAN__transactions__amount` | `MEAN(transactions.amount)` |
+| `DirectFeature` | a parent's feature joined onto the child | `customers__age` | `customers.age` |
+| `GroupByTransformFeature` | transform applied within FK groups | `CUM_SUM__amount__by__customer_id` | `CUM_SUM(amount) by customer_id` |
 
-Each exposes `.name`, `.dtype`, `.depth`, `.table`, `.base_features`,
-`.output_names`, and `.is_multi_output`. Multi-output primitives yield indexed
-names: `N_MOST_COMMON(product)[0]` … `[2]`.
+Each exposes `.name`, `.display_name`, `.dtype`, `.depth`, `.table`,
+`.base_features`, `.output_names`, `.display_output_names`, and
+`.is_multi_output`. Multi-output primitives yield indexed names:
+`N_MOST_COMMON__product__0` … `__2`.
+
+**Names are SQL identifiers.** Every construct joins with `__` rather than the
+conventional dots, parentheses and spaces. This is not cosmetic: on a backend
+that generates SQL, `MEAN(transactions.amount)` parses as a function call over
+table `transactions` and `customers.age` as a column of table `customers`, so
+the conventional form cannot be selected at all — narwhals interpolates the
+identifier unquoted and duckdb raises `BinderException`. The conventional form
+is preserved on `.display_name` for logs, docs and error messages, and the
+differential tier translates featuretools' names to compare values.
+
+Joining with `__` makes a source column already containing `__` capable of
+colliding with a generated name. `compile_features` refuses that case rather
+than silently dropping a column.
 
 `.dtype` is derived statically from primitive metadata, never from data.
 
 **A multi-output feature is a valid output but never an input.** Only its
 indexed columns are materialized; the un-indexed stem
-(`QUANTILES(transactions.amount)`) never exists, so there is no single column
+(`QUANTILES__transactions__amount`) never exists, so there is no single column
 another primitive could read, and `.dtype` — being singular — cannot describe
 it either. `.is_multi_output` is derived from `len(.output_names)` rather than
 from a primitive's `number_of_outputs`, so it is defined for `IdentityFeature`
@@ -277,7 +291,7 @@ and `DirectFeature`, which have no primitive. A `DirectFeature` is filtered on
 the same grounds: it carries exactly one column across a join.
 
 **Depth rule:** identity features are depth 0; every primitive application adds
-1. `SUM(sessions.MEAN(transactions.amount))` is depth 2. Featuretools has
+1. `SUM__sessions__MEAN__transactions__amount` is depth 2. Featuretools has
 subtler rules here that routinely confuse users; this one is predictable.
 
 ## 7. Phase 1: synthesis
@@ -520,10 +534,22 @@ primitives. Removal is a deliberate decision, recorded in the changelog.
 
 Run tusk against a relbench dataset and record runtime and peak memory. Relbench
 is the only tier that can put evidence behind the scale-beyond-memory goal in
-§1, and its schema model maps almost one-to-one onto ours (`pkey_col`,
-`time_col`, `fkey_col_to_pkey_table` → `primary_key`, `row_creation_time`,
-relationships — to be verified during implementation). Relbench also publishes a
-featuretools-DFS baseline to compare against.
+§1, and its schema model maps one-to-one onto ours (`pkey_col`, `time_col`,
+`fkey_col_to_pkey_table` → `primary_key`, `row_creation_time`, relationships —
+verified against relbench 2.1.2). Relbench also publishes a featuretools-DFS
+baseline to compare against.
+
+The dataset is `rel-ratebeer` (13 tables, 16 foreign keys, 11.8M rows in the
+target) on duckdb. Both choices are load-bearing. rel-f1's largest table held
+28k rows, which measures startup cost rather than scale. And at 339 features
+over 11.8M rows the backend stops being interchangeable: polars' streaming
+engine was measured growing to ~21GB and being killed rather than spilling,
+by every route tried — one plan, forced `engine="streaming"`, feature-batched
+with the parts joined afterwards, and pairwise joins sinking between steps.
+duckdb computes the same matrix in a single call by spilling to disk under a
+12GB buffer-pool limit (~16GB peak RSS, since the limit does not cover
+allocations outside the buffer manager). The tier runs on the backend that can demonstrate the claim
+the tier exists to make.
 
 Kept until deliberately cut.
 
@@ -536,10 +562,14 @@ runtime nor the core test loop carries them.
 
 ## 12. Known risks and accepted tradeoffs
 
-- **Portability is asserted, not verified.** A single-backend test matrix cannot
-  catch backend-specific assumptions. DuckDB is the cheap addition that would
-  catch lazy-discipline violations (no row order, restricted windows); the
-  backend fixture is parametrized so adding it is a one-line change.
+- **Portability is verified on two backends, polars and duckdb.** It was
+  asserted rather than verified until duckdb was actually run, and the first
+  run failed outright: feature names carried dots and parentheses, which a
+  backend that generates SQL parses as table qualifiers and function calls, so
+  no multi-table feature could be selected at all. The `backend` fixture in
+  `conftest` was parametrized but unused, so nothing exercised the claim.
+  `tests/test_backend_duckdb.py` now covers it directly. Backends beyond these
+  two remain unverified.
 - **Backend capability errors surface late**, at `collect()`, in the backend's
   own vocabulary (§5).
 - **A single global cutoff is not leak-free for ML.** Per-row cutoff times are
@@ -553,7 +583,7 @@ Deliberately deferred; none requires restructuring the feature graph.
 
 - Per-row cutoff times, training windows, `approximate`.
 - `where` clauses / interesting values, `seed_features`, `primitive_options`.
-- Additional backends in the test matrix, starting with DuckDB.
+- Additional backends in the test matrix beyond polars and duckdb.
 - `tusk.from_relbench(db)` — roughly fifteen lines once the schema model exists.
 - Feature serialization to disk.
 

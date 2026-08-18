@@ -11,20 +11,42 @@ onto tusk's ``primary_key``, ``row_creation_time``, and ``add_relationship``
 respectively -- no attribute-name translation was needed, matching the
 mapping this tier exists to verify.
 
-Memory is read via ``resource.getrusage(RUSAGE_SELF).ru_maxrss`` (whole-
-process peak RSS in KB on Linux) rather than ``tracemalloc``. tusk's data
-lives in narwhals/polars frames, which are backed by off-heap Rust
-allocations that ``tracemalloc`` -- a Python-heap-only tracker -- would not
-see, making it misleading for a library whose selling point is exactly that
-it does not hold everything on the Python heap. ``ru_maxrss`` is cumulative
-since process start rather than resettable per phase, so the two readings
-below are "peak RSS so far" checkpoints, not isolated per-phase figures.
+Three things about this tier are shaped by rel-ratebeer being large enough to
+stress the machine rather than only the code. None applied to rel-f1, whose
+largest table held 28k rows.
+
+*The backend is duckdb, not polars.* At this size the distinction stops being
+cosmetic. The matrix below is 339 features over 11.8M rows; polars' streaming
+engine grows until the kernel kills it rather than spilling, and was measured
+doing so at ~21GB across every route tried -- one plan, forced
+``engine="streaming"``, feature-batched with the parts joined afterwards, and
+pairwise joins sinking between steps. duckdb computes the same matrix in one
+call within a fixed budget by spilling to disk. That is the difference the
+scale claim rests on, so the benchmark runs on the backend that demonstrates
+it.
+
+*Frames are scanned from disk, not held in memory.* relbench hands over eager
+pandas frames -- ~14GB for this dataset -- so the fixture writes each to
+parquet, drops the ``Database``, and hands tusk ``read_parquet`` relations. A
+benchmark that first loaded every row into RAM could not say anything about
+computing over data that does not fit there.
+
+*Memory is read as a resettable per-phase peak.* ``VmHWM`` in
+``/proc/self/status`` is the kernel's high-water mark of resident set size,
+and writing ``5`` to ``/proc/self/clear_refs`` resets it. Reading it after
+each phase attributes memory to that phase instead of reporting one
+process-lifetime maximum that the pandas staging would dominate no matter what
+tusk did. ``tracemalloc`` is not an option: the data lives in off-heap
+allocations a Python-heap-only tracker would not see. Both files are
+Linux-only, which the CI for this tier is.
 """
 
-import resource
+import gc
+import re
 import time
+from pathlib import Path
 
-import polars as pl
+import narwhals as nw
 import pytest
 
 import tusk
@@ -32,87 +54,167 @@ import tusk
 pytestmark = pytest.mark.benchmark
 
 relbench_datasets = pytest.importorskip("relbench.datasets")
+duckdb = pytest.importorskip("duckdb")
+
+DATASET = "rel-ratebeer"
+TARGET = "beer_ratings"
+MAX_DEPTH = 2
+
+MEMORY_LIMIT = "12GB"
+"""Deliberately below what the equivalent polars run demanded before it was
+killed, so that finishing at all means spilling rather than merely having
+enough RAM.
+
+This bounds duckdb's buffer pool, not the process: measured peak RSS is
+around 16GB, since the limit does not cover allocations outside the buffer
+manager. The evidence is that the run completes by spilling to disk where
+polars grew unboundedly, not that RSS stays under this number."""
 
 
-def _entity_set(db):
-    """Map a relbench Database onto a tusk EntitySet.
+def _reset_peak_rss():
+    """Reset the kernel's peak-RSS watermark for this process.
 
-    Args:
-        db: A relbench Database.
-
-    Returns:
-        A tusk EntitySet with the same tables and relationships.
+    Makes the next :func:`_peak_rss_mb` reading a peak for the phase that
+    follows rather than for the process so far.
     """
-    es = tusk.EntitySet("relbench")
-    for name, table in db.table_dict.items():
-        es.add_dataframe(
-            name,
-            pl.from_pandas(table.df).lazy(),
-            primary_key=table.pkey_col,
-            row_creation_time=table.time_col,
-        )
-    for name, table in db.table_dict.items():
-        for foreign_key, parent in table.fkey_col_to_pkey_table.items():
-            es.add_relationship(parent=parent, child=name, foreign_key=foreign_key)
-    return es
+    Path("/proc/self/clear_refs").write_text("5\n")
 
 
 def _peak_rss_mb():
-    """Current peak resident set size of this process, in megabytes.
+    """Peak resident set size since the last reset, in megabytes.
 
     Returns:
-        Peak RSS since process start, in MB (Linux reports ru_maxrss in KB).
+        ``VmHWM`` from ``/proc/self/status``, converted from KB to MB.
+
+    Raises:
+        RuntimeError: If the kernel does not report ``VmHWM``, which would
+            make every memory figure in this tier meaningless.
     """
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    status = Path("/proc/self/status").read_text()
+    match = re.search(r"^VmHWM:\s+(\d+) kB", status, re.M)
+    if match is None:
+        raise RuntimeError("no VmHWM in /proc/self/status")
+    return int(match.group(1)) / 1024
 
 
 @pytest.fixture(scope="module")
-def db():
-    """The rel-f1 database: 9 tables, 13 foreign keys, largest table ~28k rows."""
-    return relbench_datasets.get_dataset("rel-f1", download=True).get_db()
+def staged(tmp_path_factory):
+    """rel-ratebeer staged to parquet and mapped onto a duckdb-backed EntitySet.
 
+    Writes every relbench table to parquet through duckdb, releases the pandas
+    frames, and builds the EntitySet over ``read_parquet`` relations, so the
+    timed phases start from data on disk rather than data in RAM.
 
-def test_dfs_on_relbench(db):
-    """Runs synthesis and compute on rel-f1 and reports timing/memory.
+    Each frame is dropped as soon as it is staged, and duckdb's memory limit
+    is not imposed until they are all gone. relbench materializes ~14GB of
+    pandas here; letting that coexist with a 12GB duckdb budget needs 26GB of
+    RAM for a step that does no work worth measuring.
 
-    Target table is ``standings`` (the largest by row count in rel-f1, ~28k
-    rows), chosen by the same "largest table" rule the brief specifies: it
-    maximizes the row count phase 2 has to materialize, giving the most
-    meaningful timing and memory signal among the 9 available targets.
+    Args:
+        tmp_path_factory: pytest's session-scoped temporary directory factory.
 
-    rel-f1's schema is a genuine multi-table shape, not a toy: 9 tables, 13
-    foreign-key relationships, and fan-in diamonds (``races``, ``drivers``,
-    and ``constructors`` are each referenced by three or more child tables),
-    which exercises tusk's join and aggregation planning well beyond the
-    hand-built 3-table fixtures used in the core suite.
+    Returns:
+        A tuple of the EntitySet, the row count per table, the number of
+        foreign-key relationships, and the duckdb connection.
     """
-    n_tables = len(db.table_dict)
-    n_relationships = sum(len(t.fkey_col_to_pkey_table) for t in db.table_dict.values())
-    es = _entity_set(db)
-    target = max(db.table_dict, key=lambda n: len(db.table_dict[n].df))
-    target_rows = len(db.table_dict[target].df)
+    db = relbench_datasets.get_dataset(DATASET, download=True).get_db()
+    directory = tmp_path_factory.mktemp(DATASET)
 
+    connection = duckdb.connect()
+    connection.execute(f"SET temp_directory='{directory / 'spill'}'")
+
+    schemas = {}
+    row_counts = {}
+    for name in list(db.table_dict):
+        table = db.table_dict.pop(name)
+        path = directory / f"{name}.parquet"
+        connection.register("staging", table.df)
+        connection.execute(f"COPY staging TO '{path}' (FORMAT parquet)")
+        connection.unregister("staging")
+        row_counts[name] = len(table.df)
+        schemas[name] = (table.pkey_col, table.time_col, table.fkey_col_to_pkey_table)
+        del table
+        gc.collect()
+
+    del db
+    gc.collect()
+    connection.execute(f"SET memory_limit='{MEMORY_LIMIT}'")
+
+    entityset = tusk.EntitySet("relbench")
+    for name, (primary_key, row_creation_time, _) in schemas.items():
+        path = directory / f"{name}.parquet"
+        entityset.add_dataframe(
+            name,
+            nw.from_native(connection.sql(f"SELECT * FROM read_parquet('{path}')")),
+            primary_key=primary_key,
+            row_creation_time=row_creation_time,
+        )
+    relationships = 0
+    for name, (_, _, foreign_keys) in schemas.items():
+        for foreign_key, parent in foreign_keys.items():
+            entityset.add_relationship(
+                parent=parent, child=name, foreign_key=foreign_key
+            )
+            relationships += 1
+
+    return entityset, row_counts, relationships, connection
+
+
+def test_dfs_on_relbench(staged, tmp_path):
+    """Runs synthesis and compute on rel-ratebeer and reports timing/memory.
+
+    rel-ratebeer's schema is a genuine multi-table shape, not a toy: 13
+    tables, 16 foreign-key relationships, and fan-in diamonds (``beers``,
+    ``users``, ``countries`` and ``places`` are each referenced by three or
+    more child tables), which exercises tusk's join and aggregation planning
+    well beyond the hand-built 3-table fixtures in the core suite.
+
+    ``beer_ratings`` is both the largest table and the semantically load-
+    bearing one -- a rating is the thing a model would predict. Nothing
+    references its primary key, so every feature reaches it by traversing
+    *up* to ``users``, ``beers`` and ``availability``; the depth-2 features
+    are aggregations computed on those parents over their own children and
+    then carried down, which is the most expensive shape this schema offers.
+
+    Args:
+        staged: The EntitySet, row counts, relationship count and connection.
+        tmp_path: Directory to write the feature matrix into.
+    """
+    entityset, row_counts, relationships, connection = staged
+    target_rows = row_counts[TARGET]
+
+    _reset_peak_rss()
     start = time.perf_counter()
     features = tusk.dfs(
-        entityset=es, target_dataframe_name=target, max_depth=2, features_only=True
+        entityset=entityset,
+        target_dataframe_name=TARGET,
+        max_depth=MAX_DEPTH,
+        features_only=True,
     )
     synthesis_seconds = time.perf_counter() - start
-    peak_after_synthesis_mb = _peak_rss_mb()
+    synthesis_peak_mb = _peak_rss_mb()
 
+    matrix_path = tmp_path / "feature_matrix.parquet"
+    _reset_peak_rss()
     start = time.perf_counter()
-    matrix = tusk.calculate_feature_matrix(features, es).collect()
+    tusk.calculate_feature_matrix(features, entityset).write_parquet(str(matrix_path))
     compute_seconds = time.perf_counter() - start
-    peak_after_compute_mb = _peak_rss_mb()
+    compute_peak_mb = _peak_rss_mb()
+
+    matrix_rows = connection.sql(
+        f"SELECT count(*) FROM read_parquet('{matrix_path}')"
+    ).fetchone()[0]
 
     print(
-        f"\ndataset=rel-f1 tables={n_tables} relationships={n_relationships}\n"
-        f"target={target} target_rows={target_rows}\n"
-        f"matrix_rows={matrix.height} features={len(features)}\n"
-        f"synthesis={synthesis_seconds:.2f}s "
-        f"peak_rss_after_synthesis={peak_after_synthesis_mb:.1f}MB\n"
-        f"compute={compute_seconds:.2f}s "
-        f"peak_rss_after_compute={peak_after_compute_mb:.1f}MB"
+        f"\ndataset={DATASET} backend=duckdb tables={len(row_counts)} "
+        f"relationships={relationships}\n"
+        f"target={TARGET} target_rows={target_rows} max_depth={MAX_DEPTH} "
+        f"memory_limit={MEMORY_LIMIT}\n"
+        f"matrix_rows={matrix_rows} features={len(features)} "
+        f"matrix_mb={matrix_path.stat().st_size / 1e6:.0f}\n"
+        f"synthesis={synthesis_seconds:.2f}s peak_rss={synthesis_peak_mb:.0f}MB\n"
+        f"compute={compute_seconds:.1f}s peak_rss={compute_peak_mb:.0f}MB"
     )
 
-    assert matrix.height == target_rows
+    assert matrix_rows == target_rows
     assert len(features) > 0
