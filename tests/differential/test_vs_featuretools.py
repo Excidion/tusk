@@ -33,6 +33,15 @@ invariant below rather than a documented divergence. MEAN/MIN/MAX remain
 null on empty groups on both sides, since those are genuinely undefined over
 an empty set (0/0, and min/max of nothing).
 
+Tusk and featuretools also *name* the same feature differently. Featuretools
+uses the conventional ``MEAN(transactions.amount)``; tusk's column names are
+plain SQL identifiers (``MEAN__transactions__amount``) so that they survive a
+backend which generates SQL, where dots and parentheses parse as table
+qualifiers and function calls. Tusk keeps the conventional form on
+``Feature.display_name``. The parameters below are written in featuretools'
+notation and translated with :func:`_as_tusk`, so this file reads as "what
+featuretools calls it" throughout.
+
 Two *deliberate* differences keep some columns out of the comparison rather
 than being disagreements about values:
 
@@ -139,17 +148,43 @@ def matrices(synthetic):
     return _tusk_matrix(customers, sessions), _featuretools_matrix(customers, sessions)
 
 
+def _as_tusk(name: str) -> str:
+    """Translate a featuretools feature name into tusk's column name.
+
+    Every construct featuretools spells with punctuation -- application,
+    argument separator, path step, multi-output index, groupby suffix --
+    tusk spells with ``__``.
+
+    Args:
+        name: A featuretools feature name, e.g. ``MEAN(sessions.value)``.
+
+    Returns:
+        The equivalent tusk column name, e.g. ``MEAN__sessions__value``.
+    """
+    for old, new in (
+        (" by ", "__by__"),
+        (", ", "__"),
+        ("(", "__"),
+        (")", ""),
+        ("[", "__"),
+        ("]", ""),
+        (".", "__"),
+    ):
+        name = name.replace(old, new)
+    return name
+
+
 @pytest.mark.parametrize(
-    ("tusk_name", "featuretools_name"),
+    "featuretools_name",
     [
-        ("COUNT(sessions)", "COUNT(sessions)"),
-        ("SUM(sessions.value)", "SUM(sessions.value)"),
-        ("MEAN(sessions.value)", "MEAN(sessions.value)"),
-        ("MIN(sessions.value)", "MIN(sessions.value)"),
-        ("MAX(sessions.value)", "MAX(sessions.value)"),
+        "COUNT(sessions)",
+        "SUM(sessions.value)",
+        "MEAN(sessions.value)",
+        "MIN(sessions.value)",
+        "MAX(sessions.value)",
     ],
 )
-def test_values_match_featuretools(matrices, tusk_name, featuretools_name):
+def test_values_match_featuretools(matrices, featuretools_name):
     """These primitives agree on every row, including empty groups.
 
     COUNT and SUM both default to 0 for an empty group, on both sides.
@@ -158,7 +193,7 @@ def test_values_match_featuretools(matrices, tusk_name, featuretools_name):
     """
     ours, theirs = matrices
     pd.testing.assert_series_equal(
-        ours[tusk_name].reset_index(drop=True).astype(float),
+        ours[_as_tusk(featuretools_name)].reset_index(drop=True).astype(float),
         theirs[featuretools_name].reset_index(drop=True).astype(float),
         check_names=False,
     )
@@ -178,9 +213,9 @@ def test_empty_groups_agree_on_count_and_sum(matrices, synthetic):
     ours, theirs = matrices
     childless = sorted(set(customers["id"]) - set(sessions["customer_id"]))
     assert childless
-    assert (ours.loc[childless, "COUNT(sessions)"] == 0).all()
+    assert (ours.loc[childless, _as_tusk("COUNT(sessions)")] == 0).all()
     assert (theirs.loc[childless, "COUNT(sessions)"] == 0).all()
-    assert (ours.loc[childless, "SUM(sessions.value)"] == 0).all()
+    assert (ours.loc[childless, _as_tusk("SUM(sessions.value)")] == 0).all()
     assert (theirs.loc[childless, "SUM(sessions.value)"] == 0).all()
 
 
@@ -195,7 +230,7 @@ def test_empty_groups_stay_null_for_mean_min_max(matrices, synthetic):
         "MIN(sessions.value)",
         "MAX(sessions.value)",
     ):
-        assert ours.loc[childless, column].isna().all()
+        assert ours.loc[childless, _as_tusk(column)].isna().all()
         assert theirs.loc[childless, column].isna().all()
 
 
@@ -304,9 +339,9 @@ def test_stacked_values_match_featuretools(deep_matrices, name):
     ours, theirs = deep_matrices
     if name not in theirs.columns:
         pytest.skip(f"featuretools does not generate {name}")
-    assert name in ours.columns
+    assert _as_tusk(name) in ours.columns
     pd.testing.assert_series_equal(
-        ours[name].reset_index(drop=True).astype(float),
+        ours[_as_tusk(name)].reset_index(drop=True).astype(float),
         theirs[name].reset_index(drop=True).astype(float),
         check_names=False,
     )
@@ -327,7 +362,7 @@ def test_n_unique_matches_num_unique_over_a_column_with_nulls(deep_matrices, dee
     ours, theirs = deep_matrices
     with_sessions = sorted(set(customers["id"]) & set(sessions["customer_id"]))
     pd.testing.assert_series_equal(
-        ours.loc[with_sessions, "N_UNIQUE(sessions.kind)"]
+        ours.loc[with_sessions, _as_tusk("N_UNIQUE(sessions.kind)")]
         .reset_index(drop=True)
         .astype(float),
         theirs.loc[with_sessions, "NUM_UNIQUE(sessions.kind)"]
@@ -360,11 +395,11 @@ def test_n_unique_of_an_empty_group_diverges_from_featuretools(deep_matrices, de
     ours, theirs = deep_matrices
     childless = sorted(set(customers["id"]) - set(sessions["customer_id"]))
     assert childless
-    assert (ours.loc[childless, "N_UNIQUE(sessions.kind)"] == 0).all()
+    assert (ours.loc[childless, _as_tusk("N_UNIQUE(sessions.kind)")] == 0).all()
     assert theirs.loc[childless, "NUM_UNIQUE(sessions.kind)"].isna().all()
     # Both agree there were zero child rows, which is what makes 0 the right
     # answer for the distinct count.
-    assert (ours.loc[childless, "COUNT(sessions)"] == 0).all()
+    assert (ours.loc[childless, _as_tusk("COUNT(sessions)")] == 0).all()
     assert (theirs.loc[childless, "COUNT(sessions)"] == 0).all()
 
 
@@ -387,8 +422,9 @@ def test_nested_empty_group_agrees(deep_matrices, deep):
         "MIN(sessions.SUM(transactions.amount))",
     ):
         pd.testing.assert_series_equal(
-            ours.loc[affected, name].reset_index(drop=True).astype(float),
+            ours.loc[affected, _as_tusk(name)].reset_index(drop=True).astype(float),
             theirs.loc[affected, name].reset_index(drop=True).astype(float),
             check_names=False,
         )
-    assert (ours.loc[affected, "MIN(sessions.COUNT(transactions))"] == 0).all()
+    nested = _as_tusk("MIN(sessions.COUNT(transactions))")
+    assert (ours.loc[affected, nested] == 0).all()

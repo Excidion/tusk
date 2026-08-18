@@ -63,11 +63,40 @@ def compile_features(
             "matrix is keyed by it"
         )
 
+    _reject_colliding_names(features)
+
     frame = _table_frame(entityset, target, _closure(features), cutoff_time)
     columns = [primary_key]
     for feature in features:
         columns.extend(feature.output_names)
     return frame.select(*dict.fromkeys(columns))
+
+
+def _reject_colliding_names(features: Sequence[Feature]) -> None:
+    """Fail if two distinct features want the same column.
+
+    Column names join their parts with ``__``, so a source column already
+    containing ``__`` can in principle collide with a generated name -- e.g.
+    ``MEAN(a.b)`` and ``MEAN(a__b)`` both want ``MEAN__a__b``. Silently
+    keeping one and dropping the other would put the wrong values under a
+    plausible-looking name, so it is refused instead.
+
+    Args:
+        features: The features to compile.
+
+    Raises:
+        SchemaError: If two distinct features share an output name.
+    """
+    owner: dict[str, Feature] = {}
+    for feature in features:
+        for name in feature.output_names:
+            other = owner.setdefault(name, feature)
+            if other != feature:
+                raise SchemaError(
+                    f"features {other.display_name!r} and "
+                    f"{feature.display_name!r} both compile to column "
+                    f"{name!r}; rename a source column to break the tie"
+                )
 
 
 def _closure(features: Sequence[Feature]) -> set[Feature]:

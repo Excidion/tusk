@@ -20,7 +20,24 @@ class Feature:
 
     @property
     def name(self) -> str:
-        """Display name, and the column name in the feature matrix."""
+        """The column name in the feature matrix.
+
+        A plain SQL identifier: parts are joined with ``__`` rather than the
+        dots, parentheses and spaces a conventional DFS name uses, since a
+        backend that generates SQL parses those as table qualifiers and
+        function calls rather than as part of an identifier. See
+        :attr:`display_name` for the readable form.
+        """
+        raise NotImplementedError
+
+    @property
+    def display_name(self) -> str:
+        """The readable name, e.g. ``MEAN(transactions.amount)``.
+
+        Carries the same meaning as :attr:`name` in the conventional DFS
+        notation. Used for documentation, logging and error messages; never
+        as a column name.
+        """
         raise NotImplementedError
 
     @property
@@ -47,6 +64,11 @@ class Feature:
     def output_names(self) -> tuple[str, ...]:
         """One column name per output; more than one for multi-output primitives."""
         return (self.name,)
+
+    @property
+    def display_output_names(self) -> tuple[str, ...]:
+        """One readable name per output, parallel to :attr:`output_names`."""
+        return (self.display_name,)
 
     @property
     def is_multi_output(self) -> bool:
@@ -84,6 +106,11 @@ class IdentityFeature(Feature):
         return self.column
 
     @property
+    def display_name(self) -> str:
+        """A raw column reads the same either way."""
+        return self.column
+
+    @property
     def dtype(self) -> Any:
         """The column's dtype."""
         return self.column_dtype
@@ -118,8 +145,15 @@ class TransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``MONTH(started_at)``."""
+        """Generated name, e.g. ``MONTH__started_at``."""
         return self.primitive.generate_name([b.name for b in self.bases])
+
+    @property
+    def display_name(self) -> str:
+        """Readable name, e.g. ``MONTH(started_at)``."""
+        return self.primitive.generate_display_name(
+            [b.display_name for b in self.bases]
+        )
 
     @property
     def dtype(self) -> Any:
@@ -146,6 +180,11 @@ class TransformFeature(Feature):
         """One name per output column."""
         return self.primitive.output_names(self.name)
 
+    @property
+    def display_output_names(self) -> tuple[str, ...]:
+        """One readable name per output column."""
+        return self.primitive.display_output_names(self.display_name)
+
 
 @dataclass(frozen=True)
 class AggregationFeature(Feature):
@@ -164,15 +203,25 @@ class AggregationFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``MEAN(transactions.amount)``.
+        """Generated name, e.g. ``MEAN__transactions__amount``.
 
         Zero-arity primitives name the child table instead of a column, giving
-        ``COUNT(transactions)``.
+        ``COUNT__transactions``.
         """
         child = self.relationship.child
         if not self.bases:
             return self.primitive.generate_name([child])
-        return self.primitive.generate_name([f"{child}.{b.name}" for b in self.bases])
+        return self.primitive.generate_name([f"{child}__{b.name}" for b in self.bases])
+
+    @property
+    def display_name(self) -> str:
+        """Readable name, e.g. ``MEAN(transactions.amount)``."""
+        child = self.relationship.child
+        if not self.bases:
+            return self.primitive.generate_display_name([child])
+        return self.primitive.generate_display_name(
+            [f"{child}.{b.display_name}" for b in self.bases]
+        )
 
     @property
     def dtype(self) -> Any:
@@ -199,6 +248,11 @@ class AggregationFeature(Feature):
         """One name per output column."""
         return self.primitive.output_names(self.name)
 
+    @property
+    def display_output_names(self) -> tuple[str, ...]:
+        """One readable name per output column."""
+        return self.primitive.display_output_names(self.display_name)
+
 
 @dataclass(frozen=True)
 class DirectFeature(Feature):
@@ -214,8 +268,13 @@ class DirectFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``customers.age``."""
-        return f"{self.relationship.parent}.{self.base_feature.name}"
+        """Generated name, e.g. ``customers__age``."""
+        return f"{self.relationship.parent}__{self.base_feature.name}"
+
+    @property
+    def display_name(self) -> str:
+        """Readable name, e.g. ``customers.age``."""
+        return f"{self.relationship.parent}.{self.base_feature.display_name}"
 
     @property
     def dtype(self) -> Any:
@@ -254,8 +313,16 @@ class GroupByTransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``CUM_SUM(amount) by session_id``."""
+        """Generated name, e.g. ``CUM_SUM__amount__by__session_id``."""
         stem = self.primitive.generate_name([b.name for b in self.bases])
+        return f"{stem}__by__{self.relationship.foreign_key}"
+
+    @property
+    def display_name(self) -> str:
+        """Readable name, e.g. ``CUM_SUM(amount) by session_id``."""
+        stem = self.primitive.generate_display_name(
+            [b.display_name for b in self.bases]
+        )
         return f"{stem} by {self.relationship.foreign_key}"
 
     @property
@@ -282,3 +349,8 @@ class GroupByTransformFeature(Feature):
     def output_names(self) -> tuple[str, ...]:
         """One name per output column."""
         return self.primitive.output_names(self.name)
+
+    @property
+    def display_output_names(self) -> tuple[str, ...]:
+        """One readable name per output column."""
+        return self.primitive.display_output_names(self.display_name)

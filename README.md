@@ -57,6 +57,24 @@ matrix = tusk.calculate_feature_matrix(features, es_new)
   Feed it eager frames and it returns an eager frame, collecting once at the
   end — that single `collect()` is the only one in the library.
 - **Any narwhals backend**, not just pandas. One entity set uses one backend.
+- **Feature names are SQL identifiers.** Featuretools writes
+  `MEAN(transactions.amount)`; tusk writes `MEAN__transactions__amount`. On a
+  backend that generates SQL, dots and parentheses parse as table qualifiers
+  and function calls rather than as part of a name, so the conventional form
+  is unusable there. Every construct joins with `__`:
+
+  | meaning | column name |
+  | --- | --- |
+  | a parent's column | `customers__age` |
+  | an aggregation | `MEAN__transactions__amount` |
+  | a zero-arity aggregation | `COUNT__transactions` |
+  | stacked to depth 2 | `MEAN__sessions__MEAN__transactions__amount` |
+  | a grouped transform | `CUM_SUM__amount__by__session_id` |
+  | one output of a multi-output primitive | `QUANTILES__amount__0` |
+
+  The conventional form is kept on `Feature.display_name` for logs, docs and
+  error messages. If a source column name collides with a generated one,
+  `calculate_feature_matrix` raises rather than silently dropping a column.
 - **`primary_key` and `row_creation_time`** rather than `index` and
   `time_index`. Narwhals has no index concept, and `row_creation_time` names
   what the column means: when the row became knowable.
@@ -90,8 +108,8 @@ default subset. Arithmetic primitives are excluded from the defaults because
 they generate hundreds of features on wide tables.
 
 A multi-output primitive such as `quantiles` produces indexed columns —
-`QUANTILES(transactions.amount)[0]`, `[1]`, `[2]` — and nothing else stacks on
-it: there is no single column for another primitive to read. It is a valid
+`QUANTILES__transactions__amount__0`, `__1`, `__2` — and nothing else stacks
+on it: there is no single column for another primitive to read. It is a valid
 output at any depth, just never an input.
 
 ### Empty groups

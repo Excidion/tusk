@@ -28,7 +28,7 @@ def test_depth_one_aggregations(es):
             groupby_trans_primitives=[],
             max_depth=1,
         )
-    assert names(got) == {"age", "COUNT(sessions)"}
+    assert names(got) == {"age", "COUNT__sessions"}
 
 
 def test_depth_two_stacks_through_two_relationships(es):
@@ -40,9 +40,9 @@ def test_depth_two_stacks_through_two_relationships(es):
         groupby_trans_primitives=[],
         max_depth=2,
     )
-    assert "MEAN(sessions.MEAN(transactions.amount))" in names(got)
-    assert "MEAN(sessions.COUNT(transactions))" in names(got)
-    assert "COUNT(sessions)" in names(got)
+    assert "MEAN__sessions__MEAN__transactions__amount" in names(got)
+    assert "MEAN__sessions__COUNT__transactions" in names(got)
+    assert "COUNT__sessions" in names(got)
 
 
 def test_target_keys_are_not_emitted_as_features(es):
@@ -67,7 +67,7 @@ def test_never_traverses_back_so_target_columns_do_not_return(es):
         groupby_trans_primitives=[],
         max_depth=3,
     )
-    assert not any("customers.age" in n for n in names(got))
+    assert not any("customers__age" in n for n in names(got))
 
 
 def test_direct_features_come_from_parents(es):
@@ -79,7 +79,7 @@ def test_direct_features_come_from_parents(es):
         groupby_trans_primitives=[],
         max_depth=1,
     )
-    assert "customers.age" in names(got)
+    assert "customers__age" in names(got)
 
 
 def test_transforms_respect_dtype_families():
@@ -114,11 +114,11 @@ def test_transforms_respect_dtype_families():
         )
     )
     # month requires TEMPORAL: it takes occurred_at and not amount.
-    assert "MONTH(occurred_at)" in got
-    assert "MONTH(amount)" not in got
+    assert "MONTH__occurred_at" in got
+    assert "MONTH__amount" not in got
     # absolute requires NUMERIC: it takes amount and not occurred_at.
-    assert "ABSOLUTE(amount)" in got
-    assert "ABSOLUTE(occurred_at)" not in got
+    assert "ABSOLUTE__amount" in got
+    assert "ABSOLUTE__occurred_at" not in got
 
 
 def test_row_creation_time_is_available_as_a_transform_input(es):
@@ -138,9 +138,9 @@ def test_row_creation_time_is_available_as_a_transform_input(es):
             max_depth=1,
         )
     )
-    assert "MONTH(signed_up_at)" in got
-    assert "YEAR(signed_up_at)" in got
-    assert "WEEKDAY(signed_up_at)" in got
+    assert "MONTH__signed_up_at" in got
+    assert "YEAR__signed_up_at" in got
+    assert "WEEKDAY__signed_up_at" in got
     assert "signed_up_at" not in got
 
 
@@ -186,10 +186,10 @@ def test_aggregations_can_reach_a_temporal_column(es):
             max_depth=1,
         )
     )
-    assert "LAST_TIME(transactions.occurred_at)" in got
-    assert "N_UNIQUE(transactions.occurred_at)" in got
+    assert "LAST_TIME__transactions__occurred_at" in got
+    assert "N_UNIQUE__transactions__occurred_at" in got
     # The numeric column is unaffected.
-    assert "MAX(transactions.amount)" in got
+    assert "MAX__transactions__amount" in got
 
 
 def test_multi_output_feature_is_an_output_but_never_an_input(es):
@@ -211,9 +211,9 @@ def test_multi_output_feature_is_an_output_but_never_an_input(es):
     )
     n = names(got)
     # It is still generated as an output.
-    assert "QUANTILES(sessions.MEAN(transactions.amount))" in n
+    assert "QUANTILES__sessions__MEAN__transactions__amount" in n
     # But nothing consumes it.
-    assert "MEAN(sessions.QUANTILES(transactions.amount))" not in n
+    assert "MEAN__sessions__QUANTILES__transactions__amount" not in n
     assert not any("(QUANTILES(" in name for name in n)
 
     seen = set()
@@ -237,8 +237,8 @@ def test_transform_stacks_on_aggregation(es):
         groupby_trans_primitives=[],
         max_depth=2,
     )
-    assert "ABSOLUTE(MEAN(sessions.MEAN(transactions.amount)))" not in names(got)
-    assert "MEAN(sessions.MEAN(transactions.amount))" in names(got)
+    assert "ABSOLUTE__MEAN__sessions__MEAN__transactions__amount" not in names(got)
+    assert "MEAN__sessions__MEAN__transactions__amount" in names(got)
 
 
 def test_groupby_transform_features(es):
@@ -250,7 +250,7 @@ def test_groupby_transform_features(es):
         groupby_trans_primitives=["cum_sum"],
         max_depth=1,
     )
-    assert "CUM_SUM(amount) by session_id" in names(got)
+    assert "CUM_SUM__amount__by__session_id" in names(got)
 
 
 def test_stack_on_self_is_respected():
@@ -280,7 +280,7 @@ def test_stack_on_self_is_respected():
     )
     n = names(got)
     # b.x is a plain (non-derived) column, so N_UNIQUE(b.x) is unaffected.
-    assert "N_UNIQUE(b.x)" in n
+    assert "N_UNIQUE__b__x" in n
     # N_UNIQUE(c.y) aggregated onto b is itself an n_unique output; stacking
     # n_unique on top of it must be filtered out.
     assert not any(name.startswith("N_UNIQUE(b.N_UNIQUE") for name in n)
@@ -304,16 +304,16 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
     )
     n = names(got)
     # commutative=True: only one argument order is generated.
-    assert "ADD_NUMERIC(a, b)" in n
-    assert "ADD_NUMERIC(b, a)" not in n
+    assert "ADD_NUMERIC__a__b" in n
+    assert "ADD_NUMERIC__b__a" not in n
     # commutative=False: both argument orders are generated.
-    assert "SUBTRACT_NUMERIC(a, b)" in n
-    assert "SUBTRACT_NUMERIC(b, a)" in n
+    assert "SUBTRACT_NUMERIC__a__b" in n
+    assert "SUBTRACT_NUMERIC__b__a" in n
     # a feature is never paired with itself.
-    assert "ADD_NUMERIC(a, a)" not in n
-    assert "ADD_NUMERIC(b, b)" not in n
-    assert "SUBTRACT_NUMERIC(a, a)" not in n
-    assert "SUBTRACT_NUMERIC(b, b)" not in n
+    assert "ADD_NUMERIC__a__a" not in n
+    assert "ADD_NUMERIC__b__b" not in n
+    assert "SUBTRACT_NUMERIC__a__a" not in n
+    assert "SUBTRACT_NUMERIC__b__b" not in n
 
 
 def test_self_referential_schema_terminates():
@@ -336,7 +336,7 @@ def test_self_referential_schema_terminates():
         groupby_trans_primitives=[],
         max_depth=3,
     )
-    assert "MEAN(employees.salary)" in names(got)
+    assert "MEAN__employees__salary" in names(got)
 
 
 def test_diamond_schema_terminates():
@@ -367,7 +367,7 @@ def test_diamond_schema_terminates():
         groupby_trans_primitives=[],
         max_depth=3,
     )
-    assert "MEAN(b.MEAN(d.v))" in names(got)
+    assert "MEAN__b__MEAN__d__v" in names(got)
 
 
 def test_features_are_deduplicated(es):
@@ -431,8 +431,8 @@ def test_categorical_column_skipped_by_string_primitive_warns():
             max_depth=1,
         )
     # The String column is still used; only the Categorical one is skipped.
-    assert "SHOUT(plain)" in names(got)
-    assert "SHOUT(cat)" not in names(got)
+    assert "SHOUT__plain" in names(got)
+    assert "SHOUT__cat" not in names(got)
 
 
 def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
@@ -490,7 +490,7 @@ def test_requested_primitive_with_no_matching_column_warns():
             max_depth=1,
         )
     # The primitive that did match is unaffected.
-    assert "ABSOLUTE(n)" in names(got)
+    assert "ABSOLUTE__n" in names(got)
 
 
 def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
@@ -530,7 +530,7 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
             max_depth=2,
         )
     )
-    assert "MEAN(c.n)" in got
+    assert "MEAN__c__n" in got
     assert not any(name.startswith("MEAN(d.") for name in got)
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 

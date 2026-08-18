@@ -55,7 +55,7 @@ def test_groupby_cum_sum_restarts_per_group(es):
 def test_ungrouped_order_dependent_transform(es):
     feature = TransformFeature(resolve("cum_sum"), (AMOUNT,))
     got = compile_features([feature], es).collect().to_native().sort("id")
-    assert got["CUM_SUM(amount)"].to_list() == [1.0, 4.0, 14.0, 34.0]
+    assert got["CUM_SUM__amount"].to_list() == [1.0, 4.0, 14.0, 34.0]
 
 
 def test_ungrouped_order_dependent_transform_uses_row_creation_time_not_frame_order():

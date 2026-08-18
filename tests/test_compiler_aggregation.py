@@ -18,18 +18,18 @@ def collect(features, es):
 def test_count_of_children(es):
     # customer 1 has sessions 10 and 20; customer 2 has session 30; customer 3 has none.
     got = collect([AggregationFeature(Count(), (), CUSTOMER_SESSION)], es)
-    assert got["COUNT(sessions)"].to_list() == [2, 1, 0]
+    assert got["COUNT__sessions"].to_list() == [2, 1, 0]
 
 
 def test_empty_group_gets_count_default_of_zero(es):
     got = collect([AggregationFeature(Count(), (), CUSTOMER_SESSION)], es)
-    assert got["COUNT(sessions)"][2] == 0
+    assert got["COUNT__sessions"][2] == 0
 
 
 def test_empty_group_gets_null_for_mean(es):
     sessions_mean = AggregationFeature(Mean(), (AMOUNT,), SESSION_TX)
     got = collect([AggregationFeature(Mean(), (sessions_mean,), CUSTOMER_SESSION)], es)
-    assert got["MEAN(sessions.MEAN(transactions.amount))"][2] is None
+    assert got["MEAN__sessions__MEAN__transactions__amount"][2] is None
 
 
 def test_depth_two_aggregation_values(es):

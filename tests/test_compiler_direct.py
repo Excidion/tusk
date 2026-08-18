@@ -16,14 +16,14 @@ def test_direct_feature_copies_parent_column_down(es):
     feature = DirectFeature(AGE, CUSTOMER_SESSION)
     got = compile_features([feature], es).collect().to_native().sort("id")
     # sessions 10, 20 belong to customer 1 (age 30); session 30 to customer 2 (age 40).
-    assert got["customers.age"].to_list() == [30, 30, 40]
+    assert got["customers__age"].to_list() == [30, 30, 40]
 
 
 def test_direct_feature_of_a_derived_parent_feature(es):
     parent_count = AggregationFeature(Count(), (), CUSTOMER_SESSION)
     feature = DirectFeature(parent_count, CUSTOMER_SESSION)
     got = compile_features([feature], es).collect().to_native().sort("id")
-    assert got["customers.COUNT(sessions)"].to_list() == [2, 2, 1]
+    assert got["customers__COUNT__sessions"].to_list() == [2, 2, 1]
 
 
 def test_direct_features_from_one_parent_share_a_join(es):
@@ -44,4 +44,4 @@ def test_transform_can_stack_on_a_direct_feature(es):
     direct = DirectFeature(AGE, CUSTOMER_SESSION)
     feature = TransformFeature(resolve("absolute"), (direct,))
     got = compile_features([feature], es).collect().to_native().sort("id")
-    assert got["ABSOLUTE(customers.age)"].to_list() == [30, 30, 40]
+    assert got["ABSOLUTE__customers__age"].to_list() == [30, 30, 40]

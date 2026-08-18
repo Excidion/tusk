@@ -47,15 +47,15 @@ class Pair(AggregationPrimitive):
 
 
 def test_name_generation():
-    assert Doubled().generate_name(("amount",)) == "DOUBLED(amount)"
+    assert Doubled().generate_name(("amount",)) == "DOUBLED__amount"
 
 
 def test_single_output_names():
-    assert Spread().output_names("SPREAD(amount)") == ("SPREAD(amount)",)
+    assert Spread().output_names("SPREAD__amount") == ("SPREAD__amount",)
 
 
 def test_multi_output_names_are_indexed():
-    assert Pair().output_names("PAIR(amount)") == ("PAIR(amount)[0]", "PAIR(amount)[1]")
+    assert Pair().output_names("PAIR__amount") == ("PAIR__amount__0", "PAIR__amount__1")
 
 
 def test_outputs_is_always_a_tuple():

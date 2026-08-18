@@ -77,10 +77,10 @@ def test_count_and_n_unique_declare_int64(lf):
 def test_quantiles_is_multi_output(lf):
     q = Quantiles(qs=(0.0, 0.5, 1.0))
     assert q.number_of_outputs == 3
-    assert q.output_names("QUANTILES(v)") == (
-        "QUANTILES(v)[0]",
-        "QUANTILES(v)[1]",
-        "QUANTILES(v)[2]",
+    assert q.output_names("QUANTILES__v") == (
+        "QUANTILES__v__0",
+        "QUANTILES__v__1",
+        "QUANTILES__v__2",
     )
     got = _agg(lf, q, "v")
     assert [got["o0"][0], got["o1"][0], got["o2"][0]] == [1.0, 2.0, 6.0]

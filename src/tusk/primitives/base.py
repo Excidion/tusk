@@ -59,15 +59,31 @@ class Primitive(ABC):
         return input_dtypes[0]
 
     def generate_name(self, arg_names: Sequence[str]) -> str:
-        """Build the display name for an application of this primitive.
+        """Build the column name for an application of this primitive.
+
+        Every part is joined with ``__`` so the result is a plain SQL
+        identifier. Parentheses and commas would be parsed as a function call
+        by any backend that generates SQL; see
+        :meth:`generate_display_name` for the readable form.
 
         Args:
             arg_names: Names of the inputs. For a zero-input aggregation
                 this is the child table's name, giving e.g.
-                ``COUNT(transactions)``.
+                ``COUNT__transactions``.
 
         Returns:
             The feature name.
+        """
+        return "__".join([self.name.upper(), *arg_names])
+
+    def generate_display_name(self, arg_names: Sequence[str]) -> str:
+        """Build the readable name for an application of this primitive.
+
+        Args:
+            arg_names: Display names of the inputs.
+
+        Returns:
+            The conventional parenthesised form, e.g. ``MEAN(amount)``.
         """
         return f"{self.name.upper()}({', '.join(arg_names)})"
 
@@ -76,6 +92,19 @@ class Primitive(ABC):
 
         Args:
             base_name: The name from :meth:`generate_name`.
+
+        Returns:
+            One name per output column; indexed when there is more than one.
+        """
+        if self.number_of_outputs == 1:
+            return (base_name,)
+        return tuple(f"{base_name}__{i}" for i in range(self.number_of_outputs))
+
+    def display_output_names(self, base_name: str) -> tuple[str, ...]:
+        """Expand a display name into one readable name per output column.
+
+        Args:
+            base_name: The name from :meth:`generate_display_name`.
 
         Returns:
             One name per output column; indexed when there is more than one.

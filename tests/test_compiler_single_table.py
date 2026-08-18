@@ -22,7 +22,7 @@ def test_transform_feature_is_computed(es):
     started = IdentityFeature("sessions", "started_at", nw.Datetime())
     feature = TransformFeature(resolve("day"), (started,))
     got = compile_features([feature], es).collect().to_native().sort("id")
-    assert got["DAY(started_at)"].to_list() == [4, 5, 6]
+    assert got["DAY__started_at"].to_list() == [4, 5, 6]
 
 
 def test_stacked_transform_is_computed(es):
@@ -30,7 +30,7 @@ def test_stacked_transform_is_computed(es):
     day = TransformFeature(resolve("day"), (started,))
     doubled = TransformFeature(resolve("add_numeric"), (day, day))
     got = compile_features([day, doubled], es).collect().to_native().sort("id")
-    assert got["ADD_NUMERIC(DAY(started_at), DAY(started_at))"].to_list() == [8, 10, 12]
+    assert got["ADD_NUMERIC__DAY__started_at__DAY__started_at"].to_list() == [8, 10, 12]
 
 
 def test_cutoff_filters_rows(es):

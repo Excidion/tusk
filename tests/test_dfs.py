@@ -24,7 +24,7 @@ def test_readme_example_compiles_and_collects(es):
     got = feature_matrix.collect()
     expected = {name for f in features for name in f.output_names}
     assert expected <= set(got.columns)
-    assert any(c.startswith("QUANTILES(") for c in got.columns)
+    assert any(c.startswith("QUANTILES__") for c in got.columns)
 
 
 def test_dfs_end_to_end(es):
@@ -37,7 +37,7 @@ def test_dfs_end_to_end(es):
     )
     assert isinstance(matrix, pl.LazyFrame)
     got = matrix.collect().sort("id")
-    assert got["COUNT(sessions)"].to_list() == [2, 1, 0]
+    assert got["COUNT__sessions"].to_list() == [2, 1, 0]
     assert {f.name for f in features} <= set(got.columns)
 
 
@@ -51,7 +51,7 @@ def test_features_only_returns_definitions_alone(es):
         features_only=True,
     )
     assert isinstance(features, list)
-    assert {f.name for f in features} == {"age", "COUNT(sessions)"}
+    assert {f.name for f in features} == {"age", "COUNT__sessions"}
 
 
 def test_defaults_are_applied(es):
@@ -59,7 +59,7 @@ def test_defaults_are_applied(es):
         entityset=es, target_dataframe_name="customers", features_only=True
     )
     names = {f.name for f in features}
-    assert "COUNT(sessions)" in names
+    assert "COUNT__sessions" in names
     assert not any(n.startswith("ADD_NUMERIC") for n in names)
 
 
@@ -74,11 +74,11 @@ def test_zero_config_generates_transform_features(es):
         entityset=es, target_dataframe_name="customers", features_only=True
     )
     names = {f.name for f in features}
-    assert {"YEAR(signed_up_at)", "MONTH(signed_up_at)", "WEEKDAY(signed_up_at)"} <= (
+    assert {"YEAR__signed_up_at", "MONTH__signed_up_at", "WEEKDAY__signed_up_at"} <= (
         names
     )
     # Stacked over the child's own row_creation_time as well.
-    assert "MEAN(sessions.MONTH(started_at))" in names
+    assert "MEAN__sessions__MONTH__started_at" in names
     # The raw time index is still not a feature.
     assert "signed_up_at" not in names
 
@@ -107,11 +107,11 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
         max_depth=2,
     )
     names = {f.name for f in features}
-    assert "customers.signed_up_at" not in names
-    assert "customers.MONTH(signed_up_at)" in names
+    assert "customers__signed_up_at" not in names
+    assert "customers__MONTH__signed_up_at" in names
     got = matrix.collect()
-    assert "customers.signed_up_at" not in got.columns
-    assert "customers.MONTH(signed_up_at)" in got.columns
+    assert "customers__signed_up_at" not in got.columns
+    assert "customers__MONTH__signed_up_at" in got.columns
 
     matrix2, features2 = tusk.dfs(
         entityset=es,
@@ -121,13 +121,13 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
         max_depth=3,
     )
     names2 = {f.name for f in features2}
-    assert "sessions.started_at" not in names2
-    assert "sessions.customers.signed_up_at" not in names2
-    assert "sessions.customers.MONTH(signed_up_at)" in names2
+    assert "sessions__started_at" not in names2
+    assert "sessions__customers__signed_up_at" not in names2
+    assert "sessions__customers__MONTH__signed_up_at" in names2
     got2 = matrix2.collect()
-    assert "sessions.started_at" not in got2.columns
-    assert "sessions.customers.signed_up_at" not in got2.columns
-    assert "sessions.customers.MONTH(signed_up_at)" in got2.columns
+    assert "sessions__started_at" not in got2.columns
+    assert "sessions__customers__signed_up_at" not in got2.columns
+    assert "sessions__customers__MONTH__signed_up_at" in got2.columns
 
 
 def test_calculate_feature_matrix_reapplies_definitions(es):
@@ -140,7 +140,7 @@ def test_calculate_feature_matrix_reapplies_definitions(es):
         features_only=True,
     )
     matrix = tusk.calculate_feature_matrix(features, es)
-    assert "COUNT(sessions)" in matrix.collect().columns
+    assert "COUNT__sessions" in matrix.collect().columns
 
 
 def test_eager_input_round_trips_to_eager_output():
@@ -162,7 +162,7 @@ def test_eager_input_round_trips_to_eager_output():
         max_depth=1,
     )
     assert isinstance(matrix, pl.DataFrame)
-    assert matrix.sort("id")["COUNT(sessions)"].to_list() == [2, 0]
+    assert matrix.sort("id")["COUNT__sessions"].to_list() == [2, 0]
 
 
 def test_dfs_never_materializes_for_lazy_input(tmp_path):
