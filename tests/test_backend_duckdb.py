@@ -21,7 +21,7 @@ duckdb = pytest.importorskip("duckdb")
 
 @pytest.fixture
 def duck_es():
-    """The three-table retail entity set, backed by duckdb relations.
+    """The three-table retail database, backed by duckdb relations.
 
     Mirrors the shape of the polars ``es`` fixture in ``conftest``: customer 1
     has two sessions, customer 2 has one session with no transactions, and
@@ -88,7 +88,7 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
     direct features that carry the parent's name into the column.
 
     Args:
-        duck_es: The duckdb-backed entity set.
+        duck_es: The duckdb-backed database.
         target: Table to synthesize features for.
     """
     database, _ = duck_es
@@ -112,7 +112,7 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
     sessions, so both are null.
 
     Args:
-        duck_es: The duckdb-backed entity set.
+        duck_es: The duckdb-backed database.
     """
     database, _ = duck_es
     features = tusk.deep_feature_synthesis(
@@ -136,7 +136,7 @@ def test_direct_feature_crosses_a_join_on_duckdb(duck_es):
     """A parent column copied down keeps its value through a SQL join.
 
     Args:
-        duck_es: The duckdb-backed entity set.
+        duck_es: The duckdb-backed database.
     """
     database, _ = duck_es
     features = tusk.deep_feature_synthesis(

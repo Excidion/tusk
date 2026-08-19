@@ -472,8 +472,8 @@ def test_requested_primitive_with_no_matching_column_warns():
     """Asking for a primitive and silently getting nothing is the bug.
 
     Warning rather than raising is deliberate: raising would break a
-    zero-configuration ``dfs()`` on any schema that happens to lack a dtype
-    family.
+    zero-configuration ``deep_feature_synthesis()`` on any schema that
+    happens to lack a dtype family.
     """
     from tusk.exceptions import UnmatchedPrimitiveWarning
 

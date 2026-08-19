@@ -59,7 +59,7 @@ def _frames():
 
 @pytest.fixture
 def es():
-    """A three-table retail entity set."""
+    """A three-table retail database."""
     customers, sessions, transactions = _frames()
     return (
         tusk.Database("retail")

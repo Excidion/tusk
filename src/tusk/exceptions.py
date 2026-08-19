@@ -8,7 +8,7 @@ class TuskError(Exception):
 
 
 class SchemaError(TuskError):
-    """Raised when an entity set's schema is invalid or inconsistent."""
+    """Raised when a database's schema is invalid or inconsistent."""
 
 
 class PrimitiveError(TuskError):
@@ -27,8 +27,8 @@ class UnmatchedPrimitiveWarning(UserWarning):
     """Warns that a requested primitive found no column of its input dtypes.
 
     Skipping such a primitive is correct -- raising would break a
-    zero-configuration ``dfs()`` on any schema that happens to lack a dtype
-    family. Skipping it *silently* is not: the user asked for a primitive and
-    got no column and no explanation. Its own class, so it can be filtered
-    independently.
+    zero-configuration ``deep_feature_synthesis()`` on any schema that happens
+    to lack a dtype family. Skipping it *silently* is not: the user asked for
+    a primitive and got no column and no explanation. Its own class, so it
+    can be filtered independently.
     """

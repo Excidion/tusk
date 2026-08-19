@@ -56,7 +56,7 @@ def test_cutoff_filters_the_target_table_too(es):
 def test_cutoff_is_a_no_op_without_a_row_creation_time():
     """A table with no row_creation_time is timeless and passes through.
 
-    Documented rather than warned (spec section 8), so an entity set that
+    Documented rather than warned (spec section 8), so a database that
     declares no row_creation_time anywhere silently ignores a cutoff. This is
     the branch a user is most likely to be surprised by, so it is pinned.
     """

@@ -68,8 +68,8 @@ def deep_feature_synthesis(
             of its input dtypes anywhere in the walk.
     """
     features = synthesize(
-        entityset=database,
-        target_dataframe_name=target_table,
+        database=database,
+        target_table=target_table,
         agg_primitives=AGG_DEFAULTS if agg_primitives is None else agg_primitives,
         trans_primitives=TRANS_DEFAULTS
         if trans_primitives is None
