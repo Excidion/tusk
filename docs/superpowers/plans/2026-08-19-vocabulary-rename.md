@@ -590,12 +590,12 @@ sed -i \
  -e 's/\bdfs\.md/deep-feature-synthesis.md/g' \
  -e 's/entityset\.md/database.md/g' \
  docs/index.md docs/guide/index.md docs/guide/databases.md docs/guide/deep-feature-synthesis.md docs/guide/primitives.md docs/guide/custom-primitives.md docs/guide/featuretools.md docs/api/index.md README.md
+```
 
 The link patterns match the *basename* on purpose. The links in the tree are
 `(dfs.md#cutoff-times)`, `(dfs.md#feature-names-are-sql-identifiers)`,
 `(guide/dfs.md)` and `(docs/guide/dfs.md)` — anchors and path prefixes vary, so a
 pattern anchored on `(` misses most of them.
-```
 
 Then fix the remaining prose by hand:
 - `docs/guide/databases.md` — the `# Entity sets` heading becomes `# Databases`; the opening sentence becomes "A [`Database`][tusk.Database] holds the tables you want features over and the relationships between them."; "adding a dataframe reads its schema" becomes "adding a table reads its schema"; "return the entity set" becomes "return the database"; "One entity set uses one backend" becomes "One database uses one backend".

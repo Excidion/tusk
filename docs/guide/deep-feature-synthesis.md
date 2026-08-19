@@ -1,7 +1,8 @@
 # Running DFS
 
-[`deep_feature_synthesis()`][tusk.deep_feature_synthesis] walks the database from a target table, stacking
-primitives up to `max_depth`, and returns a `(feature_matrix, features)` tuple.
+[`deep_feature_synthesis()`][tusk.deep_feature_synthesis] walks the database
+from a target table, stacking primitives up to `max_depth`, and returns a
+`(feature_matrix, features)` tuple.
 
 ```python
 feature_matrix, features = tusk.deep_feature_synthesis(
@@ -35,8 +36,7 @@ matrix = tusk.apply_features(features, db_new)
 ```
 
 This is how you apply a feature set fitted on training data to new data. All
-features passed to
-[`apply_features()`][tusk.apply_features] must share one
+features passed to [`apply_features()`][tusk.apply_features] must share one
 target table.
 
 ## Cutoff times

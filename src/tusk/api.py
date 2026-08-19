@@ -1,6 +1,7 @@
 """The public entry points.
 
-:func:`deep_feature_synthesis` and :func:`apply_features`.
+:func:`deep_feature_synthesis` builds feature definitions and computes them;
+:func:`apply_features` computes existing ones.
 """
 
 from __future__ import annotations

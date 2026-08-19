@@ -1,5 +1,7 @@
 """Packaging and exception hierarchy smoke tests."""
 
+import importlib
+
 import pytest
 
 import tusk
@@ -36,3 +38,8 @@ def test_entry_points_are_spelled_out():
     assert callable(tusk.apply_features)
     assert not hasattr(tusk, "dfs")
     assert not hasattr(tusk, "calculate_feature_matrix")
+
+
+def test_entityset_module_is_gone():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("tusk.entityset")

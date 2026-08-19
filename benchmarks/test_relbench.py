@@ -117,7 +117,7 @@ def staged(tmp_path_factory):
         A tuple of the Database, the row count per table, the number of
         foreign-key relationships, and the duckdb connection.
     """
-    db = relbench_datasets.get_dataset(DATASET, download=True).get_db()
+    relbench_db = relbench_datasets.get_dataset(DATASET, download=True).get_db()
     directory = tmp_path_factory.mktemp(DATASET)
 
     connection = duckdb.connect()
@@ -125,8 +125,8 @@ def staged(tmp_path_factory):
 
     schemas = {}
     row_counts = {}
-    for name in list(db.table_dict):
-        table = db.table_dict.pop(name)
+    for name in list(relbench_db.table_dict):
+        table = relbench_db.table_dict.pop(name)
         path = directory / f"{name}.parquet"
         connection.register("staging", table.df)
         connection.execute(f"COPY staging TO '{path}' (FORMAT parquet)")
@@ -136,7 +136,7 @@ def staged(tmp_path_factory):
         del table
         gc.collect()
 
-    del db
+    del relbench_db
     gc.collect()
     connection.execute(f"SET memory_limit='{MEMORY_LIMIT}'")
 

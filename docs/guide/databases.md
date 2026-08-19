@@ -1,8 +1,8 @@
 # Databases
 
-A [`Database`][tusk.Database] holds the tables you want features over and
-the relationships between them. It is pure schema: adding a table reads its
-column names and dtypes, nothing else.
+A [`Database`][tusk.Database] holds the tables you want features over and the
+relationships between them. It is pure schema: adding a table reads its column
+names and dtypes, nothing else.
 
 ```python
 import tusk
@@ -13,8 +13,7 @@ db.add_table("sessions", sessions_lf, primary_key="id", row_creation_time="start
 db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
 ```
 
-Both `add_table` and `add_relationship` return the database, so they
-chain.
+Both `add_table` and `add_relationship` return the database, so they chain.
 
 ## Keys
 

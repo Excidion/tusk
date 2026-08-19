@@ -12,7 +12,7 @@ different answer.
   | --- | --- |
   | `EntitySet` | `Database` |
   | `EntitySet(id=…)` | `Database(name=…)` |
-  | `es.add_dataframe(dataframe_name=…, index=…, time_index=…)` | `db.add_table(name, table, primary_key=…, row_creation_time=…)` |
+  | `es.add_dataframe(dataframe_name=…, dataframe=…, index=…, time_index=…)` | `db.add_table(name, table, primary_key=…, row_creation_time=…)` |
   | `dfs(entityset=…, target_dataframe_name=…)` | `deep_feature_synthesis(database=…, target_table=…)` |
   | `calculate_feature_matrix(features, entityset)` | `apply_features(features, database)` |
 
@@ -33,8 +33,9 @@ different answer.
   backend that generates SQL, dots and parentheses parse as table qualifiers
   and function calls rather than as part of a name, so the conventional form is
   unusable there. See [the full naming
-  scheme](deep-feature-synthesis.md#feature-names-are-sql-identifiers). The conventional form is
-  kept on [`Feature.display_name`][tusk.features.Feature.display_name].
+  scheme](deep-feature-synthesis.md#feature-names-are-sql-identifiers). The
+  conventional form is kept on
+  [`Feature.display_name`][tusk.features.Feature.display_name].
 
 - **`primary_key` and `row_creation_time`** rather than `index` and
   `time_index`. Narwhals has no index concept, and `row_creation_time` names

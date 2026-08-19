@@ -6,9 +6,10 @@ workflow is always the same three steps:
 1. **Describe your data.** Build a [database](databases.md): register each
    table, say which column is its primary key and which column records when a
    row became knowable, then link the tables with relationships.
-2. **Synthesize.** Call [`deep_feature_synthesis()`](deep-feature-synthesis.md). It walks the relationship graph,
-   stacking [primitives](primitives.md) up to `max_depth`, and returns both the
-   feature matrix and the feature definitions that produced it.
+2. **Synthesize.** Call [`deep_feature_synthesis()`](deep-feature-synthesis.md).
+   It walks the relationship graph, stacking [primitives](primitives.md) up to
+   `max_depth`, and returns both the feature matrix and the feature definitions
+   that produced it.
 3. **Re-apply.** Feed those definitions back to `apply_features()` to
    compute the same columns on new data.
 
