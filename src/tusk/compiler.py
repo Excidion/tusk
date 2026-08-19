@@ -127,9 +127,9 @@ def _base_frame(database: Database, table: str, cutoff_time: Any) -> nw.LazyFram
     """Return a table's frame with the cutoff filter applied.
 
     Tables without a ``row_creation_time`` are timeless and pass through
-    unfiltered -- documented rather than warned, per spec section 8. An entity
-    set that declares no ``row_creation_time`` anywhere therefore treats a
-    cutoff as a silent no-op.
+    unfiltered -- documented rather than warned, per spec section 8. A
+    database that declares no ``row_creation_time`` anywhere therefore
+    treats a cutoff as a silent no-op.
 
     The target table is filtered like any other, so a cutoff can leave the
     feature matrix with fewer rows than the target table has. That matches
