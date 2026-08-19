@@ -1,11 +1,11 @@
 # tusk
+In nature, narwhals use their tusk to find mates.
 
-Deep feature synthesis for [narwhals](https://narwhals-dev.github.io/narwhals/)
-lazy dataframes. Tusk generates features across related tables the way
-[featuretools](https://featuretools.alteryx.com/) does, but it builds a single
-lazy query plan instead of materializing intermediate frames — so synthesis
-pushes down into whichever engine holds your data, and works the same on every
-backend narwhals supports.
+In data science, you can use tusk to connect [narwhals](https://narwhals-dev.github.io/narwhals/) dataframes.
+
+This package implements deep feature synthesis to automate feature engineering with the power of your favorite dataframe library.
+Powered by [narwhals](https://narwhals-dev.github.io/narwhals/), inspired by [featuretools](https://featuretools.alteryx.com/).
+
 
 ## Install
 
@@ -22,12 +22,24 @@ import tusk
 from tusk.primitives import Quantiles
 
 es = tusk.EntitySet("retail")
-es.add_dataframe("customers", customers_lf, primary_key="id",
-                 row_creation_time="signed_up_at")
-es.add_dataframe("sessions", sessions_lf, primary_key="id",
-                 row_creation_time="started_at")
-es.add_dataframe("transactions", tx_lf, primary_key="id",
-                 row_creation_time="occurred_at")
+es.add_dataframe(
+    "customers",
+    customers_lf,
+    primary_key="id",
+    row_creation_time="signed_up_at",
+)
+es.add_dataframe(
+    "sessions",
+    sessions_lf,
+    primary_key="id",
+    row_creation_time="started_at",
+)
+es.add_dataframe(
+    "transactions",
+    tx_lf,
+    primary_key="id",
+    row_creation_time="occurred_at",
+)
 
 es.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
 es.add_relationship(parent="sessions", child="transactions", foreign_key="session_id")
