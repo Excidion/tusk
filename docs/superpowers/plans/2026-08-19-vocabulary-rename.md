@@ -359,7 +359,7 @@ This covers signatures, bodies, `self.entityset` → `self.database`, and the do
 - [ ] **Step 2: Fix the prose and cross-references left behind**
 
 ```bash
-grep -rIn "entity set\|tusk\.entityset" src
+grep -rIn "entity set\|tusk\.entityset\|dfs()" src
 ```
 
 Rewrite each hit:
@@ -367,6 +367,11 @@ Rewrite each hit:
 - `src/tusk/synthesis.py` — the cross-reference `:meth:`~tusk.entityset.EntitySet.output_excluded_columns`` becomes `:meth:`~tusk.database.Database.output_excluded_columns``; the class docstring `"""Carries the entity set and resolved primitives through the recursion."""` becomes `"""Carries the database and resolved primitives through the recursion."""`
 - `src/tusk/compiler.py` — every `The entity set holding the frames.` / `The entity set, used to find ordering columns.` / `The entity set holding the schemas.` becomes "The database …".
 - `src/tusk/api.py` — any remaining "entity set" in docstring prose becomes "database".
+- `src/tusk/exceptions.py:30` and `src/tusk/synthesis.py:269` — the docstring prose
+  ``zero-configuration ``dfs()`` on any schema …`` becomes
+  ``zero-configuration ``deep_feature_synthesis()`` on any schema …``. These are code
+  references in prose, not the permitted uppercase "DFS", and step 5's grep fails
+  without this edit.
 
 - [ ] **Step 3: Update `tests/test_synthesis.py`**
 
@@ -581,11 +586,15 @@ sed -i \
  -e 's/`dfs()`/`deep_feature_synthesis()`/g' \
  -e 's/`calculate_feature_matrix`/`apply_features`/g' \
  -e 's/`calculate_feature_matrix()`/`apply_features()`/g' \
- -e 's/(entity-sets\.md)/(databases.md)/g' \
- -e 's/(guide\/entity-sets\.md)/(guide\/databases.md)/g' \
- -e 's/(dfs\.md)/(deep-feature-synthesis.md)/g' \
- -e 's/(guide\/dfs\.md)/(guide\/deep-feature-synthesis.md)/g' \
- docs/index.md docs/guide/index.md docs/guide/databases.md docs/guide/deep-feature-synthesis.md docs/guide/primitives.md docs/guide/custom-primitives.md README.md
+ -e 's/entity-sets\.md/databases.md/g' \
+ -e 's/\bdfs\.md/deep-feature-synthesis.md/g' \
+ -e 's/entityset\.md/database.md/g' \
+ docs/index.md docs/guide/index.md docs/guide/databases.md docs/guide/deep-feature-synthesis.md docs/guide/primitives.md docs/guide/custom-primitives.md docs/guide/featuretools.md docs/api/index.md README.md
+
+The link patterns match the *basename* on purpose. The links in the tree are
+`(dfs.md#cutoff-times)`, `(dfs.md#feature-names-are-sql-identifiers)`,
+`(guide/dfs.md)` and `(docs/guide/dfs.md)` — anchors and path prefixes vary, so a
+pattern anchored on `(` misses most of them.
 ```
 
 Then fix the remaining prose by hand:
