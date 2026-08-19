@@ -99,10 +99,10 @@ def _peak_rss_mb():
 
 @pytest.fixture(scope="module")
 def staged(tmp_path_factory):
-    """rel-ratebeer staged to parquet and mapped onto a duckdb-backed EntitySet.
+    """rel-ratebeer staged to parquet and mapped onto a duckdb-backed Database.
 
     Writes every relbench table to parquet through duckdb, releases the pandas
-    frames, and builds the EntitySet over ``read_parquet`` relations, so the
+    frames, and builds the Database over ``read_parquet`` relations, so the
     timed phases start from data on disk rather than data in RAM.
 
     Each frame is dropped as soon as it is staged, and duckdb's memory limit
@@ -114,7 +114,7 @@ def staged(tmp_path_factory):
         tmp_path_factory: pytest's session-scoped temporary directory factory.
 
     Returns:
-        A tuple of the EntitySet, the row count per table, the number of
+        A tuple of the Database, the row count per table, the number of
         foreign-key relationships, and the duckdb connection.
     """
     db = relbench_datasets.get_dataset(DATASET, download=True).get_db()
@@ -140,10 +140,10 @@ def staged(tmp_path_factory):
     gc.collect()
     connection.execute(f"SET memory_limit='{MEMORY_LIMIT}'")
 
-    entityset = tusk.EntitySet("relbench")
+    database = tusk.Database("relbench")
     for name, (primary_key, row_creation_time, _) in schemas.items():
         path = directory / f"{name}.parquet"
-        entityset.add_dataframe(
+        database.add_table(
             name,
             nw.from_native(connection.sql(f"SELECT * FROM read_parquet('{path}')")),
             primary_key=primary_key,
@@ -152,12 +152,12 @@ def staged(tmp_path_factory):
     relationships = 0
     for name, (_, _, foreign_keys) in schemas.items():
         for foreign_key, parent in foreign_keys.items():
-            entityset.add_relationship(
+            database.add_relationship(
                 parent=parent, child=name, foreign_key=foreign_key
             )
             relationships += 1
 
-    return entityset, row_counts, relationships, connection
+    return database, row_counts, relationships, connection
 
 
 def test_dfs_on_relbench(staged, tmp_path):
@@ -177,16 +177,16 @@ def test_dfs_on_relbench(staged, tmp_path):
     then carried down, which is the most expensive shape this schema offers.
 
     Args:
-        staged: The EntitySet, row counts, relationship count and connection.
+        staged: The Database, row counts, relationship count and connection.
         tmp_path: Directory to write the feature matrix into.
     """
-    entityset, row_counts, relationships, connection = staged
+    database, row_counts, relationships, connection = staged
     target_rows = row_counts[TARGET]
 
     _reset_peak_rss()
     start = time.perf_counter()
     features = tusk.dfs(
-        entityset=entityset,
+        entityset=database,
         target_dataframe_name=TARGET,
         max_depth=MAX_DEPTH,
         features_only=True,
@@ -197,7 +197,7 @@ def test_dfs_on_relbench(staged, tmp_path):
     matrix_path = tmp_path / "feature_matrix.parquet"
     _reset_peak_rss()
     start = time.perf_counter()
-    tusk.calculate_feature_matrix(features, entityset).write_parquet(str(matrix_path))
+    tusk.calculate_feature_matrix(features, database).write_parquet(str(matrix_path))
     compute_seconds = time.perf_counter() - start
     compute_peak_mb = _peak_rss_mb()
 

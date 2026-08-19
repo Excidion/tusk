@@ -13,8 +13,8 @@ from collections.abc import Iterable, Sequence
 
 import narwhals as nw
 
+from tusk.database import Database, Relationship
 from tusk.dtypes import DtypeFamily, matches
-from tusk.entityset import EntitySet, Relationship
 from tusk.exceptions import (
     CategoricalDtypeWarning,
     PrimitiveError,
@@ -33,7 +33,7 @@ from tusk.primitives.registry import resolve_all
 
 
 def synthesize(
-    entityset: EntitySet,
+    entityset: Database,
     target_dataframe_name: str,
     agg_primitives: Iterable[str | Primitive],
     trans_primitives: Iterable[str | Primitive],
@@ -83,7 +83,7 @@ class _Context:
 
     def __init__(
         self,
-        entityset: EntitySet,
+        entityset: Database,
         agg: Sequence[Primitive],
         trans: Sequence[Primitive],
         groupby: Sequence[Primitive],
@@ -352,7 +352,7 @@ class _Context:
         is what makes ``MONTH(signed_up_at)``-style temporal transforms, and
         ``N_UNIQUE`` or ``CUM_COUNT`` over a temporal column, reachable. It is
         dropped later, from the matrix's raw passthrough columns only (see
-        :meth:`~tusk.entityset.EntitySet.output_excluded_columns`).
+        :meth:`~tusk.database.Database.output_excluded_columns`).
 
         Args:
             table: The table the features belong to.

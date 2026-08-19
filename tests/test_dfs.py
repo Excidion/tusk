@@ -147,9 +147,9 @@ def test_eager_input_round_trips_to_eager_output():
     customers = pl.DataFrame({"id": [1, 2], "age": [30, 40]})
     sessions = pl.DataFrame({"id": [10, 11], "customer_id": [1, 1]})
     es = (
-        tusk.EntitySet("x")
-        .add_dataframe("customers", customers, primary_key="id")
-        .add_dataframe("sessions", sessions, primary_key="id")
+        tusk.Database("x")
+        .add_table("customers", customers, primary_key="id")
+        .add_table("sessions", sessions, primary_key="id")
         .add_relationship(
             parent="customers", child="sessions", foreign_key="customer_id"
         )
@@ -170,9 +170,9 @@ def test_dfs_never_materializes_for_lazy_input(tmp_path):
     path = tmp_path / "sessions.parquet"
     pl.DataFrame({"id": [1, 2], "customer_id": [1, 1]}).write_parquet(path)
     es = (
-        tusk.EntitySet("x")
-        .add_dataframe("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
-        .add_dataframe("sessions", pl.scan_parquet(path), primary_key="id")
+        tusk.Database("x")
+        .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table("sessions", pl.scan_parquet(path), primary_key="id")
         .add_relationship(
             parent="customers", child="sessions", foreign_key="customer_id"
         )

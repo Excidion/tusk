@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tusk.entityset import Relationship
+from tusk.database import Relationship
 from tusk.primitives.base import Primitive
 
 

@@ -92,7 +92,7 @@ def test_transforms_respect_dtype_families():
     column was excluded as a key: the candidate set was empty, so it stayed
     green even with dtype matching disabled entirely.
     """
-    es = tusk.EntitySet("dtypes").add_dataframe(
+    es = tusk.Database("dtypes").add_table(
         "events",
         pl.LazyFrame(
             {
@@ -259,12 +259,12 @@ def test_stack_on_self_is_respected():
     # filter. n_unique is non-zero-arity (input_dtypes=(F.ANY,)) with
     # stack_on_self=False, so it actually routes through _combinations.
     es = (
-        tusk.EntitySet("nu")
-        .add_dataframe("a", pl.LazyFrame({"id": [1]}), primary_key="id")
-        .add_dataframe(
+        tusk.Database("nu")
+        .add_table("a", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
             "b", pl.LazyFrame({"id": [1], "a_id": [1], "x": [1.0]}), primary_key="id"
         )
-        .add_dataframe(
+        .add_table(
             "c", pl.LazyFrame({"id": [1], "b_id": [1], "y": [1.0]}), primary_key="id"
         )
         .add_relationship(parent="a", child="b", foreign_key="a_id")
@@ -291,7 +291,7 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
     # slots, so they are the only way to exercise the else branch of
     # `if len(per_slot) == 1` in _combinations: itertools.product, the
     # duplicate-feature filter, and the commutative frozenset dedup.
-    es = tusk.EntitySet("arith").add_dataframe(
+    es = tusk.Database("arith").add_table(
         "t", pl.LazyFrame({"id": [1], "a": [1.0], "b": [2.0]}), primary_key="id"
     )
     got = synthesize(
@@ -318,8 +318,8 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
 
 def test_self_referential_schema_terminates():
     es = (
-        tusk.EntitySet("hr")
-        .add_dataframe(
+        tusk.Database("hr")
+        .add_table(
             "employees",
             pl.LazyFrame({"id": [1, 2], "manager_id": [None, 1], "salary": [1.0, 2.0]}),
             primary_key="id",
@@ -341,15 +341,15 @@ def test_self_referential_schema_terminates():
 
 def test_diamond_schema_terminates():
     es = (
-        tusk.EntitySet("d")
-        .add_dataframe("a", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id")
-        .add_dataframe(
+        tusk.Database("d")
+        .add_table("a", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id")
+        .add_table(
             "b", pl.LazyFrame({"id": [1], "a_id": [1], "v": [1.0]}), primary_key="id"
         )
-        .add_dataframe(
+        .add_table(
             "c", pl.LazyFrame({"id": [1], "a_id": [1], "v": [1.0]}), primary_key="id"
         )
-        .add_dataframe(
+        .add_table(
             "d",
             pl.LazyFrame({"id": [1], "b_id": [1], "c_id": [1], "v": [1.0]}),
             primary_key="id",
@@ -410,7 +410,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
             """
             return expr.str.to_uppercase()
 
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "t",
         pl.LazyFrame(
             {
@@ -446,7 +446,7 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
     """
     from tusk.exceptions import CategoricalDtypeWarning
 
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "t",
         pl.LazyFrame(
             {
@@ -477,7 +477,7 @@ def test_requested_primitive_with_no_matching_column_warns():
     """
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "t", pl.LazyFrame({"id": [1, 2], "n": [1.0, 2.0]}), primary_key="id"
     )
     with pytest.warns(UnmatchedPrimitiveWarning, match="'month'.*'t'"):
@@ -503,14 +503,14 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
     es = (
-        tusk.EntitySet("x")
-        .add_dataframe("p", pl.LazyFrame({"id": [1]}), primary_key="id")
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
         # numeric: mean matches here
-        .add_dataframe(
+        .add_table(
             "c", pl.LazyFrame({"id": [1], "p_id": [1], "n": [1.0]}), primary_key="id"
         )
         # temporal only: mean matches nothing here
-        .add_dataframe(
+        .add_table(
             "d",
             pl.LazyFrame(
                 {"id": [1], "p_id": [1], "seen_at": [dt.datetime(2024, 1, 1)]}
@@ -549,9 +549,9 @@ def test_unmatched_warns_even_when_slots_are_individually_satisfiable():
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
     es = (
-        tusk.EntitySet("x")
-        .add_dataframe("p", pl.LazyFrame({"id": [1], "n": [1.0]}), primary_key="id")
-        .add_dataframe("c", pl.LazyFrame({"id": [1], "p_id": [1]}), primary_key="id")
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1], "n": [1.0]}), primary_key="id")
+        .add_table("c", pl.LazyFrame({"id": [1], "p_id": [1]}), primary_key="id")
         .add_relationship(parent="p", child="c", foreign_key="p_id")
     )
     with pytest.warns(UnmatchedPrimitiveWarning, match="'add_numeric'"):
@@ -575,7 +575,7 @@ def test_zero_config_run_warns_about_nothing(es, recwarn):
 
 
 def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one():
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "t", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id"
     )
     with pytest.raises(tusk.exceptions.PrimitiveError, match="row_creation_time"):

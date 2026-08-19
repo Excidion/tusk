@@ -28,7 +28,7 @@ def duck_es():
     customer 3 has none at all.
 
     Returns:
-        A tuple of the EntitySet and the duckdb connection backing it.
+        A tuple of the Database and the duckdb connection backing it.
     """
     con = duckdb.connect()
     con.execute(
@@ -49,21 +49,21 @@ def duck_es():
         "(103, 20, 20.0, TIMESTAMP '2024-03-05 02:00')) "
         "t(id, session_id, amount, occurred_at)"
     )
-    entityset = (
-        tusk.EntitySet("retail")
-        .add_dataframe(
+    database = (
+        tusk.Database("retail")
+        .add_table(
             "customers",
             nw.from_native(con.sql("SELECT * FROM customers")),
             primary_key="id",
             row_creation_time="signed_up_at",
         )
-        .add_dataframe(
+        .add_table(
             "sessions",
             nw.from_native(con.sql("SELECT * FROM sessions")),
             primary_key="id",
             row_creation_time="started_at",
         )
-        .add_dataframe(
+        .add_table(
             "transactions",
             nw.from_native(con.sql("SELECT * FROM transactions")),
             primary_key="id",
@@ -76,7 +76,7 @@ def duck_es():
             parent="sessions", child="transactions", foreign_key="session_id"
         )
     )
-    return entityset, con
+    return database, con
 
 
 @pytest.mark.parametrize("target", ["customers", "sessions", "transactions"])
@@ -91,9 +91,9 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
         duck_es: The duckdb-backed entity set.
         target: Table to synthesize features for.
     """
-    entityset, _ = duck_es
+    database, _ = duck_es
     features = tusk.dfs(
-        entityset=entityset,
+        entityset=database,
         target_dataframe_name=target,
         max_depth=2,
         features_only=True,
@@ -114,16 +114,16 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
     Args:
         duck_es: The duckdb-backed entity set.
     """
-    entityset, _ = duck_es
+    database, _ = duck_es
     features = tusk.dfs(
-        entityset=entityset,
+        entityset=database,
         target_dataframe_name="customers",
         max_depth=2,
         agg_primitives=["mean"],
         trans_primitives=[],
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, entityset).pl()
+    matrix = tusk.calculate_feature_matrix(features, database).pl()
     row = {r["id"]: r for r in matrix.to_dicts()}
     stacked = "MEAN__sessions__MEAN__transactions__amount"
     assert stacked in matrix.columns
@@ -138,15 +138,15 @@ def test_direct_feature_crosses_a_join_on_duckdb(duck_es):
     Args:
         duck_es: The duckdb-backed entity set.
     """
-    entityset, _ = duck_es
+    database, _ = duck_es
     features = tusk.dfs(
-        entityset=entityset,
+        entityset=database,
         target_dataframe_name="sessions",
         max_depth=1,
         agg_primitives=[],
         trans_primitives=[],
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, entityset).pl()
+    matrix = tusk.calculate_feature_matrix(features, database).pl()
     ages = {r["id"]: r["customers__age"] for r in matrix.to_dicts()}
     assert ages == {10: 30, 20: 30, 30: 40}

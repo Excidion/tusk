@@ -6,8 +6,8 @@ import pytest
 
 import tusk
 from tusk.compiler import compile_features
+from tusk.database import Relationship
 from tusk.dtypes import DtypeFamily as F
-from tusk.entityset import Relationship
 from tusk.exceptions import PrimitiveError
 from tusk.features import GroupByTransformFeature, IdentityFeature, TransformFeature
 from tusk.primitives.base import TransformPrimitive
@@ -66,7 +66,7 @@ def test_ungrouped_order_dependent_transform_uses_row_creation_time_not_frame_or
             "t": [3, 1, 2],  # deliberately not row order
         }
     )
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "c", frame, primary_key="id", row_creation_time="t"
     )
     feature = TransformFeature(
@@ -100,9 +100,9 @@ def test_ordering_uses_row_creation_time_not_frame_order():
     )
     parent = pl.LazyFrame({"id": [1]})
     es = (
-        tusk.EntitySet("x")
-        .add_dataframe("p", parent, primary_key="id")
-        .add_dataframe("c", frame, primary_key="id", row_creation_time="t")
+        tusk.Database("x")
+        .add_table("p", parent, primary_key="id")
+        .add_table("c", frame, primary_key="id", row_creation_time="t")
         .add_relationship(parent="p", child="c", foreign_key="g")
     )
     feature = GroupByTransformFeature(
@@ -116,7 +116,7 @@ def test_ordering_uses_row_creation_time_not_frame_order():
 
 
 def test_order_dependent_primitive_without_row_creation_time_raises():
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "t", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id"
     )
     feature = TransformFeature(

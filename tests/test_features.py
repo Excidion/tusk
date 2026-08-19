@@ -1,6 +1,6 @@
 import narwhals as nw
 
-from tusk.entityset import Relationship
+from tusk.database import Relationship
 from tusk.features import (
     AggregationFeature,
     DirectFeature,

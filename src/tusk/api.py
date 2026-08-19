@@ -6,7 +6,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 from tusk.compiler import compile_features
-from tusk.entityset import EntitySet
+from tusk.database import Database
 from tusk.features import Feature
 from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import Primitive
@@ -15,7 +15,7 @@ from tusk.synthesis import synthesize
 
 
 def dfs(
-    entityset: EntitySet,
+    entityset: Database,
     target_dataframe_name: str,
     agg_primitives: Iterable[str | Primitive] | None = None,
     trans_primitives: Iterable[str | Primitive] | None = None,
@@ -81,7 +81,7 @@ def dfs(
 
 def calculate_feature_matrix(
     features: Sequence[Feature],
-    entityset: EntitySet,
+    entityset: Database,
     cutoff_time: Any = None,
 ) -> Any:
     """Compute a feature matrix from existing feature definitions.

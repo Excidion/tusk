@@ -1,7 +1,7 @@
 import narwhals as nw
 
 from tusk.compiler import compile_features
-from tusk.entityset import Relationship
+from tusk.database import Relationship
 from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
 

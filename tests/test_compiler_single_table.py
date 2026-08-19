@@ -60,7 +60,7 @@ def test_cutoff_is_a_no_op_without_a_row_creation_time():
     declares no row_creation_time anywhere silently ignores a cutoff. This is
     the branch a user is most likely to be surprised by, so it is pinned.
     """
-    timeless = tusk.EntitySet("t").add_dataframe(
+    timeless = tusk.Database("t").add_table(
         "events",
         pl.LazyFrame({"id": [1, 2, 3], "n": [1.0, 2.0, 3.0]}),
         primary_key="id",
@@ -86,7 +86,7 @@ def test_features_spanning_multiple_tables_raise(es):
 
 def test_target_without_a_primary_key_raises():
     with pytest.warns(MissingPrimaryKeyWarning):
-        es = tusk.EntitySet("t").add_dataframe(
+        es = tusk.Database("t").add_table(
             "events", pl.LazyFrame({"id": [1], "n": [1.0]})
         )
     feature = IdentityFeature("events", "n", nw.Float64())

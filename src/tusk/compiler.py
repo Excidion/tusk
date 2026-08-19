@@ -11,7 +11,7 @@ from typing import Any
 
 import narwhals as nw
 
-from tusk.entityset import EntitySet, Relationship
+from tusk.database import Database, Relationship
 from tusk.exceptions import PrimitiveError, SchemaError
 from tusk.features import (
     AggregationFeature,
@@ -25,7 +25,7 @@ from tusk.features import (
 
 def compile_features(
     features: Sequence[Feature],
-    entityset: EntitySet,
+    entityset: Database,
     cutoff_time: Any = None,
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
@@ -123,7 +123,7 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
     return out
 
 
-def _base_frame(entityset: EntitySet, table: str, cutoff_time: Any) -> nw.LazyFrame:
+def _base_frame(entityset: Database, table: str, cutoff_time: Any) -> nw.LazyFrame:
     """Return a table's frame with the cutoff filter applied.
 
     Tables without a ``row_creation_time`` are timeless and pass through
@@ -152,7 +152,7 @@ def _base_frame(entityset: EntitySet, table: str, cutoff_time: Any) -> nw.LazyFr
 
 
 def _table_frame(
-    entityset: EntitySet,
+    entityset: Database,
     table: str,
     needed: set[Feature],
     cutoff_time: Any,
@@ -216,7 +216,7 @@ def _table_frame(
 
 def _add_aggregations(
     frame: nw.LazyFrame,
-    entityset: EntitySet,
+    entityset: Database,
     table: str,
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
@@ -267,7 +267,7 @@ def _add_aggregations(
 
 def _add_directs(
     frame: nw.LazyFrame,
-    entityset: EntitySet,
+    entityset: Database,
     relationship: Relationship,
     batch: Sequence[DirectFeature],
     cutoff_time: Any,
@@ -307,7 +307,7 @@ def _add_directs(
     )
 
 
-def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.LazyFrame:
+def _apply(frame: nw.LazyFrame, feature: Feature, entityset: Database) -> nw.LazyFrame:
     """Add a row-wise feature's columns to a frame.
 
     Order-dependent primitives are wrapped in ``.over(..., order_by=...)``
@@ -347,7 +347,7 @@ def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.La
     return frame.with_columns(*named)
 
 
-def _order_by(entityset: EntitySet, table: str, primitive_name: str) -> tuple[str, ...]:
+def _order_by(entityset: Database, table: str, primitive_name: str) -> tuple[str, ...]:
     """Build the ordering key for an order-dependent expression.
 
     Args:

@@ -4,7 +4,7 @@ import pyarrow as pa
 import pytest
 
 import tusk
-from tusk.entityset import Relationship
+from tusk.database import Relationship
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
 
 
@@ -44,19 +44,17 @@ def test_missing_primary_key_warns():
     with pytest.warns(
         MissingPrimaryKeyWarning, match="cannot be used as a relationship parent"
     ):
-        tusk.EntitySet("x").add_dataframe("t", pl.LazyFrame({"a": [1]}))
+        tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}))
 
 
 def test_unknown_column_raises():
     with pytest.raises(SchemaError, match="nope"):
-        tusk.EntitySet("x").add_dataframe(
-            "t", pl.LazyFrame({"a": [1]}), primary_key="nope"
-        )
+        tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}), primary_key="nope")
 
 
 def test_composite_key_raises():
     with pytest.raises(SchemaError, match="[Cc]omposite"):
-        tusk.EntitySet("x").add_dataframe(
+        tusk.Database("x").add_table(
             "t",
             pl.LazyFrame({"a": [1]}),
             primary_key=["a"],  # ty: ignore[invalid-argument-type]
@@ -64,11 +62,9 @@ def test_composite_key_raises():
 
 
 def test_parent_without_primary_key_raises():
-    es = tusk.EntitySet("x").add_dataframe(
-        "p", pl.LazyFrame({"a": [1]}), primary_key="a"
-    )
+    es = tusk.Database("x").add_table("p", pl.LazyFrame({"a": [1]}), primary_key="a")
     with pytest.warns(MissingPrimaryKeyWarning):
-        es.add_dataframe("c", pl.LazyFrame({"a": [1], "p_a": [1]}))
+        es.add_table("c", pl.LazyFrame({"a": [1], "p_a": [1]}))
     with pytest.raises(SchemaError, match="primary_key"):
         es.add_relationship(parent="c", child="p", foreign_key="a")
 
@@ -79,15 +75,13 @@ def test_unknown_foreign_key_raises(es):
 
 
 def test_eager_input_is_recorded_and_lazified():
-    es = tusk.EntitySet("x").add_dataframe(
-        "t", pl.DataFrame({"a": [1]}), primary_key="a"
-    )
+    es = tusk.Database("x").add_table("t", pl.DataFrame({"a": [1]}), primary_key="a")
     assert es.is_eager is True
     assert isinstance(es.frame("t"), nw.LazyFrame)
 
 
 def test_self_reference_is_allowed():
-    es = tusk.EntitySet("x").add_dataframe(
+    es = tusk.Database("x").add_table(
         "employees",
         pl.LazyFrame({"id": [1, 2], "manager_id": [None, 1]}),
         primary_key="id",
@@ -97,16 +91,12 @@ def test_self_reference_is_allowed():
 
 
 def test_duplicate_table_name_raises():
-    es = tusk.EntitySet("x").add_dataframe(
-        "t", pl.LazyFrame({"a": [1]}), primary_key="a"
-    )
+    es = tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}), primary_key="a")
     with pytest.raises(SchemaError, match="'t'"):
-        es.add_dataframe("t", pl.LazyFrame({"a": [1]}), primary_key="a")
+        es.add_table("t", pl.LazyFrame({"a": [1]}), primary_key="a")
 
 
 def test_backend_mismatch_raises():
-    es = tusk.EntitySet("x").add_dataframe(
-        "t", pl.LazyFrame({"a": [1]}), primary_key="a"
-    )
+    es = tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}), primary_key="a")
     with pytest.raises(SchemaError, match="polars.*pyarrow|pyarrow.*polars"):
-        es.add_dataframe("u", pa.table({"a": [1]}), primary_key="a")
+        es.add_table("u", pa.table({"a": [1]}), primary_key="a")
