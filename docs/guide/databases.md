@@ -1,19 +1,19 @@
-# Entity sets
+# Databases
 
-An [`EntitySet`][tusk.EntitySet] holds the tables you want features over and
-the relationships between them. It is pure schema: adding a dataframe reads its
+A [`Database`][tusk.Database] holds the tables you want features over and
+the relationships between them. It is pure schema: adding a table reads its
 column names and dtypes, nothing else.
 
 ```python
 import tusk
 
-es = tusk.EntitySet("retail")
-es.add_dataframe("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
-es.add_dataframe("sessions", sessions_lf, primary_key="id", row_creation_time="started_at")
+es = tusk.Database("retail")
+es.add_table("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
+es.add_table("sessions", sessions_lf, primary_key="id", row_creation_time="started_at")
 es.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
 ```
 
-Both `add_dataframe` and `add_relationship` return the entity set, so they
+Both `add_table` and `add_relationship` return the database, so they
 chain.
 
 ## Keys
@@ -29,7 +29,7 @@ non-deterministic tiebreaks. Omitting it raises a
 [`MissingPrimaryKeyWarning`][tusk.exceptions.MissingPrimaryKeyWarning].
 
 `row_creation_time` is required for order-dependent primitives on that table,
-and is what a [cutoff time](dfs.md#cutoff-times) filters on. A table without
+and is what a [cutoff time](deep-feature-synthesis.md#cutoff-times) filters on. A table without
 one is *timeless*: it passes through every cutoff unfiltered.
 
 Keys are single columns. Passing a tuple or list raises
@@ -51,11 +51,11 @@ depth: with `customers → sessions → transactions`, a depth-2 walk from
 
 ## Backends
 
-One entity set uses one backend. The first table you add fixes it; a later
+One database uses one backend. The first table you add fixes it; a later
 table on a different backend raises `SchemaError`, because narwhals cannot join
 across backends.
 
 The first table also fixes eagerness. If you hand tusk eager frames,
-[`is_eager`][tusk.EntitySet.is_eager] is true and the feature matrix is
+[`is_eager`][tusk.Database.is_eager] is true and the feature matrix is
 collected once at the end. If you hand it lazy frames, you get a lazy frame
 back and nothing is computed until you collect it yourself.
