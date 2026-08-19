@@ -160,7 +160,7 @@ def staged(tmp_path_factory):
     return database, row_counts, relationships, connection
 
 
-def test_dfs_on_relbench(staged, tmp_path):
+def test_deep_feature_synthesis_on_relbench(staged, tmp_path):
     """Runs synthesis and compute on rel-ratebeer and reports timing/memory.
 
     rel-ratebeer's schema is a genuine multi-table shape, not a toy: 13
@@ -185,9 +185,9 @@ def test_dfs_on_relbench(staged, tmp_path):
 
     _reset_peak_rss()
     start = time.perf_counter()
-    features = tusk.dfs(
-        entityset=database,
-        target_dataframe_name=TARGET,
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table=TARGET,
         max_depth=MAX_DEPTH,
         features_only=True,
     )
@@ -197,7 +197,7 @@ def test_dfs_on_relbench(staged, tmp_path):
     matrix_path = tmp_path / "feature_matrix.parquet"
     _reset_peak_rss()
     start = time.perf_counter()
-    tusk.calculate_feature_matrix(features, database).write_parquet(str(matrix_path))
+    tusk.apply_features(features, database).write_parquet(str(matrix_path))
     compute_seconds = time.perf_counter() - start
     compute_peak_mb = _peak_rss_mb()
 

@@ -570,7 +570,9 @@ def test_zero_config_run_warns_about_nothing(es, recwarn):
     """Every default primitive finds a home on the standard three-table schema."""
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
-    tusk.dfs(entityset=es, target_dataframe_name="customers", features_only=True)
+    tusk.deep_feature_synthesis(
+        database=es, target_table="customers", features_only=True
+    )
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 
 

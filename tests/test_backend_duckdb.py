@@ -92,9 +92,9 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
         target: Table to synthesize features for.
     """
     database, _ = duck_es
-    features = tusk.dfs(
-        entityset=database,
-        target_dataframe_name=target,
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table=target,
         max_depth=2,
         features_only=True,
     )
@@ -115,15 +115,15 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
         duck_es: The duckdb-backed entity set.
     """
     database, _ = duck_es
-    features = tusk.dfs(
-        entityset=database,
-        target_dataframe_name="customers",
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="customers",
         max_depth=2,
         agg_primitives=["mean"],
         trans_primitives=[],
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, database).pl()
+    matrix = tusk.apply_features(features, database).pl()
     row = {r["id"]: r for r in matrix.to_dicts()}
     stacked = "MEAN__sessions__MEAN__transactions__amount"
     assert stacked in matrix.columns
@@ -139,14 +139,14 @@ def test_direct_feature_crosses_a_join_on_duckdb(duck_es):
         duck_es: The duckdb-backed entity set.
     """
     database, _ = duck_es
-    features = tusk.dfs(
-        entityset=database,
-        target_dataframe_name="sessions",
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="sessions",
         max_depth=1,
         agg_primitives=[],
         trans_primitives=[],
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, database).pl()
+    matrix = tusk.apply_features(features, database).pl()
     ages = {r["id"]: r["customers__age"] for r in matrix.to_dicts()}
     assert ages == {10: 30, 20: 30, 30: 40}

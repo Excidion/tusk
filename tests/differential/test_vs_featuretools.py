@@ -131,9 +131,9 @@ def _tusk_matrix(customers, sessions):
             parent="customers", child="sessions", foreign_key="customer_id"
         )
     )
-    matrix, _ = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=list(PRIMITIVES),
         trans_primitives=[],
         max_depth=1,
@@ -296,9 +296,9 @@ def _tusk_deep(customers, sessions, transactions):
             parent="sessions", child="transactions", foreign_key="session_id"
         )
     )
-    matrix, _ = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=DEEP_PRIMITIVES,
         trans_primitives=[],
         max_depth=2,

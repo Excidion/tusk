@@ -1,4 +1,7 @@
-"""The public entry points: :func:`dfs` and :func:`calculate_feature_matrix`."""
+"""The public entry points.
+
+:func:`deep_feature_synthesis` and :func:`apply_features`.
+"""
 
 from __future__ import annotations
 
@@ -14,9 +17,9 @@ from tusk.primitives.transform import TRANS_DEFAULTS
 from tusk.synthesis import synthesize
 
 
-def dfs(
-    entityset: Database,
-    target_dataframe_name: str,
+def deep_feature_synthesis(
+    database: Database,
+    target_table: str,
     agg_primitives: Iterable[str | Primitive] | None = None,
     trans_primitives: Iterable[str | Primitive] | None = None,
     groupby_trans_primitives: Iterable[str | Primitive] | None = None,
@@ -24,11 +27,11 @@ def dfs(
     cutoff_time: Any = None,
     features_only: bool = False,
 ) -> Any:
-    """Run deep feature synthesis over an entity set.
+    """Run deep feature synthesis over a database.
 
     Args:
-        entityset: The tables and relationships to synthesize over.
-        target_dataframe_name: Table to build features for. The result has one
+        database: The tables and relationships to synthesize over.
+        target_table: Table to build features for. The result has one
             row per *visible* row of this table, keyed by its ``primary_key``.
             With no ``cutoff_time`` that is every row; with one, the target is
             filtered like any other table, so the matrix may have fewer rows.
@@ -41,7 +44,7 @@ def dfs(
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives.
             A table with no ``row_creation_time`` is timeless and passes
-            through unfiltered, so a cutoff on an entity set that declares none
+            through unfiltered, so a cutoff on a database that declares none
             is silently a no-op. None disables filtering. Ignored entirely when
             ``features_only`` is true, since nothing is computed: the cutoff
             belongs to compilation, and feature definitions do not record it.
@@ -65,8 +68,8 @@ def dfs(
             of its input dtypes anywhere in the walk.
     """
     features = synthesize(
-        entityset=entityset,
-        target_dataframe_name=target_dataframe_name,
+        entityset=database,
+        target_dataframe_name=target_table,
         agg_primitives=AGG_DEFAULTS if agg_primitives is None else agg_primitives,
         trans_primitives=TRANS_DEFAULTS
         if trans_primitives is None
@@ -76,26 +79,26 @@ def dfs(
     )
     if features_only:
         return features
-    return calculate_feature_matrix(features, entityset, cutoff_time), features
+    return apply_features(features, database, cutoff_time), features
 
 
-def calculate_feature_matrix(
+def apply_features(
     features: Sequence[Feature],
-    entityset: Database,
+    database: Database,
     cutoff_time: Any = None,
 ) -> Any:
-    """Compute a feature matrix from existing feature definitions.
+    """Apply existing feature definitions to a database.
 
     Use this to apply a feature set fitted on training data to new data.
 
     Args:
         features: Feature definitions, all on the same target table.
-        entityset: The entity set to compute over.
+        database: The database to compute over.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives, so
             the matrix may have fewer rows than the target. A table with no
             ``row_creation_time`` is timeless and passes through unfiltered, so
-            a cutoff on an entity set that declares none is silently a no-op.
+            a cutoff on a database that declares none is silently a no-op.
             None disables filtering.
 
     Returns:
@@ -106,7 +109,7 @@ def calculate_feature_matrix(
         :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
         primitive lands on a table with no ``row_creation_time``.
     """
-    frame = compile_features(features, entityset, cutoff_time)
-    if entityset.is_eager:
+    frame = compile_features(features, database, cutoff_time)
+    if database.is_eager:
         return frame.collect().to_native()
     return frame.to_native()

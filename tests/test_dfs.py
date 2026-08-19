@@ -13,9 +13,9 @@ def test_readme_example_compiles_and_collects(es):
     A multi-output primitive at max_depth=2 previously emitted a phantom
     un-indexed column and raised ColumnNotFoundError here.
     """
-    feature_matrix, features = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    feature_matrix, features = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
         trans_primitives=["month", "weekday"],
         max_depth=2,
@@ -27,10 +27,10 @@ def test_readme_example_compiles_and_collects(es):
     assert any(c.startswith("QUANTILES__") for c in got.columns)
 
 
-def test_dfs_end_to_end(es):
-    matrix, features = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+def test_deep_feature_synthesis_end_to_end(es):
+    matrix, features = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=["count", "mean"],
         trans_primitives=[],
         max_depth=2,
@@ -42,9 +42,9 @@ def test_dfs_end_to_end(es):
 
 
 def test_features_only_returns_definitions_alone(es):
-    features = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    features = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
         max_depth=1,
@@ -55,8 +55,8 @@ def test_features_only_returns_definitions_alone(es):
 
 
 def test_defaults_are_applied(es):
-    features = tusk.dfs(
-        entityset=es, target_dataframe_name="customers", features_only=True
+    features = tusk.deep_feature_synthesis(
+        database=es, target_table="customers", features_only=True
     )
     names = {f.name for f in features}
     assert "COUNT__sessions" in names
@@ -70,8 +70,8 @@ def test_zero_config_generates_transform_features(es):
     row_creation_time. Excluding those from primitive inputs left a zero-config
     run with aggregations and passthrough columns but not one transform.
     """
-    features = tusk.dfs(
-        entityset=es, target_dataframe_name="customers", features_only=True
+    features = tusk.deep_feature_synthesis(
+        database=es, target_table="customers", features_only=True
     )
     names = {f.name for f in features}
     assert {"YEAR__signed_up_at", "MONTH__signed_up_at", "WEEKDAY__signed_up_at"} <= (
@@ -99,9 +99,9 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
     recurses: a blocked raw column at the first hop can never become a nested
     base at the second.
     """
-    matrix, features = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="sessions",
+    matrix, features = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="sessions",
         agg_primitives=[],
         trans_primitives=["month"],
         max_depth=2,
@@ -113,9 +113,9 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
     assert "customers__signed_up_at" not in got.columns
     assert "customers__MONTH__signed_up_at" in got.columns
 
-    matrix2, features2 = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="transactions",
+    matrix2, features2 = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="transactions",
         agg_primitives=[],
         trans_primitives=["month"],
         max_depth=3,
@@ -130,16 +130,16 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
     assert "sessions__customers__MONTH__signed_up_at" in got2.columns
 
 
-def test_calculate_feature_matrix_reapplies_definitions(es):
-    features = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+def test_apply_features_reapplies_definitions(es):
+    features = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
         max_depth=1,
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, es)
+    matrix = tusk.apply_features(features, es)
     assert "COUNT__sessions" in matrix.collect().columns
 
 
@@ -154,9 +154,9 @@ def test_eager_input_round_trips_to_eager_output():
             parent="customers", child="sessions", foreign_key="customer_id"
         )
     )
-    matrix, _ = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
         max_depth=1,
@@ -165,7 +165,7 @@ def test_eager_input_round_trips_to_eager_output():
     assert matrix.sort("id")["COUNT__sessions"].to_list() == [2, 0]
 
 
-def test_dfs_never_materializes_for_lazy_input(tmp_path):
+def test_deep_feature_synthesis_never_materializes_for_lazy_input(tmp_path):
     """Scan a real file, delete it, then build features: only collect() may fail."""
     path = tmp_path / "sessions.parquet"
     pl.DataFrame({"id": [1, 2], "customer_id": [1, 1]}).write_parquet(path)
@@ -179,9 +179,9 @@ def test_dfs_never_materializes_for_lazy_input(tmp_path):
     )
     path.unlink()
 
-    matrix, _ = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=es,
+        target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
         max_depth=1,
@@ -193,9 +193,9 @@ def test_dfs_never_materializes_for_lazy_input(tmp_path):
 
 def test_unknown_primitive_fails_before_any_query(es):
     with pytest.raises(tusk.exceptions.PrimitiveError, match="dubbled"):
-        tusk.dfs(
-            entityset=es,
-            target_dataframe_name="customers",
+        tusk.deep_feature_synthesis(
+            database=es,
+            target_table="customers",
             trans_primitives=["dubbled"],
             features_only=True,
         )
