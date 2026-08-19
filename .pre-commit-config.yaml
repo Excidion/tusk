@@ -46,6 +46,7 @@ repos:
     entry: uv run interrogate
     language: system
     types: [file, python]
+    pass_filenames: false
 
   - id: pydoclint
     name: pydoclint

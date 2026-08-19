@@ -1,16 +1,79 @@
 [project]
 name = "tusk"
 version = "0.1.0"
-description = "Add your description here"
+description = "Deep feature synthesis for narwhals lazy dataframes"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["narwhals>=2.24"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tusk"]
 
 [dependency-groups]
 dev = [
+    "duckdb>=1.0",
     "interrogate>=1.7.0",
     "pre-commit-uv>=4.3.0",
     "pydoclint>=0.9.1",
+    "pytest>=8.0",
+    "polars>=1.43",
+    "pyarrow>=17",
     "ruff>=0.16.3",
     "ty>=0.0.72",
 ]
+validation = [
+    "featuretools>=1.31",
+    "pandas>=2.0",
+    "setuptools<81",
+]
+benchmark = ["relbench>=2.1", "duckdb>=1.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "benchmarks"]
+markers = [
+    "differential: cross-checks values against featuretools (opt-in)",
+    "benchmark: relbench performance runs (opt-in)",
+]
+addopts = "-m 'not differential and not benchmark'"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.interrogate]
+fail-under = 100
+ignore-init-module = true
+ignore-private = true
+ignore-magic = true
+ignore-nested-functions = true
+exclude = ["tests"]
+
+[tool.pydoclint]
+style = "google"
+exclude = "tests|benchmarks"
+arg-type-hints-in-docstring = false
+check-return-types = false
+# ruff (D107) and interrogate both require __init__ to carry its own
+# docstring; without this flag pydoclint's DOC301 forbids exactly that
+# whenever the class also has a docstring.
+allow-init-docstring = true
+
+[[tool.ty.overrides]]
+include = ["src/tusk/primitives/**", "tests/**"]
+
+[tool.ty.overrides.rules]
+# Primitive.build is variadic in the ABC and fixed-arity in each concrete
+# primitive. Arity is guaranteed by construction: synthesis supplies exactly
+# len(input_dtypes) expressions to outputs(), which is build()'s only caller.
+# Scoped rather than project-wide so override checking stays active everywhere
+# else.
+invalid-method-override = "ignore"

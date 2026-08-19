@@ -30,7 +30,7 @@ Three goals drive every tradeoff below:
 
 ```python
 import tusk
-from tusk.primitives import NthMostCommon
+from tusk.primitives import Quantiles
 
 es = tusk.EntitySet("retail")
 es.add_dataframe("customers", customers_lf,
@@ -46,7 +46,7 @@ es.add_relationship(parent="sessions", child="transactions", foreign_key="sessio
 feature_matrix, features = tusk.dfs(
     entityset=es,
     target_dataframe_name="customers",
-    agg_primitives=["mean", "count", NthMostCommon(n=3)],
+    agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
     trans_primitives=["month", "weekday"],
     groupby_trans_primitives=["cum_sum"],
     max_depth=2,
@@ -65,11 +65,17 @@ type; `features` is a list of inspectable `Feature` objects.
 Defaults and return contract:
 
 - `max_depth=2`, matching featuretools.
-- `cutoff_time=None` means no time filtering is applied.
+- `cutoff_time=None` means no time filtering is applied. A cutoff filters the
+  **target** table as well as its relatives (§8), so the matrix can have fewer
+  rows than the target: a row that did not exist yet at the cutoff has no
+  features to compute. This matches featuretools. With `features_only=True` the
+  cutoff is ignored entirely, since nothing is computed and feature definitions
+  do not record it.
 - `features_only=True` returns the feature list alone, not a tuple.
-- The feature matrix has **one row per target row**, keyed by the target's
-  `primary_key`. The target table must therefore have a `primary_key`; a
-  positional correspondence would be meaningless on a lazy frame.
+- The feature matrix has **one row per visible target row**, keyed by the
+  target's `primary_key`. The target table must therefore have a
+  `primary_key`; a positional correspondence would be meaningless on a lazy
+  frame.
 
 `calculate_feature_matrix` exists because the two-phase architecture provides it
 for free, and it is the reason users care about `features_only`: fit a feature
@@ -161,10 +167,37 @@ Composite keys raise `SchemaError` rather than silently misbehaving.
 ### Type system
 
 Primitive matching uses **narwhals dtypes only** — numeric, temporal, string,
-boolean, categorical — via predicates in `dtypes.py`. No logical types, no
-semantic tags, no woodwork. The cost is a lost distinction between an integer
-that is a quantity and an integer that is a category; the benefit is zero extra
-concepts, zero dependencies, and identical behaviour on every backend.
+boolean — via predicates in `dtypes.py`. No logical types, no semantic tags, no
+woodwork. The cost is a lost distinction between an integer that is a quantity
+and an integer that is a category; the benefit is zero extra concepts, zero
+dependencies, and identical behaviour on every backend.
+
+The families are `NUMERIC`, `TEMPORAL`, `STRING`, `BOOLEAN`, and `ANY`. `ANY` is
+required by zero-arity and dtype-agnostic primitives (`count`, `n_unique`).
+
+### Categorical and Enum columns
+
+Narwhals treats `String`, `Categorical`, and `Enum` as three distinct dtypes;
+none compares equal to another, and `.str` accessors fail on the latter two.
+`STRING` therefore matches `String` only.
+
+This is deliberate rather than incidental. Casting a column to `Categorical` is
+an assertion that its values are labels, not text — and a word count or
+character count over a genuine category is meaningless. String-only primitives
+*should* skip these columns.
+
+What must not happen is skipping them **silently**. A user who cast a column to
+`Categorical` upstream to save memory would otherwise get a feature matrix with
+columns quietly missing and nothing to explain why. So when synthesis skips a
+`Categorical` or `Enum` column solely because a requested primitive requires
+`STRING`, it emits `CategoricalDtypeWarning` naming both the column and the
+primitive.
+
+The warning fires from synthesis rather than `add_dataframe`, because only
+synthesis knows which primitives were actually requested. A consequence: with
+the v1 built-in set it never fires, since no built-in requires `STRING`. That is
+correct — nothing is being skipped yet. It becomes live the moment a text
+primitive such as `num_characters` is added.
 
 ## 5. Primitive model
 
@@ -196,7 +229,7 @@ requires this metadata statically:
 
 `return_dtype` and `number_of_outputs` are a method and a property rather than
 class attributes because both may depend on instance parameters (`max` preserves
-its input dtype; `NthMostCommon(n=3)` yields three columns).
+its input dtype; `Quantiles(qs=(0.25, 0.5, 0.75))` yields three columns).
 
 ### Extension
 
@@ -220,22 +253,45 @@ not need.
 Frozen dataclasses with structural equality, so duplicate sub-features collapse
 via a set with no bookkeeping.
 
-| Type | Meaning | Example name |
-|---|---|---|
-| `IdentityFeature` | a raw column | `amount` |
-| `TransformFeature` | primitive over same-table features | `MONTH(signed_up_at)` |
-| `AggregationFeature` | primitive over a child's feature, grouped by FK | `MEAN(transactions.amount)` |
-| `DirectFeature` | a parent's feature joined onto the child | `customers.age` |
-| `GroupByTransformFeature` | transform applied within FK groups | `CUM_SUM(amount) by customer_id` |
+| Type | Meaning | Column name | Display name |
+|---|---|---|---|
+| `IdentityFeature` | a raw column | `amount` | `amount` |
+| `TransformFeature` | primitive over same-table features | `MONTH__signed_up_at` | `MONTH(signed_up_at)` |
+| `AggregationFeature` | primitive over a child's feature, grouped by FK | `MEAN__transactions__amount` | `MEAN(transactions.amount)` |
+| `DirectFeature` | a parent's feature joined onto the child | `customers__age` | `customers.age` |
+| `GroupByTransformFeature` | transform applied within FK groups | `CUM_SUM__amount__by__customer_id` | `CUM_SUM(amount) by customer_id` |
 
-Each exposes `.name`, `.dtype`, `.depth`, `.table`, `.base_features`, and
-`.output_names`. Multi-output primitives yield indexed names:
-`N_MOST_COMMON(product)[0]` … `[2]`.
+Each exposes `.name`, `.display_name`, `.dtype`, `.depth`, `.table`,
+`.base_features`, `.output_names`, `.display_output_names`, and
+`.is_multi_output`. Multi-output primitives yield indexed names:
+`N_MOST_COMMON__product__0` … `__2`.
+
+**Names are SQL identifiers.** Every construct joins with `__` rather than the
+conventional dots, parentheses and spaces. This is not cosmetic: on a backend
+that generates SQL, `MEAN(transactions.amount)` parses as a function call over
+table `transactions` and `customers.age` as a column of table `customers`, so
+the conventional form cannot be selected at all — narwhals interpolates the
+identifier unquoted and duckdb raises `BinderException`. The conventional form
+is preserved on `.display_name` for logs, docs and error messages, and the
+differential tier translates featuretools' names to compare values.
+
+Joining with `__` makes a source column already containing `__` capable of
+colliding with a generated name. `compile_features` refuses that case rather
+than silently dropping a column.
 
 `.dtype` is derived statically from primitive metadata, never from data.
 
+**A multi-output feature is a valid output but never an input.** Only its
+indexed columns are materialized; the un-indexed stem
+(`QUANTILES__transactions__amount`) never exists, so there is no single column
+another primitive could read, and `.dtype` — being singular — cannot describe
+it either. `.is_multi_output` is derived from `len(.output_names)` rather than
+from a primitive's `number_of_outputs`, so it is defined for `IdentityFeature`
+and `DirectFeature`, which have no primitive. A `DirectFeature` is filtered on
+the same grounds: it carries exactly one column across a join.
+
 **Depth rule:** identity features are depth 0; every primitive application adds
-1. `SUM(sessions.MEAN(transactions.amount))` is depth 2. Featuretools has
+1. `SUM__sessions__MEAN__transactions__amount` is depth 2. Featuretools has
 subtler rules here that routinely confuse users; this one is predictable.
 
 ## 7. Phase 1: synthesis
@@ -264,8 +320,27 @@ Two rules carry the algorithm:
   `MEAN(customer_id)` is noise. Foreign keys remain usable as groupby keys and
   as inputs to `count` and `n_unique`.
 
-Beyond those, stacking is governed by `stack_on_self` and by dtype-family
-matching, which naturally blocks nonsense such as `MONTH(MEAN(...))`.
+**Two exclusion sets, not one.** The rule above is about *inputs*, and the
+`row_creation_time` is deliberately **not** in it: it is a measurement, and
+`MONTH(signed_up_at)` — §6's own exemplar `TransformFeature` — plus
+`N_UNIQUE` or `CUM_COUNT` over a temporal column, are exactly the features
+this split unblocks. (`MAX` stays out of reach: its `input_dtypes` is
+numeric-only, so no temporal column can ever satisfy it, split or no split.)
+Excluding `row_creation_time` from the input set would leave a
+zero-configuration run, whose transform defaults are all temporal, with no
+transform features at all.
+
+A second, larger set governs *output* passthrough: the raw columns that never
+appear in the feature matrix are the join keys **plus** the
+`row_creation_time`. Passing the time index through as a feature invites target
+leakage, and featuretools drops it for the same reason. Only the raw column is
+dropped; features derived from it are unaffected. `EntitySet` exposes these as
+`input_excluded_columns()` and `output_excluded_columns()`; conflating them is
+the mistake the split exists to prevent.
+
+Beyond those, stacking is governed by `stack_on_self`, by the multi-output rule
+in §6, and by dtype-family matching, which naturally blocks nonsense such as
+`MONTH(MEAN(...))`.
 
 Identical features produced along different routes deduplicate by structural
 equality.
@@ -280,8 +355,11 @@ equality.
    sub-features actually needed.
 2. **Cutoff first.** For each table carrying a `row_creation_time`, apply
    `filter(nw.col(rct) <= cutoff)` before anything else, so it pushes to the
-   scan. Tables without one are timeless and pass through unfiltered —
-   documented, not warned. Cutoff effects do not cascade across relationships.
+   scan. This includes the target table, so the matrix may be shorter than the
+   target. Tables without one are timeless and pass through unfiltered —
+   documented, not warned, which makes a cutoff a silent no-op on an entity set
+   that declares no `row_creation_time` anywhere. Cutoff effects do not cascade
+   across relationships.
 3. **Compile bottom-up**, deepest table first. Per table: `with_columns()` for
    transforms, then fold in aggregations from children.
 4. **Batch.** All aggregation features sharing a `(child table, relationship
@@ -328,7 +406,14 @@ order-dependent transforms are supported.
 ## 9. Built-in primitives
 
 **Aggregation:** `count`, `sum`, `mean`, `min`, `max`, `std`, `median`,
-`n_unique`, `percent_true`, `n_most_common` (multi-output).
+`n_unique`, `percent_true`, `quantiles` (multi-output).
+
+`quantiles` is the v1 multi-output primitive rather than featuretools'
+`n_most_common`. Narwhals rejects length-changing expressions such as `mode()`
+inside a lazy `group_by().agg()` — *"Length-changing expressions are not
+supported for use in LazyFrame"* — so mode-based primitives have no portable
+lazy implementation. `Quantiles(qs=(0.25, 0.5, 0.75))` exercises the same
+multi-output machinery and is expressible as `expr.quantile(q)`.
 
 **Transform:** `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
 `absolute`, `natural_log`.
@@ -336,6 +421,23 @@ order-dependent transforms are supported.
 **GroupBy transform:** `cum_sum`, `cum_count`, `cum_min`, `cum_max`, `diff`,
 `time_since_previous`. Narwhals has no `cum_mean`; if wanted it must be composed
 from `cum_sum / cum_count`, so it is left out of v1.
+
+### What may go in `groupby_trans_primitives`
+
+Only **group-aware** primitives — ones whose expression reduces or scans across
+the group. The built-in order-dependent primitives above all qualify.
+
+Every other built-in transform is **elementwise** (`absolute`, `month`,
+`add_numeric`, …), and narwhals rejects `.over()` on an elementwise expression:
+`InvalidOperationError: Cannot apply over to elementwise expression`. Passing one
+in `groupby_trans_primitives` therefore fails — but it fails at expression-build
+time, raising synchronously out of `compile_features` rather than at `collect()`,
+so the user learns immediately rather than after a long query.
+
+This leaves the grouped, non-order-dependent window path reachable only by
+user-defined primitives. That is the intended extension point: a primitive such
+as `x / x.sum()` ("share of group total") is group-aware without being
+order-dependent, and is exactly what that path exists to serve.
 
 **Multi-input arithmetic** — `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric` — ships but stays **out of the defaults**.
@@ -358,10 +460,21 @@ A zero-configuration `dfs()` call therefore does something sensible.
 - **`SchemaError`** — unknown table or column; composite key; backend mismatch;
   missing `primary_key` on a relationship parent or on the DFS target; a
   relationship graph that cannot terminate.
-- **`PrimitiveError`** — unknown primitive name; no columns matching a
-  primitive's input dtypes; order-dependent primitive on a table without
-  `row_creation_time`.
+- **`PrimitiveError`** — unknown primitive name; order-dependent primitive on a
+  table without `row_creation_time`.
 - **`MissingPrimaryKeyWarning`** — as described in §4.
+- **`CategoricalDtypeWarning`** — a `Categorical` or `Enum` column was skipped
+  by a requested primitive that requires `STRING` input. Its own class, so it
+  can be filtered independently.
+- **`UnmatchedPrimitiveWarning`** — a requested primitive found no column
+  matching its input dtypes anywhere in the walk. This **warns rather than
+  raises**: raising would break a zero-configuration `dfs()` on any schema that
+  happens to lack a dtype family, and the case is the same shape as
+  `CategoricalDtypeWarning` — skipping is correct, skipping *silently* is the
+  bug. A primitive that produced features somewhere is not reported, since
+  being inapplicable to one table among several is ordinary; each surviving
+  (primitive, table) pair warns once per run. Its own class, so it can be
+  filtered independently.
 
 Every one of these fires during phase 1, from schemas alone, before any query is
 built. The single deliberate exception is backend capability (§5): those surface
@@ -386,10 +499,12 @@ parquet or feather fixtures in any case.
 - **Phase 2 against hand-computed values** on a customers/sessions/transactions
   fixture, including empty groups, null-only groups, single-row groups, and
   ties — the cases real data contains only by accident.
-- **Laziness is tested behaviorally, not by grepping for `.collect()`.** Build
-  an EntitySet over a scan of a nonexistent file, run `dfs()`, assert it returns
-  normally, and assert the error appears only at `.collect()`. Anything that
-  materializes early fails this test.
+- **Laziness is tested behaviorally, not by grepping for `.collect()`.** Scan a
+  real parquet file, build the EntitySet, **delete the file**, then run `dfs()`:
+  assert it returns normally and that `FileNotFoundError` appears only at
+  `.collect()`. Anything that materializes early fails this test. (Scanning a
+  nonexistent file instead would fail at `add_dataframe()`, since reading the
+  schema touches the file.)
 - **Batching guard.** Assert that N aggregation features from one child table
   produce exactly one join in `explain()`. Polars-specific and white-box, but it
   is the only way to keep the compiler's central performance property from
@@ -401,6 +516,15 @@ Generate small synthetic multi-table data, run featuretools on pandas and tusk
 on polars, compare overlapping feature values. This is the sharpest available
 signal that DFS was reimplemented *correctly* rather than merely plausibly.
 
+It must therefore cover **deep** synthesis, not just depth-1 aggregation over a
+single relationship: three tables at `max_depth=2`, cross-checking stacked
+aggregations and nested empty groups. Depth-1 over two tables is the easy part,
+and the defects this tier is meant to catch do not live there.
+
+Where the two tools genuinely disagree, the disagreement is recorded and
+argued, not smoothed over by adjusting tusk or loosening a tolerance.
+Featuretools is a reference, not an oracle.
+
 This tier is temporary. It exists to validate the algorithm during development
 and is removed once the library settles — concretely, once the differential
 suite has passed unchanged across two consecutive releases that added
@@ -410,10 +534,22 @@ primitives. Removal is a deliberate decision, recorded in the changelog.
 
 Run tusk against a relbench dataset and record runtime and peak memory. Relbench
 is the only tier that can put evidence behind the scale-beyond-memory goal in
-§1, and its schema model maps almost one-to-one onto ours (`pkey_col`,
-`time_col`, `fkey_col_to_pkey_table` → `primary_key`, `row_creation_time`,
-relationships — to be verified during implementation). Relbench also publishes a
-featuretools-DFS baseline to compare against.
+§1, and its schema model maps one-to-one onto ours (`pkey_col`, `time_col`,
+`fkey_col_to_pkey_table` → `primary_key`, `row_creation_time`, relationships —
+verified against relbench 2.1.2). Relbench also publishes a featuretools-DFS
+baseline to compare against.
+
+The dataset is `rel-ratebeer` (13 tables, 16 foreign keys, 11.8M rows in the
+target) on duckdb. Both choices are load-bearing. rel-f1's largest table held
+28k rows, which measures startup cost rather than scale. And at 339 features
+over 11.8M rows the backend stops being interchangeable: polars' streaming
+engine was measured growing to ~21GB and being killed rather than spilling,
+by every route tried — one plan, forced `engine="streaming"`, feature-batched
+with the parts joined afterwards, and pairwise joins sinking between steps.
+duckdb computes the same matrix in a single call by spilling to disk under a
+12GB buffer-pool limit (~16GB peak RSS, since the limit does not cover
+allocations outside the buffer manager). The tier runs on the backend that can demonstrate the claim
+the tier exists to make.
 
 Kept until deliberately cut.
 
@@ -426,10 +562,14 @@ runtime nor the core test loop carries them.
 
 ## 12. Known risks and accepted tradeoffs
 
-- **Portability is asserted, not verified.** A single-backend test matrix cannot
-  catch backend-specific assumptions. DuckDB is the cheap addition that would
-  catch lazy-discipline violations (no row order, restricted windows); the
-  backend fixture is parametrized so adding it is a one-line change.
+- **Portability is verified on two backends, polars and duckdb.** It was
+  asserted rather than verified until duckdb was actually run, and the first
+  run failed outright: feature names carried dots and parentheses, which a
+  backend that generates SQL parses as table qualifiers and function calls, so
+  no multi-table feature could be selected at all. The `backend` fixture in
+  `conftest` was parametrized but unused, so nothing exercised the claim.
+  `tests/test_backend_duckdb.py` now covers it directly. Backends beyond these
+  two remain unverified.
 - **Backend capability errors surface late**, at `collect()`, in the backend's
   own vocabulary (§5).
 - **A single global cutoff is not leak-free for ML.** Per-row cutoff times are
@@ -443,7 +583,7 @@ Deliberately deferred; none requires restructuring the feature graph.
 
 - Per-row cutoff times, training windows, `approximate`.
 - `where` clauses / interesting values, `seed_features`, `primitive_options`.
-- Additional backends in the test matrix, starting with DuckDB.
+- Additional backends in the test matrix beyond polars and duckdb.
 - `tusk.from_relbench(db)` — roughly fifteen lines once the schema model exists.
 - Feature serialization to disk.
 
