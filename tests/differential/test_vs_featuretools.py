@@ -123,7 +123,7 @@ def _featuretools_matrix(customers, sessions):
 
 
 def _tusk_matrix(customers, sessions):
-    es = (
+    db = (
         tusk.Database("s")
         .add_table("customers", pl.from_pandas(customers).lazy(), primary_key="id")
         .add_table("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
@@ -132,7 +132,7 @@ def _tusk_matrix(customers, sessions):
         )
     )
     matrix, _ = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=list(PRIMITIVES),
         trans_primitives=[],
@@ -282,7 +282,7 @@ def _featuretools_deep(customers, sessions, transactions):
 
 
 def _tusk_deep(customers, sessions, transactions):
-    es = (
+    db = (
         tusk.Database("d")
         .add_table("customers", pl.from_pandas(customers).lazy(), primary_key="id")
         .add_table("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
@@ -297,7 +297,7 @@ def _tusk_deep(customers, sessions, transactions):
         )
     )
     matrix, _ = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=DEEP_PRIMITIVES,
         trans_primitives=[],

@@ -58,7 +58,7 @@ def _frames():
 
 
 @pytest.fixture
-def es():
+def db():
     """A three-table retail database."""
     customers, sessions, transactions = _frames()
     return (

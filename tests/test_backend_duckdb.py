@@ -20,10 +20,10 @@ duckdb = pytest.importorskip("duckdb")
 
 
 @pytest.fixture
-def duck_es():
+def duck_db():
     """The three-table retail database, backed by duckdb relations.
 
-    Mirrors the shape of the polars ``es`` fixture in ``conftest``: customer 1
+    Mirrors the shape of the polars ``db`` fixture in ``conftest``: customer 1
     has two sessions, customer 2 has one session with no transactions, and
     customer 3 has none at all.
 
@@ -80,7 +80,7 @@ def duck_es():
 
 
 @pytest.mark.parametrize("target", ["customers", "sessions", "transactions"])
-def test_every_generated_name_is_a_sql_identifier(duck_es, target):
+def test_every_generated_name_is_a_sql_identifier(duck_db, target):
     """No feature name carries a character SQL would parse as syntax.
 
     Every target is covered because the feature kinds are not evenly spread:
@@ -88,10 +88,10 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
     direct features that carry the parent's name into the column.
 
     Args:
-        duck_es: The duckdb-backed database.
+        duck_db: The duckdb-backed database.
         target: Table to synthesize features for.
     """
-    database, _ = duck_es
+    database, _ = duck_db
     features = tusk.deep_feature_synthesis(
         database=database,
         target_table=target,
@@ -104,7 +104,7 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
             assert name.replace("_", "").isalnum(), name
 
 
-def test_depth_two_matrix_computes_on_duckdb(duck_es):
+def test_depth_two_matrix_computes_on_duckdb(duck_db):
     """A stacked aggregation holds the right value on a SQL backend.
 
     Customer 1's sessions average 2.0 and 15.0, so the mean of those means is
@@ -112,9 +112,9 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
     sessions, so both are null.
 
     Args:
-        duck_es: The duckdb-backed database.
+        duck_db: The duckdb-backed database.
     """
-    database, _ = duck_es
+    database, _ = duck_db
     features = tusk.deep_feature_synthesis(
         database=database,
         target_table="customers",
@@ -132,13 +132,13 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
     assert row[3][stacked] is None
 
 
-def test_direct_feature_crosses_a_join_on_duckdb(duck_es):
+def test_direct_feature_crosses_a_join_on_duckdb(duck_db):
     """A parent column copied down keeps its value through a SQL join.
 
     Args:
-        duck_es: The duckdb-backed database.
+        duck_db: The duckdb-backed database.
     """
-    database, _ = duck_es
+    database, _ = duck_db
     features = tusk.deep_feature_synthesis(
         database=database,
         target_table="sessions",

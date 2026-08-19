@@ -12,7 +12,7 @@ def names(features):
     return {f.name for f in features}
 
 
-def test_depth_one_aggregations(es):
+def test_depth_one_aggregations(db):
     """``mean`` has nothing to match on ``sessions`` -- its only non-key
     column is temporal -- which is correct and expected here, so the warning
     is asserted rather than left to surface in ``pytest -q`` output.
@@ -21,7 +21,7 @@ def test_depth_one_aggregations(es):
 
     with pytest.warns(UnmatchedPrimitiveWarning, match="'mean'.*'sessions'"):
         got = synthesize(
-            es,
+            db,
             "customers",
             agg_primitives=["count", "mean"],
             trans_primitives=[],
@@ -31,9 +31,9 @@ def test_depth_one_aggregations(es):
     assert names(got) == {"age", "COUNT__sessions"}
 
 
-def test_depth_two_stacks_through_two_relationships(es):
+def test_depth_two_stacks_through_two_relationships(db):
     got = synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["count", "mean"],
         trans_primitives=[],
@@ -45,9 +45,9 @@ def test_depth_two_stacks_through_two_relationships(es):
     assert "COUNT__sessions" in names(got)
 
 
-def test_target_keys_are_not_emitted_as_features(es):
+def test_target_keys_are_not_emitted_as_features(db):
     got = synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
@@ -58,9 +58,9 @@ def test_target_keys_are_not_emitted_as_features(es):
     assert "signed_up_at" not in names(got)
 
 
-def test_never_traverses_back_so_target_columns_do_not_return(es):
+def test_never_traverses_back_so_target_columns_do_not_return(db):
     got = synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["mean"],
         trans_primitives=[],
@@ -70,9 +70,9 @@ def test_never_traverses_back_so_target_columns_do_not_return(es):
     assert not any("customers__age" in n for n in names(got))
 
 
-def test_direct_features_come_from_parents(es):
+def test_direct_features_come_from_parents(db):
     got = synthesize(
-        es,
+        db,
         "sessions",
         agg_primitives=[],
         trans_primitives=[],
@@ -92,7 +92,7 @@ def test_transforms_respect_dtype_families():
     column was excluded as a key: the candidate set was empty, so it stayed
     green even with dtype matching disabled entirely.
     """
-    es = tusk.Database("dtypes").add_table(
+    db = tusk.Database("dtypes").add_table(
         "events",
         pl.LazyFrame(
             {
@@ -105,7 +105,7 @@ def test_transforms_respect_dtype_families():
     )
     got = names(
         synthesize(
-            es,
+            db,
             "events",
             agg_primitives=[],
             trans_primitives=["month", "absolute"],
@@ -121,7 +121,7 @@ def test_transforms_respect_dtype_families():
     assert "ABSOLUTE__occurred_at" not in got
 
 
-def test_row_creation_time_is_available_as_a_transform_input(es):
+def test_row_creation_time_is_available_as_a_transform_input(db):
     """MONTH(signed_up_at) is the spec's own exemplar TransformFeature.
 
     signed_up_at is the customers table's row_creation_time. It is a
@@ -130,7 +130,7 @@ def test_row_creation_time_is_available_as_a_transform_input(es):
     """
     got = names(
         synthesize(
-            es,
+            db,
             "customers",
             agg_primitives=[],
             trans_primitives=["month", "year", "weekday"],
@@ -144,7 +144,7 @@ def test_row_creation_time_is_available_as_a_transform_input(es):
     assert "signed_up_at" not in got
 
 
-def test_aggregations_can_reach_a_temporal_column(es):
+def test_aggregations_can_reach_a_temporal_column(db):
     """A child's row_creation_time is aggregable, not structurally excluded.
 
     ``n_unique`` (family ANY) reaches ``occurred_at`` directly. ``LAST_TIME``
@@ -178,7 +178,7 @@ def test_aggregations_can_reach_a_temporal_column(es):
 
     got = names(
         synthesize(
-            es,
+            db,
             "sessions",
             agg_primitives=["n_unique", "last_time", "max"],
             trans_primitives=[],
@@ -192,7 +192,7 @@ def test_aggregations_can_reach_a_temporal_column(es):
     assert "MAX__transactions__amount" in got
 
 
-def test_multi_output_feature_is_an_output_but_never_an_input(es):
+def test_multi_output_feature_is_an_output_but_never_an_input(db):
     """QUANTILES(x) materializes only ``...[0]``/``[1]``/``[2]``, never the stem.
 
     Anything stacking on the un-indexed stem compiles to ``nw.col(stem)`` and
@@ -202,7 +202,7 @@ def test_multi_output_feature_is_an_output_but_never_an_input(es):
     from tusk.primitives import Quantiles
 
     got = synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["mean", Quantiles(qs=(0.25, 0.5, 0.75))],
         trans_primitives=["absolute"],
@@ -228,9 +228,9 @@ def test_multi_output_feature_is_an_output_but_never_an_input(es):
             stack.append(base)
 
 
-def test_transform_stacks_on_aggregation(es):
+def test_transform_stacks_on_aggregation(db):
     got = synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["mean"],
         trans_primitives=["absolute"],
@@ -241,9 +241,9 @@ def test_transform_stacks_on_aggregation(es):
     assert "MEAN__sessions__MEAN__transactions__amount" in names(got)
 
 
-def test_groupby_transform_features(es):
+def test_groupby_transform_features(db):
     got = synthesize(
-        es,
+        db,
         "transactions",
         agg_primitives=[],
         trans_primitives=[],
@@ -258,7 +258,7 @@ def test_stack_on_self_is_respected():
     # _combinations is ever reached, so it cannot exercise the stack_on_self
     # filter. n_unique is non-zero-arity (input_dtypes=(F.ANY,)) with
     # stack_on_self=False, so it actually routes through _combinations.
-    es = (
+    db = (
         tusk.Database("nu")
         .add_table("a", pl.LazyFrame({"id": [1]}), primary_key="id")
         .add_table(
@@ -271,7 +271,7 @@ def test_stack_on_self_is_respected():
         .add_relationship(parent="b", child="c", foreign_key="b_id")
     )
     got = synthesize(
-        es,
+        db,
         "a",
         agg_primitives=["n_unique"],
         trans_primitives=[],
@@ -291,11 +291,11 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
     # slots, so they are the only way to exercise the else branch of
     # `if len(per_slot) == 1` in _combinations: itertools.product, the
     # duplicate-feature filter, and the commutative frozenset dedup.
-    es = tusk.Database("arith").add_table(
+    db = tusk.Database("arith").add_table(
         "t", pl.LazyFrame({"id": [1], "a": [1.0], "b": [2.0]}), primary_key="id"
     )
     got = synthesize(
-        es,
+        db,
         "t",
         agg_primitives=[],
         trans_primitives=["add_numeric", "subtract_numeric"],
@@ -317,7 +317,7 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
 
 
 def test_self_referential_schema_terminates():
-    es = (
+    db = (
         tusk.Database("hr")
         .add_table(
             "employees",
@@ -329,7 +329,7 @@ def test_self_referential_schema_terminates():
         )
     )
     got = synthesize(
-        es,
+        db,
         "employees",
         agg_primitives=["mean"],
         trans_primitives=[],
@@ -340,7 +340,7 @@ def test_self_referential_schema_terminates():
 
 
 def test_diamond_schema_terminates():
-    es = (
+    db = (
         tusk.Database("d")
         .add_table("a", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id")
         .add_table(
@@ -360,7 +360,7 @@ def test_diamond_schema_terminates():
         .add_relationship(parent="c", child="d", foreign_key="c_id")
     )
     got = synthesize(
-        es,
+        db,
         "a",
         agg_primitives=["mean"],
         trans_primitives=[],
@@ -370,9 +370,9 @@ def test_diamond_schema_terminates():
     assert "MEAN__b__MEAN__d__v" in names(got)
 
 
-def test_features_are_deduplicated(es):
+def test_features_are_deduplicated(db):
     got = synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["count", "mean"],
         trans_primitives=[],
@@ -410,7 +410,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
             """
             return expr.str.to_uppercase()
 
-    es = tusk.Database("x").add_table(
+    db = tusk.Database("x").add_table(
         "t",
         pl.LazyFrame(
             {
@@ -423,7 +423,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     )
     with pytest.warns(CategoricalDtypeWarning, match="cat"):
         got = synthesize(
-            es,
+            db,
             "t",
             agg_primitives=[],
             trans_primitives=["shout"],
@@ -438,7 +438,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
 def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
     """A Categorical column is present, but no STRING primitive is requested.
 
-    Using the shared ``es`` fixture here would not distinguish "no warning
+    Using the shared ``db`` fixture here would not distinguish "no warning
     because no STRING primitive was requested" from "no warning because
     there was nothing categorical to warn about" -- it has no Categorical
     columns at all. This schema has one, so the assertion actually tests
@@ -446,7 +446,7 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
     """
     from tusk.exceptions import CategoricalDtypeWarning
 
-    es = tusk.Database("x").add_table(
+    db = tusk.Database("x").add_table(
         "t",
         pl.LazyFrame(
             {
@@ -458,7 +458,7 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
         primary_key="id",
     )
     synthesize(
-        es,
+        db,
         "t",
         agg_primitives=[],
         trans_primitives=["absolute"],
@@ -477,12 +477,12 @@ def test_requested_primitive_with_no_matching_column_warns():
     """
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
-    es = tusk.Database("x").add_table(
+    db = tusk.Database("x").add_table(
         "t", pl.LazyFrame({"id": [1, 2], "n": [1.0, 2.0]}), primary_key="id"
     )
     with pytest.warns(UnmatchedPrimitiveWarning, match="'month'.*'t'"):
         got = synthesize(
-            es,
+            db,
             "t",
             agg_primitives=[],
             trans_primitives=["month", "absolute"],
@@ -502,7 +502,7 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
     """
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
-    es = (
+    db = (
         tusk.Database("x")
         .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
         # numeric: mean matches here
@@ -522,7 +522,7 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
     )
     got = names(
         synthesize(
-            es,
+            db,
             "p",
             agg_primitives=["mean"],
             trans_primitives=[],
@@ -548,7 +548,7 @@ def test_unmatched_warns_even_when_slots_are_individually_satisfiable():
     """
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
-    es = (
+    db = (
         tusk.Database("x")
         .add_table("p", pl.LazyFrame({"id": [1], "n": [1.0]}), primary_key="id")
         .add_table("c", pl.LazyFrame({"id": [1], "p_id": [1]}), primary_key="id")
@@ -556,7 +556,7 @@ def test_unmatched_warns_even_when_slots_are_individually_satisfiable():
     )
     with pytest.warns(UnmatchedPrimitiveWarning, match="'add_numeric'"):
         got = synthesize(
-            es,
+            db,
             "c",
             agg_primitives=[],
             trans_primitives=["add_numeric"],
@@ -566,23 +566,23 @@ def test_unmatched_warns_even_when_slots_are_individually_satisfiable():
     assert not any(name.startswith("ADD_NUMERIC") for name in names(got))
 
 
-def test_zero_config_run_warns_about_nothing(es, recwarn):
+def test_zero_config_run_warns_about_nothing(db, recwarn):
     """Every default primitive finds a home on the standard three-table schema."""
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
     tusk.deep_feature_synthesis(
-        database=es, target_table="customers", features_only=True
+        database=db, target_table="customers", features_only=True
     )
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 
 
 def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one():
-    es = tusk.Database("x").add_table(
+    db = tusk.Database("x").add_table(
         "t", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id"
     )
     with pytest.raises(tusk.exceptions.PrimitiveError, match="row_creation_time"):
         synthesize(
-            es,
+            db,
             "t",
             agg_primitives=[],
             trans_primitives=["cum_sum"],
@@ -591,10 +591,10 @@ def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one(
         )
 
 
-def test_unknown_target_raises(es):
+def test_unknown_target_raises(db):
     with pytest.raises(tusk.exceptions.SchemaError, match="nope"):
         synthesize(
-            es,
+            db,
             "nope",
             agg_primitives=[],
             trans_primitives=[],
@@ -603,13 +603,13 @@ def test_unknown_target_raises(es):
         )
 
 
-def test_no_frames_are_touched(es, monkeypatch):
+def test_no_frames_are_touched(db, monkeypatch):
     def explode(_name):
         raise AssertionError("synthesis touched a frame")
 
-    monkeypatch.setattr(es, "frame", explode)
+    monkeypatch.setattr(db, "frame", explode)
     synthesize(
-        es,
+        db,
         "customers",
         agg_primitives=["count", "mean"],
         trans_primitives=["month"],

@@ -7,14 +7,14 @@ import tusk
 from tusk.primitives import Quantiles
 
 
-def test_readme_example_compiles_and_collects(es):
+def test_readme_example_compiles_and_collects(db):
     """The README's headline call, verbatim, against the README's schema.
 
     A multi-output primitive at max_depth=2 previously emitted a phantom
     un-indexed column and raised ColumnNotFoundError here.
     """
     feature_matrix, features = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
         trans_primitives=["month", "weekday"],
@@ -27,9 +27,9 @@ def test_readme_example_compiles_and_collects(es):
     assert any(c.startswith("QUANTILES__") for c in got.columns)
 
 
-def test_deep_feature_synthesis_end_to_end(es):
+def test_deep_feature_synthesis_end_to_end(db):
     matrix, features = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=["count", "mean"],
         trans_primitives=[],
@@ -41,9 +41,9 @@ def test_deep_feature_synthesis_end_to_end(es):
     assert {f.name for f in features} <= set(got.columns)
 
 
-def test_features_only_returns_definitions_alone(es):
+def test_features_only_returns_definitions_alone(db):
     features = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
@@ -54,16 +54,16 @@ def test_features_only_returns_definitions_alone(es):
     assert {f.name for f in features} == {"age", "COUNT__sessions"}
 
 
-def test_defaults_are_applied(es):
+def test_defaults_are_applied(db):
     features = tusk.deep_feature_synthesis(
-        database=es, target_table="customers", features_only=True
+        database=db, target_table="customers", features_only=True
     )
     names = {f.name for f in features}
     assert "COUNT__sessions" in names
     assert not any(n.startswith("ADD_NUMERIC") for n in names)
 
 
-def test_zero_config_generates_transform_features(es):
+def test_zero_config_generates_transform_features(db):
     """The defaults are temporal-only transforms, so they need a temporal input.
 
     Every non-key column on this schema that a default transform can read is a
@@ -71,7 +71,7 @@ def test_zero_config_generates_transform_features(es):
     run with aggregations and passthrough columns but not one transform.
     """
     features = tusk.deep_feature_synthesis(
-        database=es, target_table="customers", features_only=True
+        database=db, target_table="customers", features_only=True
     )
     names = {f.name for f in features}
     assert {"YEAR__signed_up_at", "MONTH__signed_up_at", "WEEKDAY__signed_up_at"} <= (
@@ -83,7 +83,7 @@ def test_zero_config_generates_transform_features(es):
     assert "signed_up_at" not in names
 
 
-def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
+def test_raw_row_creation_time_does_not_leak_through_direct_features(db):
     """A parent's raw time index must never cross a join as a DirectFeature.
 
     Regression test for the leak introduced when ``key_columns()`` split into
@@ -100,7 +100,7 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
     base at the second.
     """
     matrix, features = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="sessions",
         agg_primitives=[],
         trans_primitives=["month"],
@@ -114,7 +114,7 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
     assert "customers__MONTH__signed_up_at" in got.columns
 
     matrix2, features2 = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="transactions",
         agg_primitives=[],
         trans_primitives=["month"],
@@ -130,23 +130,23 @@ def test_raw_row_creation_time_does_not_leak_through_direct_features(es):
     assert "sessions__customers__MONTH__signed_up_at" in got2.columns
 
 
-def test_apply_features_reapplies_definitions(es):
+def test_apply_features_reapplies_definitions(db):
     features = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
         max_depth=1,
         features_only=True,
     )
-    matrix = tusk.apply_features(features, es)
+    matrix = tusk.apply_features(features, db)
     assert "COUNT__sessions" in matrix.collect().columns
 
 
 def test_eager_input_round_trips_to_eager_output():
     customers = pl.DataFrame({"id": [1, 2], "age": [30, 40]})
     sessions = pl.DataFrame({"id": [10, 11], "customer_id": [1, 1]})
-    es = (
+    db = (
         tusk.Database("x")
         .add_table("customers", customers, primary_key="id")
         .add_table("sessions", sessions, primary_key="id")
@@ -155,7 +155,7 @@ def test_eager_input_round_trips_to_eager_output():
         )
     )
     matrix, _ = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
@@ -169,7 +169,7 @@ def test_deep_feature_synthesis_never_materializes_for_lazy_input(tmp_path):
     """Scan a real file, delete it, then build features: only collect() may fail."""
     path = tmp_path / "sessions.parquet"
     pl.DataFrame({"id": [1, 2], "customer_id": [1, 1]}).write_parquet(path)
-    es = (
+    db = (
         tusk.Database("x")
         .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
         .add_table("sessions", pl.scan_parquet(path), primary_key="id")
@@ -180,7 +180,7 @@ def test_deep_feature_synthesis_never_materializes_for_lazy_input(tmp_path):
     path.unlink()
 
     matrix, _ = tusk.deep_feature_synthesis(
-        database=es,
+        database=db,
         target_table="customers",
         agg_primitives=["count"],
         trans_primitives=[],
@@ -191,10 +191,10 @@ def test_deep_feature_synthesis_never_materializes_for_lazy_input(tmp_path):
         matrix.collect()
 
 
-def test_unknown_primitive_fails_before_any_query(es):
+def test_unknown_primitive_fails_before_any_query(db):
     with pytest.raises(tusk.exceptions.PrimitiveError, match="dubbled"):
         tusk.deep_feature_synthesis(
-            database=es,
+            database=db,
             target_table="customers",
             trans_primitives=["dubbled"],
             features_only=True,
