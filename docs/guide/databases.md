@@ -7,10 +7,10 @@ column names and dtypes, nothing else.
 ```python
 import tusk
 
-es = tusk.Database("retail")
-es.add_table("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
-es.add_table("sessions", sessions_lf, primary_key="id", row_creation_time="started_at")
-es.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
+db = tusk.Database("retail")
+db.add_table("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
+db.add_table("sessions", sessions_lf, primary_key="id", row_creation_time="started_at")
+db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
 ```
 
 Both `add_table` and `add_relationship` return the database, so they
@@ -42,7 +42,7 @@ two pairs. The parent side is always the parent's `primary_key`, so only the
 child's column needs naming.
 
 ```python
-es.add_relationship(parent="sessions", child="transactions", foreign_key="session_id")
+db.add_relationship(parent="sessions", child="transactions", foreign_key="session_id")
 ```
 
 A relationship is one parent to many children. Chaining them is what gives DFS

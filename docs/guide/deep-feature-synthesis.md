@@ -5,7 +5,7 @@ primitives up to `max_depth`, and returns a `(feature_matrix, features)` tuple.
 
 ```python
 feature_matrix, features = tusk.deep_feature_synthesis(
-    database=es,
+    database=db,
     target_table="customers",
     agg_primitives=["mean", "count"],
     trans_primitives=["month", "weekday"],

@@ -600,7 +600,7 @@ pattern anchored on `(` misses most of them.
 Then fix the remaining prose by hand:
 - `docs/guide/databases.md` — the `# Entity sets` heading becomes `# Databases`; the opening sentence becomes "A [`Database`][tusk.Database] holds the tables you want features over and the relationships between them."; "adding a dataframe reads its schema" becomes "adding a table reads its schema"; "return the entity set" becomes "return the database"; "One entity set uses one backend" becomes "One database uses one backend".
 - `docs/guide/deep-feature-synthesis.md` — the `# Running DFS` heading may stay (prose), but the opening `[`dfs()`][tusk.dfs] walks the entity set` becomes `[`deep_feature_synthesis()`][tusk.deep_feature_synthesis] walks the database`; the positional example `tusk.dfs(es, "customers", features_only=True)` becomes `tusk.deep_feature_synthesis(db, "customers", features_only=True)`; remaining "entity set" occurrences become "database".
-- `docs/guide/index.md` — the numbered list: "Build an [entity set](entity-sets.md)" becomes "Build a [database](databases.md)"; the link labels "Entity sets" → "Databases" and "Running DFS" → its new path.
+- `docs/guide/index.md` — the numbered list: `Build an [entity set](entity-sets.md)` becomes `Build a [database](databases.md)`; the link labels "Entity sets" → "Databases" and "Running DFS" → its new path.
 - `docs/index.md` and `README.md` — rename the local variable in the usage example from `es` to `db` (and `es_new` to `db_new`) so the snippets match the tests, and update the documentation link list.
 
 - [ ] **Step 5: Extend `docs/guide/featuretools.md`**
