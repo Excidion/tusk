@@ -11,7 +11,7 @@ from typing import Any
 
 import narwhals as nw
 
-from tusk.entityset import EntitySet, Relationship
+from tusk.database import Database, Relationship
 from tusk.exceptions import PrimitiveError, SchemaError
 from tusk.features import (
     AggregationFeature,
@@ -25,14 +25,14 @@ from tusk.features import (
 
 def compile_features(
     features: Sequence[Feature],
-    entityset: EntitySet,
+    database: Database,
     cutoff_time: Any = None,
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
 
     Args:
         features: Features to compute. All must be on the same table.
-        entityset: The entity set holding the frames.
+        database: The database holding the frames.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible. None disables filtering.
 
@@ -56,7 +56,7 @@ def compile_features(
     if len(tables) > 1:
         raise SchemaError(f"features span multiple tables: {sorted(tables)}")
     target = tables.pop()
-    primary_key = entityset.schema(target).primary_key
+    primary_key = database.schema(target).primary_key
     if primary_key is None:
         raise SchemaError(
             f"target table {target!r} needs a primary_key: the feature "
@@ -65,7 +65,7 @@ def compile_features(
 
     _reject_colliding_names(features)
 
-    frame = _table_frame(entityset, target, _closure(features), cutoff_time)
+    frame = _table_frame(database, target, _closure(features), cutoff_time)
     columns = [primary_key]
     for feature in features:
         columns.extend(feature.output_names)
@@ -123,13 +123,13 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
     return out
 
 
-def _base_frame(entityset: EntitySet, table: str, cutoff_time: Any) -> nw.LazyFrame:
+def _base_frame(database: Database, table: str, cutoff_time: Any) -> nw.LazyFrame:
     """Return a table's frame with the cutoff filter applied.
 
     Tables without a ``row_creation_time`` are timeless and pass through
-    unfiltered -- documented rather than warned, per spec section 8. An entity
-    set that declares no ``row_creation_time`` anywhere therefore treats a
-    cutoff as a silent no-op.
+    unfiltered -- documented rather than warned, per spec section 8. A
+    database that declares no ``row_creation_time`` anywhere therefore
+    treats a cutoff as a silent no-op.
 
     The target table is filtered like any other, so a cutoff can leave the
     feature matrix with fewer rows than the target table has. That matches
@@ -137,22 +137,22 @@ def _base_frame(entityset: EntitySet, table: str, cutoff_time: Any) -> nw.LazyFr
     compute.
 
     Args:
-        entityset: The entity set holding the frames.
+        database: The database holding the frames.
         table: Table name.
         cutoff_time: The cutoff, or None.
 
     Returns:
         The filtered lazy frame.
     """
-    frame = entityset.frame(table)
-    row_creation_time = entityset.schema(table).row_creation_time
+    frame = database.frame(table)
+    row_creation_time = database.schema(table).row_creation_time
     if cutoff_time is not None and row_creation_time is not None:
         frame = frame.filter(nw.col(row_creation_time) <= cutoff_time)
     return frame
 
 
 def _table_frame(
-    entityset: EntitySet,
+    database: Database,
     table: str,
     needed: set[Feature],
     cutoff_time: Any,
@@ -164,7 +164,7 @@ def _table_frame(
     depth order, so each one's inputs already exist as columns.
 
     Args:
-        entityset: The entity set holding the frames.
+        database: The database holding the frames.
         table: Table to build.
         needed: Features on this table that must appear as columns.
         cutoff_time: The cutoff, or None.
@@ -180,26 +180,26 @@ def _table_frame(
         SchemaError: If ``needed`` contains a feature type this compiler does
             not know how to compute.
     """
-    frame = _base_frame(entityset, table, cutoff_time)
+    frame = _base_frame(database, table, cutoff_time)
     needed = {f for f in needed if f.table == table}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
     for relationship in dict.fromkeys(f.relationship for f in aggregations):
         batch = [f for f in aggregations if f.relationship == relationship]
         frame = _add_aggregations(
-            frame, entityset, table, relationship, batch, cutoff_time
+            frame, database, table, relationship, batch, cutoff_time
         )
 
     directs = [f for f in needed if isinstance(f, DirectFeature)]
     for relationship in dict.fromkeys(f.relationship for f in directs):
         batch = [f for f in directs if f.relationship == relationship]
-        frame = _add_directs(frame, entityset, relationship, batch, cutoff_time)
+        frame = _add_directs(frame, database, relationship, batch, cutoff_time)
 
     row_wise = [
         f for f in needed if isinstance(f, (TransformFeature, GroupByTransformFeature))
     ]
     for feature in sorted(row_wise, key=lambda f: f.depth):
-        frame = _apply(frame, feature, entityset)
+        frame = _apply(frame, feature, database)
 
     handled = (
         IdentityFeature,
@@ -216,7 +216,7 @@ def _table_frame(
 
 def _add_aggregations(
     frame: nw.LazyFrame,
-    entityset: EntitySet,
+    database: Database,
     table: str,
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
@@ -226,7 +226,7 @@ def _add_aggregations(
 
     Args:
         frame: The parent frame being built.
-        entityset: The entity set holding the frames.
+        database: The database holding the frames.
         table: The parent table's name.
         relationship: The relationship being aggregated across.
         batch: Every aggregation feature using that relationship.
@@ -238,7 +238,7 @@ def _add_aggregations(
     child_needed: set[Feature] = set()
     for feature in batch:
         child_needed.update(_closure(feature.base_features))
-    child = _table_frame(entityset, relationship.child, child_needed, cutoff_time)
+    child = _table_frame(database, relationship.child, child_needed, cutoff_time)
 
     exprs = []
     for feature in batch:
@@ -251,7 +251,7 @@ def _add_aggregations(
     grouped = child.group_by(relationship.foreign_key).agg(*exprs)
     frame = frame.join(
         grouped,
-        left_on=entityset.schema(table).primary_key,
+        left_on=database.schema(table).primary_key,
         right_on=relationship.foreign_key,
         how="left",
     )
@@ -267,7 +267,7 @@ def _add_aggregations(
 
 def _add_directs(
     frame: nw.LazyFrame,
-    entityset: EntitySet,
+    database: Database,
     relationship: Relationship,
     batch: Sequence[DirectFeature],
     cutoff_time: Any,
@@ -276,7 +276,7 @@ def _add_directs(
 
     Args:
         frame: The child frame being built.
-        entityset: The entity set holding the frames.
+        database: The database holding the frames.
         relationship: The relationship being traversed.
         batch: Every direct feature using that relationship.
         cutoff_time: The cutoff, or None.
@@ -287,13 +287,13 @@ def _add_directs(
     Raises:
         SchemaError: If the parent table has no primary key.
     """
-    parent_key = entityset.schema(relationship.parent).primary_key
+    parent_key = database.schema(relationship.parent).primary_key
     if parent_key is None:
         raise SchemaError(f"parent table {relationship.parent!r} needs a primary_key")
     parent_needed: set[Feature] = set()
     for feature in batch:
         parent_needed.update(_closure(feature.base_features))
-    parent = _table_frame(entityset, relationship.parent, parent_needed, cutoff_time)
+    parent = _table_frame(database, relationship.parent, parent_needed, cutoff_time)
 
     selected = [nw.col(parent_key)]
     for feature in batch:
@@ -307,7 +307,7 @@ def _add_directs(
     )
 
 
-def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.LazyFrame:
+def _apply(frame: nw.LazyFrame, feature: Feature, database: Database) -> nw.LazyFrame:
     """Add a row-wise feature's columns to a frame.
 
     Order-dependent primitives are wrapped in ``.over(..., order_by=...)``
@@ -318,7 +318,7 @@ def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.La
     Args:
         frame: The frame to extend.
         feature: The feature to compute.
-        entityset: The entity set, used to find ordering columns.
+        database: The database, used to find ordering columns.
 
     Returns:
         The extended frame.
@@ -338,7 +338,7 @@ def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.La
         else []
     )
     if getattr(feature.primitive, "order_dependent", False):
-        order_by = _order_by(entityset, feature.table, feature.primitive.name)
+        order_by = _order_by(database, feature.table, feature.primitive.name)
         exprs = [e.over(*partition, order_by=order_by) for e in exprs]
     elif partition:
         exprs = [e.over(*partition) for e in exprs]
@@ -347,11 +347,11 @@ def _apply(frame: nw.LazyFrame, feature: Feature, entityset: EntitySet) -> nw.La
     return frame.with_columns(*named)
 
 
-def _order_by(entityset: EntitySet, table: str, primitive_name: str) -> tuple[str, ...]:
+def _order_by(database: Database, table: str, primitive_name: str) -> tuple[str, ...]:
     """Build the ordering key for an order-dependent expression.
 
     Args:
-        entityset: The entity set holding the schemas.
+        database: The database holding the schemas.
         table: The table being ordered.
         primitive_name: Used in the error message.
 
@@ -361,7 +361,7 @@ def _order_by(entityset: EntitySet, table: str, primitive_name: str) -> tuple[st
     Raises:
         PrimitiveError: If the table has no ``row_creation_time``.
     """
-    schema = entityset.schema(table)
+    schema = database.schema(table)
     if schema.row_creation_time is None:
         raise PrimitiveError(
             f"primitive {primitive_name!r} is order-dependent, so table {table!r} "

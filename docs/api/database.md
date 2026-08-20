@@ -1,12 +1,12 @@
-# Entity sets
+# Databases
 
-::: tusk.entityset
+::: tusk.database
     options:
       members: false
 
-## EntitySet
+## Database
 
-::: tusk.EntitySet
+::: tusk.Database
 
 ## Relationship
 

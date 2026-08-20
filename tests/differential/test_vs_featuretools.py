@@ -123,17 +123,17 @@ def _featuretools_matrix(customers, sessions):
 
 
 def _tusk_matrix(customers, sessions):
-    es = (
-        tusk.EntitySet("s")
-        .add_dataframe("customers", pl.from_pandas(customers).lazy(), primary_key="id")
-        .add_dataframe("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
+    db = (
+        tusk.Database("s")
+        .add_table("customers", pl.from_pandas(customers).lazy(), primary_key="id")
+        .add_table("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
         .add_relationship(
             parent="customers", child="sessions", foreign_key="customer_id"
         )
     )
-    matrix, _ = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="customers",
         agg_primitives=list(PRIMITIVES),
         trans_primitives=[],
         max_depth=1,
@@ -282,11 +282,11 @@ def _featuretools_deep(customers, sessions, transactions):
 
 
 def _tusk_deep(customers, sessions, transactions):
-    es = (
-        tusk.EntitySet("d")
-        .add_dataframe("customers", pl.from_pandas(customers).lazy(), primary_key="id")
-        .add_dataframe("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
-        .add_dataframe(
+    db = (
+        tusk.Database("d")
+        .add_table("customers", pl.from_pandas(customers).lazy(), primary_key="id")
+        .add_table("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
+        .add_table(
             "transactions", pl.from_pandas(transactions).lazy(), primary_key="id"
         )
         .add_relationship(
@@ -296,9 +296,9 @@ def _tusk_deep(customers, sessions, transactions):
             parent="sessions", child="transactions", foreign_key="session_id"
         )
     )
-    matrix, _ = tusk.dfs(
-        entityset=es,
-        target_dataframe_name="customers",
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="customers",
         agg_primitives=DEEP_PRIMITIVES,
         trans_primitives=[],
         max_depth=2,

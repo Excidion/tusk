@@ -12,8 +12,8 @@ nav = [
     "index.md",
     { "Guide" = [
         "guide/index.md",
-        "guide/entity-sets.md",
-        "guide/dfs.md",
+        "guide/databases.md",
+        "guide/deep-feature-synthesis.md",
         "guide/primitives.md",
         "guide/custom-primitives.md",
         "guide/featuretools.md",
@@ -21,7 +21,7 @@ nav = [
     { "API reference" = [
         "api/index.md",
         "api/tusk.md",
-        "api/entityset.md",
+        "api/database.md",
         "api/primitives.md",
         "api/features.md",
         "api/dtypes.md",

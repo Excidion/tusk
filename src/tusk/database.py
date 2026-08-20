@@ -1,4 +1,4 @@
-"""The schema model: tables, relationships, and the entity set that holds them."""
+"""The schema model: tables, relationships, and the database that holds them."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ class TableSchema:
     """Everything phase 1 knows about a table.
 
     Attributes:
-        name: Table name within the entity set.
+        name: Table name within the database.
         primary_key: Column uniquely identifying a row, if declared.
         row_creation_time: Column recording when a row became knowable.
         dtypes: Mapping of column name to narwhals dtype.
@@ -47,16 +47,16 @@ class Relationship:
     foreign_key: str
 
 
-class EntitySet:
+class Database:
     """A collection of related tables that DFS can synthesize features over."""
 
-    def __init__(self, id: str) -> None:
-        """Create an empty entity set.
+    def __init__(self, name: str) -> None:
+        """Create an empty database.
 
         Args:
-            id: Human-readable identifier for this entity set.
+            name: Human-readable identifier for this database.
         """
-        self.id = id
+        self.name = name
         self._frames: dict[str, nw.LazyFrame] = {}
         self._schemas: dict[str, TableSchema] = {}
         self._relationships: list[Relationship] = []
@@ -70,28 +70,28 @@ class EntitySet:
 
     @property
     def table_names(self) -> tuple[str, ...]:
-        """Names of every table in the entity set."""
+        """Names of every table in the database."""
         return tuple(self._schemas)
 
-    def add_dataframe(
+    def add_table(
         self,
         name: str,
-        dataframe: Any,
+        table: Any,
         primary_key: str | None = None,
         row_creation_time: str | None = None,
-    ) -> EntitySet:
-        """Add a table to the entity set.
+    ) -> Database:
+        """Add a table to the database.
 
         Args:
             name: Name to register the table under.
-            dataframe: A native frame or a narwhals frame.
+            table: A native frame or a narwhals frame.
             primary_key: Column uniquely identifying a row. Required for a
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
                 Required for order-dependent primitives on this table.
 
         Returns:
-            This entity set, to allow chaining.
+            This database, to allow chaining.
 
         Raises:
             SchemaError: If the name is taken, a declared column is missing,
@@ -101,14 +101,14 @@ class EntitySet:
             MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
         """
         if name in self._schemas:
-            raise SchemaError(f"table {name!r} is already in this entity set")
+            raise SchemaError(f"table {name!r} is already in this database")
         _reject_composite(primary_key, "primary_key")
         _reject_composite(row_creation_time, "row_creation_time")
 
         frame = (
-            dataframe
-            if isinstance(dataframe, (nw.DataFrame, nw.LazyFrame))
-            else nw.from_native(dataframe)
+            table
+            if isinstance(table, (nw.DataFrame, nw.LazyFrame))
+            else nw.from_native(table)
         )
         is_eager = isinstance(frame, nw.DataFrame)
         lazy = frame.lazy() if is_eager else frame
@@ -119,7 +119,7 @@ class EntitySet:
         elif lazy.implementation != self._backend:
             raise SchemaError(
                 f"table {name!r} uses backend {lazy.implementation}, but this "
-                f"entity set uses {self._backend}; narwhals cannot join across backends"
+                f"database uses {self._backend}; narwhals cannot join across backends"
             )
 
         dtypes = dict(lazy.collect_schema())
@@ -143,7 +143,7 @@ class EntitySet:
         self._schemas[name] = TableSchema(name, primary_key, row_creation_time, dtypes)
         return self
 
-    def add_relationship(self, parent: str, child: str, foreign_key: str) -> EntitySet:
+    def add_relationship(self, parent: str, child: str, foreign_key: str) -> Database:
         """Link a parent table to a child table.
 
         Args:
@@ -152,7 +152,7 @@ class EntitySet:
             foreign_key: The child's column pointing at the parent's primary key.
 
         Returns:
-            This entity set, to allow chaining.
+            This database, to allow chaining.
 
         Raises:
             SchemaError: If a table is unknown, the parent has no primary key,

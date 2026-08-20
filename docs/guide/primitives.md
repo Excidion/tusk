@@ -78,9 +78,9 @@ InvalidOperationError: Cannot apply over to elementwise expression
 Passing one of these in `groupby_trans_primitives` therefore fails — but at
 expression-build time, not later at `.collect()`, so you learn immediately
 rather than after a long query. The failure surfaces synchronously out of
-`dfs()` only when it compiles, i.e. `features_only=False`; with
+`deep_feature_synthesis()` only when it compiles, i.e. `features_only=False`; with
 `features_only=True` synthesis happily emits the definition and the error waits
-until you call `calculate_feature_matrix()` on it.
+until you call `apply_features()` on it.
 
 This leaves the grouped, non-order-dependent path reachable only by
 user-defined primitives — that's [the intended extension

@@ -13,8 +13,8 @@ from collections.abc import Iterable, Sequence
 
 import narwhals as nw
 
+from tusk.database import Database, Relationship
 from tusk.dtypes import DtypeFamily, matches
-from tusk.entityset import EntitySet, Relationship
 from tusk.exceptions import (
     CategoricalDtypeWarning,
     PrimitiveError,
@@ -33,8 +33,8 @@ from tusk.primitives.registry import resolve_all
 
 
 def synthesize(
-    entityset: EntitySet,
-    target_dataframe_name: str,
+    database: Database,
+    target_table: str,
     agg_primitives: Iterable[str | Primitive],
     trans_primitives: Iterable[str | Primitive],
     groupby_trans_primitives: Iterable[str | Primitive],
@@ -43,8 +43,8 @@ def synthesize(
     """Generate feature definitions for a target table.
 
     Args:
-        entityset: The schema to walk.
-        target_dataframe_name: Table to build features for.
+        database: The schema to walk.
+        target_table: Table to build features for.
         agg_primitives: Aggregation primitives, as names or instances.
         trans_primitives: Transform primitives, as names or instances.
         groupby_trans_primitives: Transform primitives applied within
@@ -53,7 +53,7 @@ def synthesize(
 
     Returns:
         Feature definitions on the target table, deduplicated and excluding the
-        target's own key columns; ``entityset.schema()`` raises
+        target's own key columns; ``database.schema()`` raises
         :class:`~tusk.exceptions.SchemaError` if the target table is unknown.
 
     Warns:
@@ -62,16 +62,16 @@ def synthesize(
         UnmatchedPrimitiveWarning: If a requested primitive matched no column
             of its input dtypes anywhere in the walk.
     """
-    entityset.schema(target_dataframe_name)
+    database.schema(target_table)
     context = _Context(
-        entityset=entityset,
+        database=database,
         agg=resolve_all(agg_primitives),
         trans=resolve_all(trans_primitives),
         groupby=resolve_all(groupby_trans_primitives),
     )
-    features = context.build(target_dataframe_name, max_depth, ())
+    features = context.build(target_table, max_depth, ())
     context.warn_unmatched()
-    keys = entityset.output_excluded_columns(target_dataframe_name)
+    keys = database.output_excluded_columns(target_table)
     kept = [
         f for f in features if not (isinstance(f, IdentityFeature) and f.column in keys)
     ]
@@ -79,11 +79,11 @@ def synthesize(
 
 
 class _Context:
-    """Carries the entity set and resolved primitives through the recursion."""
+    """Carries the database and resolved primitives through the recursion."""
 
     def __init__(
         self,
-        entityset: EntitySet,
+        database: Database,
         agg: Sequence[Primitive],
         trans: Sequence[Primitive],
         groupby: Sequence[Primitive],
@@ -91,12 +91,12 @@ class _Context:
         """Store the walk's inputs.
 
         Args:
-            entityset: The schema to walk.
+            database: The schema to walk.
             agg: Resolved aggregation primitives.
             trans: Resolved transform primitives.
             groupby: Resolved groupby-transform primitives.
         """
-        self.entityset = entityset
+        self.database = database
         self.agg = agg
         self.trans = trans
         self.groupby = groupby
@@ -117,7 +117,7 @@ class _Context:
         Returns:
             Feature definitions on the table, deduplicated.
         """
-        schema = self.entityset.schema(table)
+        schema = self.database.schema(table)
         features: list[Feature] = [
             IdentityFeature(table, column, dtype)
             for column, dtype in schema.dtypes.items()
@@ -147,7 +147,7 @@ class _Context:
             Aggregation features on the table.
         """
         out: list[Feature] = []
-        for rel in self.entityset.children_of(table):
+        for rel in self.database.children_of(table):
             if rel in path:
                 continue
             child_features = self.build(rel.child, depth_limit - 1, path + (rel,))
@@ -174,10 +174,10 @@ class _Context:
             Direct features on the table.
         """
         out: list[Feature] = []
-        for rel in self.entityset.parents_of(table):
+        for rel in self.database.parents_of(table):
             if rel in path:
                 continue
-            excluded_outputs = self.entityset.output_excluded_columns(rel.parent)
+            excluded_outputs = self.database.output_excluded_columns(rel.parent)
             for base in self._usable(
                 rel.parent, self.build(rel.parent, depth_limit - 1, path + (rel,))
             ):
@@ -251,7 +251,7 @@ class _Context:
             return []
         usable = self._usable(table, existing)
         out: list[Feature] = []
-        for rel in self.entityset.parents_of(table):
+        for rel in self.database.parents_of(table):
             if rel in path:
                 continue
             for primitive in self.groupby:
@@ -266,9 +266,9 @@ class _Context:
         """Warn about requested primitives that matched nothing anywhere.
 
         Skipping is the right behaviour -- raising would break a
-        zero-configuration ``dfs()`` on any schema missing a dtype family --
-        but skipping silently leaves the user with a primitive they asked for,
-        no column, and no explanation.
+        zero-configuration ``deep_feature_synthesis()`` on any schema missing
+        a dtype family -- but skipping silently leaves the user with a
+        primitive they asked for, no column, and no explanation.
 
         A primitive that produced features somewhere is not reported: it being
         inapplicable to one particular table is ordinary, and warning about it
@@ -338,7 +338,7 @@ class _Context:
         """
         if not getattr(primitive, "order_dependent", False):
             return
-        if self.entityset.schema(table).row_creation_time is None:
+        if self.database.schema(table).row_creation_time is None:
             raise PrimitiveError(
                 f"primitive {primitive.name!r} is order-dependent, so table "
                 f"{table!r} needs a row_creation_time"
@@ -352,7 +352,7 @@ class _Context:
         is what makes ``MONTH(signed_up_at)``-style temporal transforms, and
         ``N_UNIQUE`` or ``CUM_COUNT`` over a temporal column, reachable. It is
         dropped later, from the matrix's raw passthrough columns only (see
-        :meth:`~tusk.entityset.EntitySet.output_excluded_columns`).
+        :meth:`~tusk.database.Database.output_excluded_columns`).
 
         Args:
             table: The table the features belong to.
@@ -361,7 +361,7 @@ class _Context:
         Returns:
             Features usable as primitive inputs.
         """
-        keys = self.entityset.input_excluded_columns(table)
+        keys = self.database.input_excluded_columns(table)
         return [
             f
             for f in features

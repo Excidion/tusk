@@ -1,12 +1,13 @@
 # Running DFS
 
-[`dfs()`][tusk.dfs] walks the entity set from a target table, stacking
-primitives up to `max_depth`, and returns a `(feature_matrix, features)` tuple.
+[`deep_feature_synthesis()`][tusk.deep_feature_synthesis] walks the database
+from a target table, stacking primitives up to `max_depth`, and returns a
+`(feature_matrix, features)` tuple.
 
 ```python
-feature_matrix, features = tusk.dfs(
-    entityset=es,
-    target_dataframe_name="customers",
+feature_matrix, features = tusk.deep_feature_synthesis(
+    database=db,
+    target_table="customers",
     agg_primitives=["mean", "count"],
     trans_primitives=["month", "weekday"],
     max_depth=2,
@@ -30,13 +31,12 @@ the only one in the library.
 definitions, skipping compilation entirely. Feed them back later:
 
 ```python
-features = tusk.dfs(es, "customers", features_only=True)
-matrix = tusk.calculate_feature_matrix(features, es_new)
+features = tusk.deep_feature_synthesis(db, "customers", features_only=True)
+matrix = tusk.apply_features(features, db_new)
 ```
 
 This is how you apply a feature set fitted on training data to new data. All
-features passed to
-[`calculate_feature_matrix()`][tusk.calculate_feature_matrix] must share one
+features passed to [`apply_features()`][tusk.apply_features] must share one
 target table.
 
 ## Cutoff times
@@ -48,7 +48,7 @@ It filters the target table too, so the matrix can have fewer rows than the
 target — a row that did not exist yet at the cutoff has no features to compute.
 
 Tables with no `row_creation_time` are timeless and pass through unfiltered, so
-a cutoff on an entity set that declares none is silently a no-op.
+a cutoff on a database that declares none is silently a no-op.
 
 With `features_only=True` the cutoff is ignored entirely, since nothing is
 computed and feature definitions do not record it.
@@ -73,7 +73,7 @@ a name, so the conventional form is unusable there. Every construct joins with
 The conventional form is kept on
 [`Feature.display_name`][tusk.features.Feature.display_name] for logs, docs and
 error messages. If a source column name collides with a generated one,
-`calculate_feature_matrix` raises rather than silently dropping a column.
+`apply_features` raises rather than silently dropping a column.
 
 ## Warnings
 
@@ -82,7 +82,7 @@ DFS reports what it quietly skipped rather than failing:
 - [`UnmatchedPrimitiveWarning`][tusk.exceptions.UnmatchedPrimitiveWarning] — a
   requested primitive matched no column of its input dtypes anywhere in the
   walk. Skipping is correct, since raising would break a zero-configuration
-  `dfs()` on any schema that happens to lack a dtype family; skipping
+  `deep_feature_synthesis()` on any schema that happens to lack a dtype family; skipping
   *silently* is not.
 - [`CategoricalDtypeWarning`][tusk.exceptions.CategoricalDtypeWarning] — a
   Categorical or Enum column was skipped because the primitive requires a

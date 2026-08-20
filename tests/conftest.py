@@ -58,18 +58,18 @@ def _frames():
 
 
 @pytest.fixture
-def es():
-    """A three-table retail entity set."""
+def db():
+    """A three-table retail database."""
     customers, sessions, transactions = _frames()
     return (
-        tusk.EntitySet("retail")
-        .add_dataframe(
+        tusk.Database("retail")
+        .add_table(
             "customers", customers, primary_key="id", row_creation_time="signed_up_at"
         )
-        .add_dataframe(
+        .add_table(
             "sessions", sessions, primary_key="id", row_creation_time="started_at"
         )
-        .add_dataframe(
+        .add_table(
             "transactions",
             transactions,
             primary_key="id",

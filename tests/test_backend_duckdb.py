@@ -20,15 +20,15 @@ duckdb = pytest.importorskip("duckdb")
 
 
 @pytest.fixture
-def duck_es():
-    """The three-table retail entity set, backed by duckdb relations.
+def duck_db():
+    """The three-table retail database, backed by duckdb relations.
 
-    Mirrors the shape of the polars ``es`` fixture in ``conftest``: customer 1
+    Mirrors the shape of the polars ``db`` fixture in ``conftest``: customer 1
     has two sessions, customer 2 has one session with no transactions, and
     customer 3 has none at all.
 
     Returns:
-        A tuple of the EntitySet and the duckdb connection backing it.
+        A tuple of the Database and the duckdb connection backing it.
     """
     con = duckdb.connect()
     con.execute(
@@ -49,21 +49,21 @@ def duck_es():
         "(103, 20, 20.0, TIMESTAMP '2024-03-05 02:00')) "
         "t(id, session_id, amount, occurred_at)"
     )
-    entityset = (
-        tusk.EntitySet("retail")
-        .add_dataframe(
+    database = (
+        tusk.Database("retail")
+        .add_table(
             "customers",
             nw.from_native(con.sql("SELECT * FROM customers")),
             primary_key="id",
             row_creation_time="signed_up_at",
         )
-        .add_dataframe(
+        .add_table(
             "sessions",
             nw.from_native(con.sql("SELECT * FROM sessions")),
             primary_key="id",
             row_creation_time="started_at",
         )
-        .add_dataframe(
+        .add_table(
             "transactions",
             nw.from_native(con.sql("SELECT * FROM transactions")),
             primary_key="id",
@@ -76,11 +76,11 @@ def duck_es():
             parent="sessions", child="transactions", foreign_key="session_id"
         )
     )
-    return entityset, con
+    return database, con
 
 
 @pytest.mark.parametrize("target", ["customers", "sessions", "transactions"])
-def test_every_generated_name_is_a_sql_identifier(duck_es, target):
+def test_every_generated_name_is_a_sql_identifier(duck_db, target):
     """No feature name carries a character SQL would parse as syntax.
 
     Every target is covered because the feature kinds are not evenly spread:
@@ -88,13 +88,13 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
     direct features that carry the parent's name into the column.
 
     Args:
-        duck_es: The duckdb-backed entity set.
+        duck_db: The duckdb-backed database.
         target: Table to synthesize features for.
     """
-    entityset, _ = duck_es
-    features = tusk.dfs(
-        entityset=entityset,
-        target_dataframe_name=target,
+    database, _ = duck_db
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table=target,
         max_depth=2,
         features_only=True,
     )
@@ -104,7 +104,7 @@ def test_every_generated_name_is_a_sql_identifier(duck_es, target):
             assert name.replace("_", "").isalnum(), name
 
 
-def test_depth_two_matrix_computes_on_duckdb(duck_es):
+def test_depth_two_matrix_computes_on_duckdb(duck_db):
     """A stacked aggregation holds the right value on a SQL backend.
 
     Customer 1's sessions average 2.0 and 15.0, so the mean of those means is
@@ -112,18 +112,18 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
     sessions, so both are null.
 
     Args:
-        duck_es: The duckdb-backed entity set.
+        duck_db: The duckdb-backed database.
     """
-    entityset, _ = duck_es
-    features = tusk.dfs(
-        entityset=entityset,
-        target_dataframe_name="customers",
+    database, _ = duck_db
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="customers",
         max_depth=2,
         agg_primitives=["mean"],
         trans_primitives=[],
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, entityset).pl()
+    matrix = tusk.apply_features(features, database).pl()
     row = {r["id"]: r for r in matrix.to_dicts()}
     stacked = "MEAN__sessions__MEAN__transactions__amount"
     assert stacked in matrix.columns
@@ -132,21 +132,21 @@ def test_depth_two_matrix_computes_on_duckdb(duck_es):
     assert row[3][stacked] is None
 
 
-def test_direct_feature_crosses_a_join_on_duckdb(duck_es):
+def test_direct_feature_crosses_a_join_on_duckdb(duck_db):
     """A parent column copied down keeps its value through a SQL join.
 
     Args:
-        duck_es: The duckdb-backed entity set.
+        duck_db: The duckdb-backed database.
     """
-    entityset, _ = duck_es
-    features = tusk.dfs(
-        entityset=entityset,
-        target_dataframe_name="sessions",
+    database, _ = duck_db
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="sessions",
         max_depth=1,
         agg_primitives=[],
         trans_primitives=[],
         features_only=True,
     )
-    matrix = tusk.calculate_feature_matrix(features, entityset).pl()
+    matrix = tusk.apply_features(features, database).pl()
     ages = {r["id"]: r["customers__age"] for r in matrix.to_dicts()}
     assert ages == {10: 30, 20: 30, 30: 40}

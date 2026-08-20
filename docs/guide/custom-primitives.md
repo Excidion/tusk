@@ -23,8 +23,8 @@ class Range(AggregationPrimitive):
         return expr.max() - expr.min()
 ```
 
-Then pass `"range"` or `Range()` to `dfs()`. Parameters are ordinary dataclass
-fields.
+Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
+ordinary dataclass fields.
 
 There is no second, shorter way to declare one. Every built-in primitive is a
 frozen dataclass written out like this, so `Year` and `Count` are the same kind

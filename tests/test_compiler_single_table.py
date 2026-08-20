@@ -11,37 +11,37 @@ from tusk.features import IdentityFeature, TransformFeature
 from tusk.primitives.registry import resolve
 
 
-def test_identity_features_round_trip(es):
+def test_identity_features_round_trip(db):
     age = IdentityFeature("customers", "age", nw.Int64())
-    got = compile_features([age], es).collect().to_native().sort("id")
+    got = compile_features([age], db).collect().to_native().sort("id")
     assert got.columns == ["id", "age"]
     assert got["age"].to_list() == [30, 40, 50]
 
 
-def test_transform_feature_is_computed(es):
+def test_transform_feature_is_computed(db):
     started = IdentityFeature("sessions", "started_at", nw.Datetime())
     feature = TransformFeature(resolve("day"), (started,))
-    got = compile_features([feature], es).collect().to_native().sort("id")
+    got = compile_features([feature], db).collect().to_native().sort("id")
     assert got["DAY__started_at"].to_list() == [4, 5, 6]
 
 
-def test_stacked_transform_is_computed(es):
+def test_stacked_transform_is_computed(db):
     started = IdentityFeature("sessions", "started_at", nw.Datetime())
     day = TransformFeature(resolve("day"), (started,))
     doubled = TransformFeature(resolve("add_numeric"), (day, day))
-    got = compile_features([day, doubled], es).collect().to_native().sort("id")
+    got = compile_features([day, doubled], db).collect().to_native().sort("id")
     assert got["ADD_NUMERIC__DAY__started_at__DAY__started_at"].to_list() == [8, 10, 12]
 
 
-def test_cutoff_filters_rows(es):
+def test_cutoff_filters_rows(db):
     started = IdentityFeature("sessions", "started_at", nw.Datetime())
     feature = TransformFeature(resolve("day"), (started,))
-    compiled = compile_features([feature], es, cutoff_time=dt.datetime(2024, 3, 5))
+    compiled = compile_features([feature], db, cutoff_time=dt.datetime(2024, 3, 5))
     got = compiled.collect().to_native()
     assert got["id"].to_list() == [10, 20]
 
 
-def test_cutoff_filters_the_target_table_too(es):
+def test_cutoff_filters_the_target_table_too(db):
     """The matrix can have fewer rows than the target table. This is intended.
 
     A target row that did not exist yet at the cutoff has no features to
@@ -49,18 +49,18 @@ def test_cutoff_filters_the_target_table_too(es):
     """
     age = IdentityFeature("customers", "age", nw.Int64())
     before_any_signup = dt.datetime(2023, 12, 31)
-    got = compile_features([age], es, cutoff_time=before_any_signup).collect()
+    got = compile_features([age], db, cutoff_time=before_any_signup).collect()
     assert got.to_native().height == 0
 
 
 def test_cutoff_is_a_no_op_without_a_row_creation_time():
     """A table with no row_creation_time is timeless and passes through.
 
-    Documented rather than warned (spec section 8), so an entity set that
+    Documented rather than warned (spec section 8), so a database that
     declares no row_creation_time anywhere silently ignores a cutoff. This is
     the branch a user is most likely to be surprised by, so it is pinned.
     """
-    timeless = tusk.EntitySet("t").add_dataframe(
+    timeless = tusk.Database("t").add_table(
         "events",
         pl.LazyFrame({"id": [1, 2, 3], "n": [1.0, 2.0, 3.0]}),
         primary_key="id",
@@ -72,28 +72,28 @@ def test_cutoff_is_a_no_op_without_a_row_creation_time():
     assert got.to_native()["n"].to_list() == [1.0, 2.0, 3.0]
 
 
-def test_empty_feature_list_raises(es):
+def test_empty_feature_list_raises(db):
     with pytest.raises(SchemaError, match="no features"):
-        compile_features([], es)
+        compile_features([], db)
 
 
-def test_features_spanning_multiple_tables_raise(es):
+def test_features_spanning_multiple_tables_raise(db):
     age = IdentityFeature("customers", "age", nw.Int64())
     started = IdentityFeature("sessions", "started_at", nw.Datetime())
     with pytest.raises(SchemaError, match="customers.*sessions"):
-        compile_features([age, started], es)
+        compile_features([age, started], db)
 
 
 def test_target_without_a_primary_key_raises():
     with pytest.warns(MissingPrimaryKeyWarning):
-        es = tusk.EntitySet("t").add_dataframe(
+        db = tusk.Database("t").add_table(
             "events", pl.LazyFrame({"id": [1], "n": [1.0]})
         )
     feature = IdentityFeature("events", "n", nw.Float64())
     with pytest.raises(SchemaError, match="primary_key"):
-        compile_features([feature], es)
+        compile_features([feature], db)
 
 
-def test_result_stays_lazy(es):
+def test_result_stays_lazy(db):
     age = IdentityFeature("customers", "age", nw.Int64())
-    assert isinstance(compile_features([age], es), nw.LazyFrame)
+    assert isinstance(compile_features([age], db), nw.LazyFrame)

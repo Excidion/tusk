@@ -4,10 +4,10 @@
     options:
       members: false
 
-## dfs
+## deep_feature_synthesis
 
-::: tusk.dfs
+::: tusk.deep_feature_synthesis
 
-## calculate_feature_matrix
+## apply_features
 
-::: tusk.calculate_feature_matrix
+::: tusk.apply_features
