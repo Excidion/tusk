@@ -160,3 +160,16 @@ def test_uniqueness_check_runs_on_duckdb(duck_db):
     with pytest.raises(tusk.exceptions.ValidationError, match="not unique"):
         db.add_table("dupes", con.table("dupes"), primary_key="id", validate=True)
     assert "dupes" not in db.table_names
+
+
+def test_empty_relation_passes_uniqueness_on_duckdb(duck_db):
+    # narwhals lowers n_unique on SQL backends to
+    # count_distinct(x) + max(x IS NULL). MAX() over zero rows is SQL NULL,
+    # so an empty duckdb relation used to make the distinct count come back
+    # as None, and 0 == None is False -- a false ValidationError on data with
+    # no rows to contradict the declaration. polars cannot reproduce this: it
+    # returns 0 distinct values for the same empty frame, not None.
+    db, con = duck_db
+    con.execute("CREATE TABLE empty (id INTEGER)")
+    db.add_table("empty", con.table("empty"), primary_key="id", validate=True)
+    assert "empty" in db.table_names

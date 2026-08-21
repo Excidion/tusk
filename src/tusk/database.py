@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -98,7 +98,7 @@ class Database:
                 names runs those. See :func:`tusk.validation.validate_table`.
                 A requested check raising :class:`~tusk.exceptions.ValidationError`
                 aborts the call before the table is registered, and an unknown
-                check name raises :class:`ValueError`.
+                check name or an invalid selector raises :class:`ValueError`.
 
         Returns:
             This database, to allow chaining.
@@ -123,9 +123,13 @@ class Database:
         is_eager = isinstance(frame, nw.DataFrame)
         lazy = frame.lazy() if is_eager else frame
 
+        # Backend and eagerness are only assigned once validation passes, so a
+        # caught ValidationError leaves this database exactly as it was --
+        # otherwise a failed first add_table would silently rewrite an empty
+        # database's backend, rejecting frames it should still accept.
+        backend, was_eager = self._backend, self._is_eager
         if self._backend is None:
-            self._backend = lazy.implementation
-            self._is_eager = is_eager
+            backend, was_eager = lazy.implementation, is_eager
         elif lazy.implementation != self._backend:
             raise SchemaError(
                 f"table {name!r} uses backend {lazy.implementation}, but this "
@@ -154,6 +158,8 @@ class Database:
 
         self._frames[name] = lazy
         self._schemas[name] = schema
+        self._backend = backend
+        self._is_eager = was_eager
         return self
 
     def add_relationship(self, parent: str, child: str, foreign_key: str) -> Database:
@@ -194,7 +200,7 @@ class Database:
         real queries against the data. Running the checks may raise
         :class:`~tusk.exceptions.ValidationError` if a check finds a defect
         in a table's data, or :class:`ValueError` if ``checks`` names a check
-        that does not exist.
+        that does not exist or is not a recognized selector form.
 
         Args:
             checks: Which checks to run. ``True`` (the default) runs every
@@ -204,6 +210,12 @@ class Database:
         Returns:
             This database, to allow chaining.
         """
+        # A non-bool, non-str selector may be a one-shot iterable (a
+        # generator), which validate_table's resolve_checks would exhaust
+        # after the first table, silently skipping every table after it.
+        # Materializing it once here makes a generator behave like a list.
+        if not isinstance(checks, (bool, str)) and isinstance(checks, Iterable):
+            checks = tuple(checks)
         for name, schema in self._schemas.items():
             validate_table(self._frames[name], schema, checks)
         return self

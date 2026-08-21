@@ -60,6 +60,14 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
 
     counts = frame.select(total=nw.len(), distinct=nw.col(key).n_unique()).collect()
     total, distinct = counts["total"].item(), counts["distinct"].item()
+    if total <= 1:
+        # narwhals lowers n_unique on SQL backends to
+        # count_distinct(x) + max(x IS NULL); MAX() over zero rows is SQL
+        # NULL, so an empty relation makes `distinct` come back as None and
+        # `total == distinct` would be `0 == None` -> a false positive. Zero
+        # or one row cannot hold a duplicate regardless, so return early and
+        # never reach that comparison.
+        return
     if total == distinct:
         return
 
@@ -99,12 +107,23 @@ def resolve_checks(selector: Checks) -> tuple[Check, ...]:
         The selected checks, in registry order.
 
     Raises:
-        ValueError: If a name is not in :data:`CHECKS`.
+        ValueError: If ``selector`` is not a recognized selector form, or
+            names a check that is not in :data:`CHECKS`.
     """
     if isinstance(selector, bool):
         return tuple(CHECKS.values()) if selector else ()
 
-    names = {selector} if isinstance(selector, str) else set(selector)
+    if isinstance(selector, str):
+        names = {selector}
+    elif isinstance(selector, Iterable):
+        names = set(selector)
+    else:
+        available = ", ".join(repr(name) for name in CHECKS)
+        raise ValueError(
+            f"invalid checks selector {selector!r}; expected bool, str, or an "
+            f"iterable of check names; available checks: {available}"
+        )
+
     unknown = sorted(names - set(CHECKS))
     if unknown:
         listed = ", ".join(repr(name) for name in unknown)

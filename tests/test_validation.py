@@ -1,5 +1,6 @@
 import narwhals as nw
 import polars as pl
+import pyarrow as pa
 import pytest
 
 import tusk
@@ -112,6 +113,16 @@ def test_an_unknown_check_name_is_not_a_validation_error():
     assert not isinstance(excinfo.value, TuskError)
 
 
+@pytest.mark.parametrize("selector", [None, 1])
+def test_an_invalid_selector_raises_value_error_not_type_error(selector):
+    # A non-bool, non-str, non-iterable selector must get the same clear
+    # ValueError treatment as an unknown check name, not a raw TypeError
+    # leaking out of `set()`.
+    with pytest.raises(ValueError, match="unique_primary_key") as excinfo:
+        resolve_checks(selector)
+    assert not isinstance(excinfo.value, TuskError)
+
+
 @pytest.fixture
 def spy(monkeypatch):
     """Replace the registry with a recorder, so plumbing is observable."""
@@ -202,3 +213,33 @@ def test_unknown_check_names_reach_both_entry_points():
     db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
     with pytest.raises(ValueError, match="unknown check"):
         db.validate("nope")
+
+
+def test_database_validate_with_a_generator_checks_every_table():
+    # A generator is a one-shot iterable: if the selector were re-resolved
+    # per table, table 'b' -- the one with the actual duplicate -- would see
+    # an already-exhausted generator and silently pass.
+    db = (
+        tusk.Database("x")
+        .add_table("a", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table("b", dupes(), primary_key="id")
+    )
+    with pytest.raises(ValidationError, match="'b'"):
+        db.validate(n for n in ["unique_primary_key"])
+
+
+def test_a_failed_add_table_of_the_first_table_still_accepts_other_backends():
+    db = tusk.Database("x")
+    with pytest.raises(ValidationError):
+        db.add_table("t", pa.table({"id": [1, 1, 2]}), primary_key="id", validate=True)
+
+    # The failed add must not have pinned the database to pyarrow's backend.
+    db.add_table("ok", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+    assert db.table_names == ("ok",)
+
+
+def test_a_failed_add_table_of_an_eager_frame_leaves_is_eager_false():
+    db = tusk.Database("x")
+    with pytest.raises(ValidationError):
+        db.add_table("t", pl.DataFrame({"id": [1, 1]}), primary_key="id", validate=True)
+    assert db.is_eager is False
