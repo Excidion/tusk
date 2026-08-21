@@ -2,6 +2,7 @@ import narwhals as nw
 import polars as pl
 import pytest
 
+import tusk
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
@@ -109,3 +110,95 @@ def test_an_unknown_check_name_is_not_a_validation_error():
     with pytest.raises(ValueError) as excinfo:
         resolve_checks(["unique_primary_key", "nope"])
     assert not isinstance(excinfo.value, TuskError)
+
+
+@pytest.fixture
+def spy(monkeypatch):
+    """Replace the registry with a recorder, so plumbing is observable."""
+    calls = []
+    monkeypatch.setattr(
+        "tusk.validation.CHECKS",
+        {"unique_primary_key": lambda f, s: calls.append(s.name)},
+    )
+    return calls
+
+
+def dupes():
+    return pl.LazyFrame({"id": [7, 7, 12], "v": [1.0, 2.0, 3.0]})
+
+
+def test_add_table_does_not_validate_by_default(spy):
+    db = tusk.Database("x").add_table("t", dupes(), primary_key="id")
+    assert spy == []
+    assert db.table_names == ("t",)
+
+
+def test_add_table_validates_when_asked(spy):
+    tusk.Database("x").add_table("t", dupes(), primary_key="id", validate=True)
+    assert spy == ["t"]
+
+
+def test_add_table_accepts_every_selector_form():
+    for selector in (True, "unique_primary_key", ["unique_primary_key"]):
+        with pytest.raises(ValidationError, match="not unique"):
+            tusk.Database("x").add_table(
+                "t", dupes(), primary_key="id", validate=selector
+            )
+
+
+def test_a_failed_add_table_leaves_the_database_unchanged():
+    db = tusk.Database("x")
+    with pytest.raises(ValidationError):
+        db.add_table("t", dupes(), primary_key="id", validate=True)
+    assert db.table_names == ()
+    with pytest.raises(tusk.exceptions.SchemaError):
+        db.frame("t")
+
+
+def test_schema_errors_still_precede_validation():
+    # A primary_key that is not a column must stay a SchemaError; querying a
+    # column that does not exist would report it as something else.
+    with pytest.raises(tusk.exceptions.SchemaError, match="nope"):
+        tusk.Database("x").add_table("t", dupes(), primary_key="nope", validate=True)
+
+
+def test_database_validate_runs_every_table_in_insertion_order(spy):
+    db = (
+        tusk.Database("x")
+        .add_table("a", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table("b", pl.LazyFrame({"id": [2]}), primary_key="id")
+    )
+    assert db.validate() is db
+    assert spy == ["a", "b"]
+
+
+def test_database_validate_reports_the_offending_table():
+    db = (
+        tusk.Database("x")
+        .add_table("a", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table("b", dupes(), primary_key="id")
+    )
+    with pytest.raises(ValidationError, match="'b'"):
+        db.validate()
+
+
+def test_database_validate_false_is_a_no_op(spy):
+    db = tusk.Database("x").add_table("t", dupes(), primary_key="id")
+    assert db.validate(False) is db
+    assert spy == []
+
+
+def test_database_validate_skips_a_keyless_table():
+    with pytest.warns(tusk.exceptions.MissingPrimaryKeyWarning):
+        db = tusk.Database("x").add_table("t", dupes())
+    assert db.validate() is db
+
+
+def test_unknown_check_names_reach_both_entry_points():
+    with pytest.raises(ValueError, match="unknown check"):
+        tusk.Database("x").add_table(
+            "t", pl.LazyFrame({"id": [1]}), primary_key="id", validate="nope"
+        )
+    db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
+    with pytest.raises(ValueError, match="unknown check"):
+        db.validate("nope")

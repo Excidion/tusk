@@ -10,6 +10,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
+from tusk.validation import Checks, validate_table
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,8 @@ class Database:
         table: Any,
         primary_key: str | None = None,
         row_creation_time: str | None = None,
+        *,
+        validate: Checks = False,
     ) -> Database:
         """Add a table to the database.
 
@@ -89,6 +92,13 @@ class Database:
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
                 Required for order-dependent primitives on this table.
+            validate: Which validation checks to run against the data before
+                registering the table. ``False`` (the default) runs none and
+                reads no rows; ``True`` runs every check; a name or list of
+                names runs those. See :func:`tusk.validation.validate_table`.
+                A requested check raising :class:`~tusk.exceptions.ValidationError`
+                aborts the call before the table is registered, and an unknown
+                check name raises :class:`ValueError`.
 
         Returns:
             This database, to allow chaining.
@@ -139,8 +149,11 @@ class Database:
                 stacklevel=2,
             )
 
+        schema = TableSchema(name, primary_key, row_creation_time, dtypes)
+        validate_table(lazy, schema, validate)
+
         self._frames[name] = lazy
-        self._schemas[name] = TableSchema(name, primary_key, row_creation_time, dtypes)
+        self._schemas[name] = schema
         return self
 
     def add_relationship(self, parent: str, child: str, foreign_key: str) -> Database:
@@ -169,6 +182,30 @@ class Database:
                 f"child table {child!r} is missing foreign_key column {foreign_key!r}"
             )
         self._relationships.append(Relationship(parent, child, foreign_key))
+        return self
+
+    def validate(self, checks: Checks = True) -> Database:
+        """Run validation checks against every table in the database.
+
+        Tables are checked in insertion order and the first failure raises, so
+        a database with several defects reports the earliest one.
+
+        Unlike the rest of the schema layer, this reads rows: each check runs
+        real queries against the data. Running the checks may raise
+        :class:`~tusk.exceptions.ValidationError` if a check finds a defect
+        in a table's data, or :class:`ValueError` if ``checks`` names a check
+        that does not exist.
+
+        Args:
+            checks: Which checks to run. ``True`` (the default) runs every
+                check; ``False`` runs none; a name or list of names runs
+                those. See :func:`tusk.validation.validate_table`.
+
+        Returns:
+            This database, to allow chaining.
+        """
+        for name, schema in self._schemas.items():
+            validate_table(self._frames[name], schema, checks)
         return self
 
     def schema(self, name: str) -> TableSchema:
