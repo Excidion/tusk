@@ -15,6 +15,19 @@ class PrimitiveError(TuskError):
     """Raised when a primitive is unknown or cannot be applied."""
 
 
+class ValidationError(TuskError):
+    """Raised when a validation check finds a defect in a table's data.
+
+    Distinct from :class:`SchemaError`, which reports a malformed database
+    before any row is read. A ``ValidationError`` means the declarations are
+    well-formed but the data contradicts them.
+
+    An unknown check *name* is a caller mistake rather than a data defect and
+    raises :class:`ValueError`, so ``except ValidationError`` never silently
+    swallows a typo.
+    """
+
+
 class MissingPrimaryKeyWarning(UserWarning):
     """Warns that a table without a primary key has reduced capabilities."""
 
