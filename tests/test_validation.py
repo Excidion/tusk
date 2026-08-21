@@ -66,7 +66,14 @@ def test_validate_table_runs_nothing_when_false():
 
 
 @pytest.mark.parametrize(
-    "selector", [True, "unique_primary_key", ["unique_primary_key"]]
+    "selector",
+    [
+        True,
+        "unique_primary_key",
+        ["unique_primary_key"],
+        ("unique_primary_key",),
+        {"unique_primary_key"},
+    ],
 )
 def test_every_selector_form_runs_the_check(selector):
     with pytest.raises(ValidationError, match="not unique"):
@@ -105,25 +112,26 @@ def test_an_unknown_check_name_is_not_a_validation_error():
     assert not isinstance(excinfo.value, TuskError)
 
 
-@pytest.mark.parametrize("selector", [None, 1, ("unique_primary_key",)])
+@pytest.mark.parametrize("selector", [None, 1])
 def test_an_unsupported_selector_form_raises_value_error(selector):
-    # True/False/str/list are the whole vocabulary. A tuple, a generator or a
-    # bare None gets a clear ValueError naming the accepted forms, never a raw
-    # TypeError from somewhere inside the implementation.
+    # A non-iterable selector gets a clear ValueError naming the accepted
+    # forms, never a raw TypeError leaking out of `list()`.
     with pytest.raises(ValueError, match="invalid checks selector") as excinfo:
         validate_table(frame([1]), schema(), selector)
     assert not isinstance(excinfo.value, TuskError)
 
 
-def test_a_generator_is_rejected_rather_than_silently_half_consumed():
+def test_a_generator_selector_still_checks_every_table():
+    # A generator is one-shot. If Database.validate passed it straight down
+    # per table, table 'b' -- the one with the duplicate -- would see an
+    # already-exhausted iterator and silently pass.
     db = (
         tusk.Database("x")
         .add_table("a", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
         .add_table("b", pl.LazyFrame({"id": [7, 7]}), primary_key="id")
     )
-    generator = (n for n in ["unique_primary_key"])
-    with pytest.raises(ValueError, match="invalid checks selector"):
-        db.validate(generator)  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValidationError, match="'b'"):
+        db.validate(n for n in ["unique_primary_key"])
 
 
 @pytest.fixture

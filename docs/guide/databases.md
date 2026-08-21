@@ -85,7 +85,7 @@ Finding them costs a second full scan, which is a real bill on a remote
 backend, so tusk leaves that query to you if you want it.
 
 Checks are selected by name. `True` runs all of them, `False` none, and a
-string or list runs those:
+string or any iterable of names runs those:
 
 ```python
 db.validate("unique_primary_key")

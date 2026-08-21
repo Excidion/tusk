@@ -94,8 +94,9 @@ class Database:
                 Required for order-dependent primitives on this table.
             validate: Which validation checks to run against the data before
                 registering the table. ``False`` (the default) runs none and
-                reads no rows; ``True`` runs every check; a name or list of
-                names runs those. See :func:`tusk.validation.validate_table`.
+                reads no rows; ``True`` runs every check; a name or an
+                iterable of names runs those. See
+                :func:`tusk.validation.validate_table`.
                 A requested check raising :class:`~tusk.exceptions.ValidationError`
                 aborts the call before the table is registered, and an unknown
                 check name or an invalid selector raises :class:`ValueError`.
@@ -204,12 +205,17 @@ class Database:
 
         Args:
             checks: Which checks to run. ``True`` (the default) runs every
-                check; ``False`` runs none; a name or list of names runs
-                those. See :func:`tusk.validation.validate_table`.
+                check; ``False`` runs none; a name or an iterable of names
+                runs those. See :func:`tusk.validation.validate_table`.
 
         Returns:
             This database, to allow chaining.
         """
+        # One-shot iterators are accepted, so materialize before the loop:
+        # otherwise the first table consumes the selector and every table
+        # after it is silently skipped.
+        if not isinstance(checks, (bool, str)):
+            checks = list(checks)
         for name, schema in self._schemas.items():
             validate_table(self._frames[name], schema, checks)
         return self

@@ -11,7 +11,7 @@ signature changes and both entry points pick it up.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING
 
 import narwhals as nw
@@ -21,7 +21,7 @@ from tusk.exceptions import ValidationError
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from tusk.database import TableSchema
 
-Checks = bool | str | list[str]
+Checks = bool | str | Iterable[str]
 """Selects checks: every check, none, one by name, or several by name."""
 
 
@@ -91,7 +91,7 @@ def validate_table(
         frame: The table's lazy frame.
         schema: The table's schema.
         checks: ``True`` for every check, ``False`` for none, a check name, or
-            a list of check names.
+            any iterable of check names.
 
     Raises:
         ValueError: If ``checks`` is not one of those forms, or names a check
@@ -103,13 +103,14 @@ def validate_table(
         names = []
     elif isinstance(checks, str):
         names = [checks]
-    elif isinstance(checks, list):
-        names = checks
     else:
-        raise ValueError(
-            f"invalid checks selector {checks!r}; expected True, False, a "
-            f"check name, or a list of check names"
-        )
+        try:
+            names = list(checks)
+        except TypeError:
+            raise ValueError(
+                f"invalid checks selector {checks!r}; expected True, False, a "
+                f"check name, or an iterable of check names"
+            ) from None
 
     for name in names:
         try:
