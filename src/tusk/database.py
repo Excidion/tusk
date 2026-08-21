@@ -92,14 +92,12 @@ class Database:
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
                 Required for order-dependent primitives on this table.
-            validate: Which validation checks to run against the data before
-                registering the table. ``False`` (the default) runs none and
-                reads no rows; ``True`` runs every check; a name or an
-                iterable of names runs those. See
-                :func:`tusk.validation.validate_table`.
-                A requested check raising :class:`~tusk.exceptions.ValidationError`
-                aborts the call before the table is registered, and an unknown
-                check name or an invalid selector raises :class:`ValueError`.
+            validate: Checks to run against the data before registering the
+                table. ``False`` (the default) runs none and reads no rows;
+                ``True`` runs every check; a check name or an iterable of
+                names runs those. A failing check raises
+                :class:`~tusk.exceptions.ValidationError` and the table is not
+                registered.
 
         Returns:
             This database, to allow chaining.
@@ -194,19 +192,13 @@ class Database:
     def validate(self, checks: bool | str | Iterable[str] = True) -> Database:
         """Run validation checks against every table in the database.
 
-        Tables are checked in insertion order and the first failure raises, so
-        a database with several defects reports the earliest one.
-
-        Unlike the rest of the schema layer, this reads rows: each check runs
-        real queries against the data. Running the checks may raise
-        :class:`~tusk.exceptions.ValidationError` if a check finds a defect
-        in a table's data, or :class:`ValueError` if ``checks`` names a check
-        that does not exist or is not a recognized selector form.
+        Tables are checked in insertion order; the first failure raises
+        :class:`~tusk.exceptions.ValidationError`. An unknown check name
+        raises :class:`ValueError`.
 
         Args:
-            checks: Which checks to run. ``True`` (the default) runs every
-                check; ``False`` runs none; a name or an iterable of names
-                runs those. See :func:`tusk.validation.validate_table`.
+            checks: ``True`` (the default) for every check, ``False`` for
+                none, a check name, or an iterable of check names.
 
         Returns:
             This database, to allow chaining.

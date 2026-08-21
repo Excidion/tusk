@@ -1,12 +1,7 @@
 """Checks that confirm a table's declarations hold against its data.
 
-The rest of the schema layer takes declarations on trust: naming a column as
-``primary_key`` asserts that it identifies a row, and nothing confirms it.
-These checks spend real queries to find out. Nothing here runs unless the user
-asks, through :meth:`tusk.Database.validate` or ``add_table(validate=…)``.
-
-Adding a check is a new function plus a new entry in :data:`CHECKS`; no call
-signature changes and both entry points pick it up.
+Nothing here runs unless the caller asks, through
+:meth:`tusk.Database.validate` or ``add_table(validate=…)``.
 """
 
 from __future__ import annotations
@@ -25,19 +20,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard
 def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared primary key holds no repeated value.
 
-    One aggregate: the row count against the distinct-value count. The error
-    reports both counts and stops there rather than querying again for example
-    duplicates -- naming them would cost a second full scan of the table, which
-    on a remote backend is a real bill for a nicety the caller did not ask for.
-
-    A table with no ``primary_key`` is skipped rather than failed --
-    ``add_table`` already warned about it, and failing here would make
-    :meth:`tusk.Database.validate` unusable on any database that deliberately
-    holds a keyless table.
-
-    Nulls count as one distinct value, so repeated nulls fail this check while
-    a single null passes it. A lone null key is a nullability defect, not a
-    uniqueness one.
+    A table with no ``primary_key`` is skipped. Nulls count as one distinct
+    value, so repeated nulls fail and a single null passes.
 
     Args:
         frame: The table's lazy frame.
@@ -81,15 +65,14 @@ def validate_table(
 ) -> None:
     """Run the selected checks against one table.
 
-    Checks run in the order given and the first failure stops the run, so
-    later checks do not run. A failing check raises
-    :class:`~tusk.exceptions.ValidationError`.
+    Checks run in the order given; the first failure raises
+    :class:`~tusk.exceptions.ValidationError` and stops the run.
 
     Args:
         frame: The table's lazy frame.
         schema: The table's schema.
         checks: ``True`` for every check, ``False`` for none, a check name, or
-            any iterable of check names.
+            an iterable of check names.
 
     Raises:
         ValueError: If ``checks`` is not one of those forms, or names a check
