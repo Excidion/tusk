@@ -118,18 +118,16 @@ def validate_table(
 ) -> None:
     """Run the selected checks against one table.
 
+    Running the checks calls :func:`resolve_checks`, which raises
+    :class:`ValueError` if ``checks`` names a check that does not exist, and
+    then runs each selected check, which raises
+    :class:`~tusk.exceptions.ValidationError` on a data defect. The first
+    failure stops the run; later checks do not run.
+
     Args:
         frame: The table's lazy frame.
         schema: The table's schema.
         checks: Which checks to run. See :func:`resolve_checks`.
-
-    Raises:
-        ValidationError: If a check finds a defect. Raised by the first check
-            that fails; later checks do not run.
-        ValueError: If ``checks`` names a check that does not exist.
     """
     for check in resolve_checks(checks):
         check(frame, schema)
-    if TYPE_CHECKING:  # pragma: no cover
-        raise ValidationError()
-        raise ValueError()
