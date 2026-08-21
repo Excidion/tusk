@@ -21,9 +21,6 @@ from tusk.exceptions import ValidationError
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from tusk.database import TableSchema
 
-Checks = bool | str | Iterable[str]
-"""Selects checks: every check, none, one by name, or several by name."""
-
 
 def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared primary key holds no repeated value.
@@ -79,7 +76,9 @@ CHECKS: Mapping[str, Callable[[nw.LazyFrame, TableSchema], None]] = {
 
 
 def validate_table(
-    frame: nw.LazyFrame, schema: TableSchema, checks: Checks = True
+    frame: nw.LazyFrame,
+    schema: TableSchema,
+    checks: bool | str | Iterable[str] = True,
 ) -> None:
     """Run the selected checks against one table.
 

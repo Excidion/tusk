@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
-from tusk.validation import Checks, validate_table
+from tusk.validation import validate_table
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class Database:
         primary_key: str | None = None,
         row_creation_time: str | None = None,
         *,
-        validate: Checks = False,
+        validate: bool | str | Iterable[str] = False,
     ) -> Database:
         """Add a table to the database.
 
@@ -191,7 +191,7 @@ class Database:
         self._relationships.append(Relationship(parent, child, foreign_key))
         return self
 
-    def validate(self, checks: Checks = True) -> Database:
+    def validate(self, checks: bool | str | Iterable[str] = True) -> Database:
         """Run validation checks against every table in the database.
 
         Tables are checked in insertion order and the first failure raises, so
