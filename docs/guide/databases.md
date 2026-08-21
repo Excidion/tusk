@@ -1,8 +1,9 @@
 # Databases
 
 A [`Database`][tusk.Database] holds the tables you want features over and the
-relationships between them. It is pure schema: adding a table reads its column
-names and dtypes, nothing else.
+relationships between them. By default it is pure schema: adding a table reads
+its column names and dtypes, nothing else. No row is read unless you ask for
+[validation](#validation).
 
 ```python
 import tusk
@@ -58,3 +59,49 @@ The first table also fixes eagerness. If you hand tusk eager frames,
 [`is_eager`][tusk.Database.is_eager] is true and the feature matrix is
 collected once at the end. If you hand it lazy frames, you get a lazy frame
 back and nothing is computed until you collect it yourself.
+
+## Validation
+
+A database takes your declarations on trust. Naming a column as `primary_key`
+asserts that it identifies a row; nothing confirms it. When the assertion is
+false, tusk does not fail — a duplicated key fans out every join that lands on
+the table, and `COUNT`, `SUM` and `MEAN` come back inflated by a factor you
+cannot see.
+
+[`validate()`][tusk.Database.validate] spends real queries to confirm the
+declarations hold:
+
+```python
+db.validate()
+```
+
+It runs every check against every table in insertion order and raises
+[`ValidationError`][tusk.exceptions.ValidationError] on the first defect. It
+returns the database, so it chains.
+
+Checks are selected by name. `True` runs all of them, `False` none, and a
+string or list runs those:
+
+```python
+db.validate("unique_primary_key")
+db.add_table("customers", customers_lf, primary_key="id", validate=True)
+```
+
+`add_table` takes the same selector, and defaults to `False`. That default is
+deliberate: without it every `add_table` would materialize a full scan, which
+is a silent performance cliff on `pl.scan_parquet` or a remote table. A
+misspelled check name raises `ValueError`, not `ValidationError`, so catching
+validation failures never swallows a typo.
+
+### Available checks
+
+| Name | Confirms |
+| --- | --- |
+| `unique_primary_key` | The declared `primary_key` holds no repeated value. |
+
+A table with no `primary_key` is skipped by `unique_primary_key` rather than
+failed — you were already warned about that at `add_table` time.
+
+Nulls count as one distinct value, so **repeated nulls fail** this check while
+**a single null passes** it. A lone null key is a real defect, but a
+nullability one rather than a uniqueness one.

@@ -150,3 +150,13 @@ def test_direct_feature_crosses_a_join_on_duckdb(duck_db):
     matrix = tusk.apply_features(features, database).pl()
     ages = {r["id"]: r["customers__age"] for r in matrix.to_dicts()}
     assert ages == {10: 30, 20: 30, 30: 40}
+
+
+def test_uniqueness_check_runs_on_duckdb(duck_db):
+    db, con = duck_db
+    assert db.validate() is db
+
+    con.execute("CREATE TABLE dupes AS SELECT * FROM (VALUES (1),(1),(2)) t(id)")
+    with pytest.raises(tusk.exceptions.ValidationError, match="not unique"):
+        db.add_table("dupes", con.table("dupes"), primary_key="id", validate=True)
+    assert "dupes" not in db.table_names
