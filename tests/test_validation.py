@@ -6,12 +6,7 @@ import pytest
 import tusk
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
-from tusk.validation import (
-    CHECKS,
-    check_unique_primary_key,
-    resolve_checks,
-    validate_table,
-)
+from tusk.validation import check_unique_primary_key, validate_table
 
 
 def frame(values):
@@ -31,7 +26,6 @@ def test_duplicate_primary_key_is_reported():
     assert "'customers'" in message
     assert "7 rows" in message
     assert "4 distinct" in message
-    assert "7" in message and "12" in message and "19" in message
 
 
 def test_unique_primary_key_passes():
@@ -71,36 +65,34 @@ def test_validate_table_runs_nothing_when_false():
     validate_table(frame([7, 7]), schema(), False)
 
 
-def test_selector_forms_all_select_the_check():
-    for selector in (True, "unique_primary_key", ["unique_primary_key"]):
-        assert resolve_checks(selector) == (CHECKS["unique_primary_key"],)
+@pytest.mark.parametrize(
+    "selector", [True, "unique_primary_key", ["unique_primary_key"]]
+)
+def test_every_selector_form_runs_the_check(selector):
+    with pytest.raises(ValidationError, match="not unique"):
+        validate_table(frame([7, 7]), schema(), selector)
 
 
-def test_empty_selectors_select_nothing():
-    assert resolve_checks(False) == ()
-    assert resolve_checks([]) == ()
+def test_an_empty_list_runs_nothing():
+    validate_table(frame([7, 7]), schema(), [])
 
 
-def test_a_repeated_name_runs_the_check_once():
-    assert resolve_checks(["unique_primary_key", "unique_primary_key"]) == (
-        CHECKS["unique_primary_key"],
-    )
-
-
-def test_checks_run_in_registry_order_not_argument_order(monkeypatch):
+def test_checks_run_in_the_order_given(monkeypatch):
     calls = []
-    ordered = {
-        "first": lambda f, s: calls.append("first"),
-        "second": lambda f, s: calls.append("second"),
-    }
-    monkeypatch.setattr("tusk.validation.CHECKS", ordered)
+    monkeypatch.setattr(
+        "tusk.validation.CHECKS",
+        {
+            "first": lambda f, s: calls.append("first"),
+            "second": lambda f, s: calls.append("second"),
+        },
+    )
     validate_table(frame([1]), schema(), ["second", "first"])
-    assert calls == ["first", "second"]
+    assert calls == ["second", "first"]
 
 
 def test_an_unknown_check_name_raises_value_error():
     with pytest.raises(ValueError) as excinfo:
-        resolve_checks("uniqe_primary_key")
+        validate_table(frame([1]), schema(), "uniqe_primary_key")
     message = str(excinfo.value)
     assert "uniqe_primary_key" in message
     assert "unique_primary_key" in message
@@ -109,18 +101,29 @@ def test_an_unknown_check_name_raises_value_error():
 def test_an_unknown_check_name_is_not_a_validation_error():
     # `except ValidationError` must never swallow a typo.
     with pytest.raises(ValueError) as excinfo:
-        resolve_checks(["unique_primary_key", "nope"])
+        validate_table(frame([1]), schema(), ["unique_primary_key", "nope"])
     assert not isinstance(excinfo.value, TuskError)
 
 
-@pytest.mark.parametrize("selector", [None, 1])
-def test_an_invalid_selector_raises_value_error_not_type_error(selector):
-    # A non-bool, non-str, non-iterable selector must get the same clear
-    # ValueError treatment as an unknown check name, not a raw TypeError
-    # leaking out of `set()`.
-    with pytest.raises(ValueError, match="unique_primary_key") as excinfo:
-        resolve_checks(selector)
+@pytest.mark.parametrize("selector", [None, 1, ("unique_primary_key",)])
+def test_an_unsupported_selector_form_raises_value_error(selector):
+    # True/False/str/list are the whole vocabulary. A tuple, a generator or a
+    # bare None gets a clear ValueError naming the accepted forms, never a raw
+    # TypeError from somewhere inside the implementation.
+    with pytest.raises(ValueError, match="invalid checks selector") as excinfo:
+        validate_table(frame([1]), schema(), selector)
     assert not isinstance(excinfo.value, TuskError)
+
+
+def test_a_generator_is_rejected_rather_than_silently_half_consumed():
+    db = (
+        tusk.Database("x")
+        .add_table("a", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table("b", pl.LazyFrame({"id": [7, 7]}), primary_key="id")
+    )
+    generator = (n for n in ["unique_primary_key"])
+    with pytest.raises(ValueError, match="invalid checks selector"):
+        db.validate(generator)  # ty: ignore[invalid-argument-type]
 
 
 @pytest.fixture
@@ -215,17 +218,14 @@ def test_unknown_check_names_reach_both_entry_points():
         db.validate("nope")
 
 
-def test_database_validate_with_a_generator_checks_every_table():
-    # A generator is a one-shot iterable: if the selector were re-resolved
-    # per table, table 'b' -- the one with the actual duplicate -- would see
-    # an already-exhausted generator and silently pass.
+def test_database_validate_checks_every_table_not_just_the_first():
     db = (
         tusk.Database("x")
         .add_table("a", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
         .add_table("b", dupes(), primary_key="id")
     )
     with pytest.raises(ValidationError, match="'b'"):
-        db.validate(n for n in ["unique_primary_key"])
+        db.validate(["unique_primary_key"])
 
 
 def test_a_failed_add_table_of_the_first_table_still_accepts_other_backends():

@@ -79,6 +79,11 @@ It runs every check against every table in insertion order and raises
 [`ValidationError`][tusk.exceptions.ValidationError] on the first defect. It
 returns the database, so it chains.
 
+The error names the table, the column and the counts that disagree — for
+example `4 rows, 3 distinct values` — but not which keys are duplicated.
+Finding them costs a second full scan, which is a real bill on a remote
+backend, so tusk leaves that query to you if you want it.
+
 Checks are selected by name. `True` runs all of them, `False` none, and a
 string or list runs those:
 

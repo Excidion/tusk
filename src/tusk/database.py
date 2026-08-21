@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -210,12 +210,6 @@ class Database:
         Returns:
             This database, to allow chaining.
         """
-        # A non-bool, non-str selector may be a one-shot iterable (a
-        # generator), which validate_table's resolve_checks would exhaust
-        # after the first table, silently skipping every table after it.
-        # Materializing it once here makes a generator behave like a list.
-        if not isinstance(checks, (bool, str)) and isinstance(checks, Iterable):
-            checks = tuple(checks)
         for name, schema in self._schemas.items():
             validate_table(self._frames[name], schema, checks)
         return self
