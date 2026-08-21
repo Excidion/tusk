@@ -11,7 +11,7 @@ signature changes and both entry points pick it up.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 import narwhals as nw
@@ -69,10 +69,9 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     )
 
 
-CHECKS: Mapping[str, Callable[[nw.LazyFrame, TableSchema], None]] = {
+CHECKS = {
     "unique_primary_key": check_unique_primary_key,
 }
-"""Every available check, by name."""
 
 
 def validate_table(
