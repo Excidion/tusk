@@ -152,7 +152,7 @@ class TransformFeature(Feature):
     def display_name(self) -> str:
         """Readable name, e.g. ``MONTH(started_at)``."""
         return self.primitive.generate_display_name(
-            [b.display_name for b in self.bases]
+            [b.display_name for b in self.bases],
         )
 
     @property
@@ -220,7 +220,7 @@ class AggregationFeature(Feature):
         if not self.bases:
             return self.primitive.generate_display_name([child])
         return self.primitive.generate_display_name(
-            [f"{child}.{b.display_name}" for b in self.bases]
+            [f"{child}.{b.display_name}" for b in self.bases],
         )
 
     @property
@@ -321,7 +321,7 @@ class GroupByTransformFeature(Feature):
     def display_name(self) -> str:
         """Readable name, e.g. ``CUM_SUM(amount) by session_id``."""
         stem = self.primitive.generate_display_name(
-            [b.display_name for b in self.bases]
+            [b.display_name for b in self.bases],
         )
         return f"{stem} by {self.relationship.foreign_key}"
 

@@ -102,7 +102,7 @@ def synthetic():
             "id": np.arange(1, 61),
             "customer_id": rng.integers(1, 18, size=60),  # customers 18-20 get none
             "value": rng.normal(size=60),
-        }
+        },
     )
     return customers, sessions
 
@@ -128,7 +128,9 @@ def _tusk_matrix(customers, sessions):
         .add_table("customers", pl.from_pandas(customers).lazy(), primary_key="id")
         .add_table("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
     )
     matrix, _ = tusk.deep_feature_synthesis(
@@ -250,14 +252,14 @@ def deep():
             "id": np.arange(1, 41),
             "customer_id": rng.integers(1, 13, size=40),
             "kind": rng.choice(["a", "b", "c", None], size=40),
-        }
+        },
     )
     transactions = pd.DataFrame(
         {
             "id": np.arange(1, 121),
             "session_id": rng.integers(1, 36, size=120),
             "amount": rng.normal(size=120).round(4),
-        }
+        },
     )
     return customers, sessions, transactions
 
@@ -267,7 +269,9 @@ def _featuretools_deep(customers, sessions, transactions):
     es = es.add_dataframe(dataframe_name="customers", dataframe=customers, index="id")
     es = es.add_dataframe(dataframe_name="sessions", dataframe=sessions, index="id")
     es = es.add_dataframe(
-        dataframe_name="transactions", dataframe=transactions, index="id"
+        dataframe_name="transactions",
+        dataframe=transactions,
+        index="id",
     )
     es = es.add_relationship("customers", "id", "sessions", "customer_id")
     es = es.add_relationship("sessions", "id", "transactions", "session_id")
@@ -287,13 +291,19 @@ def _tusk_deep(customers, sessions, transactions):
         .add_table("customers", pl.from_pandas(customers).lazy(), primary_key="id")
         .add_table("sessions", pl.from_pandas(sessions).lazy(), primary_key="id")
         .add_table(
-            "transactions", pl.from_pandas(transactions).lazy(), primary_key="id"
+            "transactions",
+            pl.from_pandas(transactions).lazy(),
+            primary_key="id",
         )
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
         .add_relationship(
-            parent="sessions", child="transactions", foreign_key="session_id"
+            parent="sessions",
+            child="transactions",
+            foreign_key="session_id",
         )
     )
     matrix, _ = tusk.deep_feature_synthesis(
@@ -414,7 +424,7 @@ def test_nested_empty_group_agrees(deep_matrices, deep):
     childless_sessions = set(sessions["id"]) - set(transactions["session_id"])
     assert childless_sessions
     affected = sorted(
-        set(sessions.loc[sessions["id"].isin(childless_sessions), "customer_id"])
+        set(sessions.loc[sessions["id"].isin(childless_sessions), "customer_id"]),
     )
     assert affected
     for name in (

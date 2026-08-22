@@ -105,7 +105,10 @@ class _Context:
         self._unmatched: dict[tuple[str, str], None] = {}
 
     def build(
-        self, table: str, depth_limit: int, path: tuple[Relationship, ...]
+        self,
+        table: str,
+        depth_limit: int,
+        path: tuple[Relationship, ...],
     ) -> list[Feature]:
         """Build every feature on ``table`` of depth at most ``depth_limit``.
 
@@ -128,13 +131,16 @@ class _Context:
             features.extend(self._directs(table, depth_limit, path))
             features.extend(self._transforms(table, features, depth_limit))
             features.extend(
-                self._groupby_transforms(table, features, depth_limit, path)
+                self._groupby_transforms(table, features, depth_limit, path),
             )
 
         return list(dict.fromkeys(features))
 
     def _aggregations(
-        self, table: str, depth_limit: int, path: tuple[Relationship, ...]
+        self,
+        table: str,
+        depth_limit: int,
+        path: tuple[Relationship, ...],
     ) -> list[Feature]:
         """Aggregate each child table's features up into this table.
 
@@ -161,7 +167,10 @@ class _Context:
         return out
 
     def _directs(
-        self, table: str, depth_limit: int, path: tuple[Relationship, ...]
+        self,
+        table: str,
+        depth_limit: int,
+        path: tuple[Relationship, ...],
     ) -> list[Feature]:
         """Join each parent table's features down onto this table.
 
@@ -179,7 +188,8 @@ class _Context:
                 continue
             excluded_outputs = self.database.output_excluded_columns(rel.parent)
             for base in self._usable(
-                rel.parent, self.build(rel.parent, depth_limit - 1, path + (rel,))
+                rel.parent,
+                self.build(rel.parent, depth_limit - 1, path + (rel,)),
             ):
                 # A DirectFeature carries one column across the join, so it
                 # cannot carry a multi-output parent feature: only that
@@ -202,7 +212,10 @@ class _Context:
         return out
 
     def _transforms(
-        self, table: str, existing: Sequence[Feature], depth_limit: int
+        self,
+        table: str,
+        existing: Sequence[Feature],
+        depth_limit: int,
     ) -> list[Feature]:
         """Apply transform primitives to features already on this table.
 
@@ -288,7 +301,9 @@ class _Context:
             )
 
     def _warn_categorical(
-        self, primitive: Primitive, candidates: Sequence[Feature]
+        self,
+        primitive: Primitive,
+        candidates: Sequence[Feature],
     ) -> None:
         """Warn when a Categorical or Enum column is skipped by a STRING slot.
 
@@ -341,7 +356,7 @@ class _Context:
         if self.database.schema(table).row_creation_time is None:
             raise PrimitiveError(
                 f"primitive {primitive.name!r} is order-dependent, so table "
-                f"{table!r} needs a row_creation_time"
+                f"{table!r} needs a row_creation_time",
             )
 
     def _usable(self, table: str, features: Sequence[Feature]) -> list[Feature]:
@@ -369,7 +384,10 @@ class _Context:
         ]
 
     def _combinations(
-        self, primitive: Primitive, candidates: Sequence[Feature], table: str
+        self,
+        primitive: Primitive,
+        candidates: Sequence[Feature],
+        table: str,
     ) -> list[tuple[Feature, ...]]:
         """Enumerate input tuples a primitive accepts.
 

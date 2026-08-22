@@ -56,7 +56,9 @@ def test_features_only_returns_definitions_alone(db):
 
 def test_defaults_are_applied(db):
     features = tusk.deep_feature_synthesis(
-        database=db, target_table="customers", features_only=True
+        database=db,
+        target_table="customers",
+        features_only=True,
     )
     names = {f.name for f in features}
     assert "COUNT__sessions" in names
@@ -71,7 +73,9 @@ def test_zero_config_generates_transform_features(db):
     run with aggregations and passthrough columns but not one transform.
     """
     features = tusk.deep_feature_synthesis(
-        database=db, target_table="customers", features_only=True
+        database=db,
+        target_table="customers",
+        features_only=True,
     )
     names = {f.name for f in features}
     assert {"YEAR__signed_up_at", "MONTH__signed_up_at", "WEEKDAY__signed_up_at"} <= (
@@ -151,7 +155,9 @@ def test_eager_input_round_trips_to_eager_output():
         .add_table("customers", customers, primary_key="id")
         .add_table("sessions", sessions, primary_key="id")
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
     )
     matrix, _ = tusk.deep_feature_synthesis(
@@ -174,7 +180,9 @@ def test_deep_feature_synthesis_never_materializes_for_lazy_input(tmp_path):
         .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
         .add_table("sessions", pl.scan_parquet(path), primary_key="id")
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
     )
     path.unlink()

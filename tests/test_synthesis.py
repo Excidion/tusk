@@ -99,7 +99,7 @@ def test_transforms_respect_dtype_families():
                 "id": [1, 2],
                 "amount": [-1.5, 2.5],
                 "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 4, 5)],
-            }
+            },
         ),
         primary_key="id",
     )
@@ -111,7 +111,7 @@ def test_transforms_respect_dtype_families():
             trans_primitives=["month", "absolute"],
             groupby_trans_primitives=[],
             max_depth=1,
-        )
+        ),
     )
     # month requires TEMPORAL: it takes occurred_at and not amount.
     assert "MONTH__occurred_at" in got
@@ -136,7 +136,7 @@ def test_row_creation_time_is_available_as_a_transform_input(db):
             trans_primitives=["month", "year", "weekday"],
             groupby_trans_primitives=[],
             max_depth=1,
-        )
+        ),
     )
     assert "MONTH__signed_up_at" in got
     assert "YEAR__signed_up_at" in got
@@ -184,7 +184,7 @@ def test_aggregations_can_reach_a_temporal_column(db):
             trans_primitives=[],
             groupby_trans_primitives=[],
             max_depth=1,
-        )
+        ),
     )
     assert "LAST_TIME__transactions__occurred_at" in got
     assert "N_UNIQUE__transactions__occurred_at" in got
@@ -262,10 +262,14 @@ def test_stack_on_self_is_respected():
         tusk.Database("nu")
         .add_table("a", pl.LazyFrame({"id": [1]}), primary_key="id")
         .add_table(
-            "b", pl.LazyFrame({"id": [1], "a_id": [1], "x": [1.0]}), primary_key="id"
+            "b",
+            pl.LazyFrame({"id": [1], "a_id": [1], "x": [1.0]}),
+            primary_key="id",
         )
         .add_table(
-            "c", pl.LazyFrame({"id": [1], "b_id": [1], "y": [1.0]}), primary_key="id"
+            "c",
+            pl.LazyFrame({"id": [1], "b_id": [1], "y": [1.0]}),
+            primary_key="id",
         )
         .add_relationship(parent="a", child="b", foreign_key="a_id")
         .add_relationship(parent="b", child="c", foreign_key="b_id")
@@ -292,7 +296,9 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
     # `if len(per_slot) == 1` in _combinations: itertools.product, the
     # duplicate-feature filter, and the commutative frozenset dedup.
     db = tusk.Database("arith").add_table(
-        "t", pl.LazyFrame({"id": [1], "a": [1.0], "b": [2.0]}), primary_key="id"
+        "t",
+        pl.LazyFrame({"id": [1], "a": [1.0], "b": [2.0]}),
+        primary_key="id",
     )
     got = synthesize(
         db,
@@ -325,7 +331,9 @@ def test_self_referential_schema_terminates():
             primary_key="id",
         )
         .add_relationship(
-            parent="employees", child="employees", foreign_key="manager_id"
+            parent="employees",
+            child="employees",
+            foreign_key="manager_id",
         )
     )
     got = synthesize(
@@ -344,10 +352,14 @@ def test_diamond_schema_terminates():
         tusk.Database("d")
         .add_table("a", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id")
         .add_table(
-            "b", pl.LazyFrame({"id": [1], "a_id": [1], "v": [1.0]}), primary_key="id"
+            "b",
+            pl.LazyFrame({"id": [1], "a_id": [1], "v": [1.0]}),
+            primary_key="id",
         )
         .add_table(
-            "c", pl.LazyFrame({"id": [1], "a_id": [1], "v": [1.0]}), primary_key="id"
+            "c",
+            pl.LazyFrame({"id": [1], "a_id": [1], "v": [1.0]}),
+            primary_key="id",
         )
         .add_table(
             "d",
@@ -417,7 +429,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
                 "id": [1, 2],
                 "plain": ["a", "b"],
                 "cat": pl.Series(["a", "b"], dtype=pl.Categorical),
-            }
+            },
         ),
         primary_key="id",
     )
@@ -453,7 +465,7 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
                 "id": [1, 2],
                 "n": [1.0, 2.0],
                 "cat": pl.Series(["a", "b"], dtype=pl.Categorical),
-            }
+            },
         ),
         primary_key="id",
     )
@@ -478,7 +490,9 @@ def test_requested_primitive_with_no_matching_column_warns():
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
     db = tusk.Database("x").add_table(
-        "t", pl.LazyFrame({"id": [1, 2], "n": [1.0, 2.0]}), primary_key="id"
+        "t",
+        pl.LazyFrame({"id": [1, 2], "n": [1.0, 2.0]}),
+        primary_key="id",
     )
     with pytest.warns(UnmatchedPrimitiveWarning, match="'month'.*'t'"):
         got = synthesize(
@@ -507,13 +521,15 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
         .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
         # numeric: mean matches here
         .add_table(
-            "c", pl.LazyFrame({"id": [1], "p_id": [1], "n": [1.0]}), primary_key="id"
+            "c",
+            pl.LazyFrame({"id": [1], "p_id": [1], "n": [1.0]}),
+            primary_key="id",
         )
         # temporal only: mean matches nothing here
         .add_table(
             "d",
             pl.LazyFrame(
-                {"id": [1], "p_id": [1], "seen_at": [dt.datetime(2024, 1, 1)]}
+                {"id": [1], "p_id": [1], "seen_at": [dt.datetime(2024, 1, 1)]},
             ),
             primary_key="id",
         )
@@ -528,7 +544,7 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
             trans_primitives=[],
             groupby_trans_primitives=[],
             max_depth=2,
-        )
+        ),
     )
     assert "MEAN__c__n" in got
     assert not any(name.startswith("MEAN(d.") for name in got)
@@ -571,14 +587,18 @@ def test_zero_config_run_warns_about_nothing(db, recwarn):
     from tusk.exceptions import UnmatchedPrimitiveWarning
 
     tusk.deep_feature_synthesis(
-        database=db, target_table="customers", features_only=True
+        database=db,
+        target_table="customers",
+        features_only=True,
     )
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 
 
 def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one():
     db = tusk.Database("x").add_table(
-        "t", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id"
+        "t",
+        pl.LazyFrame({"id": [1], "v": [1.0]}),
+        primary_key="id",
     )
     with pytest.raises(tusk.exceptions.PrimitiveError, match="row_creation_time"):
         synthesize(

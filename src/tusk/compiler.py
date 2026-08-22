@@ -60,7 +60,7 @@ def compile_features(
     if primary_key is None:
         raise SchemaError(
             f"target table {target!r} needs a primary_key: the feature "
-            "matrix is keyed by it"
+            "matrix is keyed by it",
         )
 
     _reject_colliding_names(features)
@@ -95,7 +95,7 @@ def _reject_colliding_names(features: Sequence[Feature]) -> None:
                 raise SchemaError(
                     f"features {other.display_name!r} and "
                     f"{feature.display_name!r} both compile to column "
-                    f"{name!r}; rename a source column to break the tie"
+                    f"{name!r}; rename a source column to break the tie",
                 )
 
 
@@ -187,7 +187,12 @@ def _table_frame(
     for relationship in dict.fromkeys(f.relationship for f in aggregations):
         batch = [f for f in aggregations if f.relationship == relationship]
         frame = _add_aggregations(
-            frame, database, table, relationship, batch, cutoff_time
+            frame,
+            database,
+            table,
+            relationship,
+            batch,
+            cutoff_time,
         )
 
     directs = [f for f in needed if isinstance(f, DirectFeature)]
@@ -365,7 +370,7 @@ def _order_by(database: Database, table: str, primitive_name: str) -> tuple[str,
     if schema.row_creation_time is None:
         raise PrimitiveError(
             f"primitive {primitive_name!r} is order-dependent, so table {table!r} "
-            f"needs a row_creation_time"
+            f"needs a row_creation_time",
         )
     if schema.primary_key is None:
         return (schema.row_creation_time,)

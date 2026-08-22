@@ -137,7 +137,7 @@ class Database:
         elif lazy.implementation != self._backend:
             raise SchemaError(
                 f"table {name!r} uses backend {lazy.implementation}, but this "
-                f"database uses {self._backend}; narwhals cannot join across backends"
+                f"database uses {self._backend}; narwhals cannot join across backends",
             )
 
         dtypes = dict(lazy.collect_schema())
@@ -203,7 +203,7 @@ class Database:
             raise SchemaError(f"parent table {parent!r} needs a primary_key")
         if foreign_key not in self._schemas[child].dtypes:
             raise SchemaError(
-                f"child table {child!r} is missing foreign_key column {foreign_key!r}"
+                f"child table {child!r} is missing foreign_key column {foreign_key!r}",
             )
 
         relationship = Relationship(parent, child, foreign_key)

@@ -67,7 +67,9 @@ def test_cutoff_is_a_no_op_without_a_row_creation_time():
     )
     feature = IdentityFeature("events", "n", nw.Float64())
     got = compile_features(
-        [feature], timeless, cutoff_time=dt.datetime(1970, 1, 1)
+        [feature],
+        timeless,
+        cutoff_time=dt.datetime(1970, 1, 1),
     ).collect()
     assert got.to_native()["n"].to_list() == [1.0, 2.0, 3.0]
 
@@ -87,7 +89,8 @@ def test_features_spanning_multiple_tables_raise(db):
 def test_target_without_a_primary_key_raises():
     with pytest.warns(MissingPrimaryKeyWarning):
         db = tusk.Database("t").add_table(
-            "events", pl.LazyFrame({"id": [1], "n": [1.0]})
+            "events",
+            pl.LazyFrame({"id": [1], "n": [1.0]}),
         )
     feature = IdentityFeature("events", "n", nw.Float64())
     with pytest.raises(SchemaError, match="primary_key"):

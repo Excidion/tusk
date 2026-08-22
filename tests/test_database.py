@@ -17,10 +17,10 @@ def test_schema_is_read_from_the_frame(db):
 
 def test_relationship_accessors(db):
     assert db.children_of("customers") == [
-        Relationship(parent="customers", child="sessions", foreign_key="customer_id")
+        Relationship(parent="customers", child="sessions", foreign_key="customer_id"),
     ]
     assert db.parents_of("transactions") == [
-        Relationship(parent="sessions", child="transactions", foreign_key="session_id")
+        Relationship(parent="sessions", child="transactions", foreign_key="session_id"),
     ]
     assert db.children_of("transactions") == []
 
@@ -36,13 +36,14 @@ def test_output_exclusions_add_the_row_creation_time(db):
     # The matrix drops the time index as a raw passthrough column, on top of
     # the join keys. Features derived from it are unaffected.
     assert db.output_excluded_columns("sessions") == frozenset(
-        {"id", "customer_id", "started_at"}
+        {"id", "customer_id", "started_at"},
     )
 
 
 def test_missing_primary_key_warns():
     with pytest.warns(
-        MissingPrimaryKeyWarning, match="cannot be used as a relationship parent"
+        MissingPrimaryKeyWarning,
+        match="cannot be used as a relationship parent",
     ):
         tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}))
 

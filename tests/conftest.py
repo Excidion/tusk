@@ -28,7 +28,7 @@ def _frames():
             "id": [1, 2, 3],
             "age": [30, 40, 50],
             "signed_up_at": [dt.datetime(2024, 1, 1)] * 3,
-        }
+        },
     )
     sessions = pl.LazyFrame(
         {
@@ -39,7 +39,7 @@ def _frames():
                 dt.datetime(2024, 3, 5),
                 dt.datetime(2024, 3, 6),
             ],
-        }
+        },
     )
     transactions = pl.LazyFrame(
         {
@@ -52,7 +52,7 @@ def _frames():
                 dt.datetime(2024, 3, 5, 1),
                 dt.datetime(2024, 3, 5, 2),
             ],
-        }
+        },
     )
     return customers, sessions, transactions
 
@@ -64,10 +64,16 @@ def db():
     return (
         tusk.Database("retail")
         .add_table(
-            "customers", customers, primary_key="id", row_creation_time="signed_up_at"
+            "customers",
+            customers,
+            primary_key="id",
+            row_creation_time="signed_up_at",
         )
         .add_table(
-            "sessions", sessions, primary_key="id", row_creation_time="started_at"
+            "sessions",
+            sessions,
+            primary_key="id",
+            row_creation_time="started_at",
         )
         .add_table(
             "transactions",
@@ -76,9 +82,13 @@ def db():
             row_creation_time="occurred_at",
         )
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
         .add_relationship(
-            parent="sessions", child="transactions", foreign_key="session_id"
+            parent="sessions",
+            child="transactions",
+            foreign_key="session_id",
         )
     )

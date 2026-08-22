@@ -159,7 +159,10 @@ def staged(tmp_path_factory):
             # ours to police -- a mismatch here would abort the benchmark over
             # a join duckdb performs happily.
             database.add_relationship(
-                parent=parent, child=name, foreign_key=foreign_key, validate=False
+                parent=parent,
+                child=name,
+                foreign_key=foreign_key,
+                validate=False,
             )
             relationships += 1
 
@@ -208,7 +211,7 @@ def test_deep_feature_synthesis_on_relbench(staged, tmp_path):
     compute_peak_mb = _peak_rss_mb()
 
     matrix_rows = connection.sql(
-        f"SELECT count(*) FROM read_parquet('{matrix_path}')"
+        f"SELECT count(*) FROM read_parquet('{matrix_path}')",
     ).fetchone()[0]
 
     print(
@@ -219,7 +222,7 @@ def test_deep_feature_synthesis_on_relbench(staged, tmp_path):
         f"matrix_rows={matrix_rows} features={len(features)} "
         f"matrix_mb={matrix_path.stat().st_size / 1e6:.0f}\n"
         f"synthesis={synthesis_seconds:.2f}s peak_rss={synthesis_peak_mb:.0f}MB\n"
-        f"compute={compute_seconds:.1f}s peak_rss={compute_peak_mb:.0f}MB"
+        f"compute={compute_seconds:.1f}s peak_rss={compute_peak_mb:.0f}MB",
     )
 
     assert matrix_rows == target_rows

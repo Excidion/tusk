@@ -34,12 +34,12 @@ def duck_db():
     con.execute(
         "CREATE TABLE customers AS SELECT * FROM (VALUES "
         "(1, 30, TIMESTAMP '2024-01-01'), (2, 40, TIMESTAMP '2024-01-01'), "
-        "(3, 50, TIMESTAMP '2024-01-01')) t(id, age, signed_up_at)"
+        "(3, 50, TIMESTAMP '2024-01-01')) t(id, age, signed_up_at)",
     )
     con.execute(
         "CREATE TABLE sessions AS SELECT * FROM (VALUES "
         "(10, 1, TIMESTAMP '2024-03-04'), (20, 1, TIMESTAMP '2024-03-05'), "
-        "(30, 2, TIMESTAMP '2024-03-06')) t(id, customer_id, started_at)"
+        "(30, 2, TIMESTAMP '2024-03-06')) t(id, customer_id, started_at)",
     )
     con.execute(
         "CREATE TABLE transactions AS SELECT * FROM (VALUES "
@@ -47,7 +47,7 @@ def duck_db():
         "(101, 10, 3.0, TIMESTAMP '2024-03-04 02:00'), "
         "(102, 20, 10.0, TIMESTAMP '2024-03-05 01:00'), "
         "(103, 20, 20.0, TIMESTAMP '2024-03-05 02:00')) "
-        "t(id, session_id, amount, occurred_at)"
+        "t(id, session_id, amount, occurred_at)",
     )
     database = (
         tusk.Database("retail")
@@ -70,10 +70,14 @@ def duck_db():
             row_creation_time="occurred_at",
         )
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
         .add_relationship(
-            parent="sessions", child="transactions", foreign_key="session_id"
+            parent="sessions",
+            child="transactions",
+            foreign_key="session_id",
         )
     )
     return database, con

@@ -64,13 +64,17 @@ def test_ungrouped_order_dependent_transform_uses_row_creation_time_not_frame_or
             "id": [1, 2, 3],
             "v": [100.0, 1.0, 10.0],
             "t": [3, 1, 2],  # deliberately not row order
-        }
+        },
     )
     db = tusk.Database("x").add_table(
-        "c", frame, primary_key="id", row_creation_time="t"
+        "c",
+        frame,
+        primary_key="id",
+        row_creation_time="t",
     )
     feature = TransformFeature(
-        resolve("cum_sum"), (IdentityFeature("c", "v", nw.Float64()),)
+        resolve("cum_sum"),
+        (IdentityFeature("c", "v", nw.Float64()),),
     )
     got = compile_features([feature], db).collect().to_native().sort("id")
     # ordered by t: 1.0, then 10.0, then 100.0 -> cumulative 111.0, 1.0, 11.0 by id
@@ -79,7 +83,9 @@ def test_ungrouped_order_dependent_transform_uses_row_creation_time_not_frame_or
 
 def test_groupby_non_order_dependent_transform_applies_over_partition(db):
     feature = GroupByTransformFeature(
-        resolve("share_of_group_total"), (AMOUNT,), SESSION_TX
+        resolve("share_of_group_total"),
+        (AMOUNT,),
+        SESSION_TX,
     )
     got = compile_features([feature], db).collect().to_native().sort("id")
     # session 10 totals 4 (1+3): shares 0.25, 0.75
@@ -96,7 +102,7 @@ def test_ordering_uses_row_creation_time_not_frame_order():
             "g": [1, 1, 1],
             "v": [100.0, 1.0, 10.0],
             "t": [3, 1, 2],  # deliberately not row order
-        }
+        },
     )
     parent = pl.LazyFrame({"id": [1]})
     db = (
@@ -117,10 +123,13 @@ def test_ordering_uses_row_creation_time_not_frame_order():
 
 def test_order_dependent_primitive_without_row_creation_time_raises():
     db = tusk.Database("x").add_table(
-        "t", pl.LazyFrame({"id": [1], "v": [1.0]}), primary_key="id"
+        "t",
+        pl.LazyFrame({"id": [1], "v": [1.0]}),
+        primary_key="id",
     )
     feature = TransformFeature(
-        resolve("cum_sum"), (IdentityFeature("t", "v", nw.Float64()),)
+        resolve("cum_sum"),
+        (IdentityFeature("t", "v", nw.Float64()),),
     )
     with pytest.raises(PrimitiveError, match="row_creation_time"):
         compile_features([feature], db)

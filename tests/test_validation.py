@@ -173,7 +173,10 @@ def test_add_table_accepts_every_selector_form():
     for selector in (True, "unique_primary_key", ["unique_primary_key"]):
         with pytest.raises(ValidationError, match="not unique"):
             tusk.Database("x").add_table(
-                "t", dupes(), primary_key="id", validate=selector
+                "t",
+                dupes(),
+                primary_key="id",
+                validate=selector,
             )
 
 
@@ -228,7 +231,10 @@ def test_database_validate_skips_a_keyless_table():
 def test_unknown_check_names_reach_both_entry_points():
     with pytest.raises(ValueError, match="unknown check"):
         tusk.Database("x").add_table(
-            "t", pl.LazyFrame({"id": [1]}), primary_key="id", validate="nope"
+            "t",
+            pl.LazyFrame({"id": [1]}),
+            primary_key="id",
+            validate="nope",
         )
     db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
     with pytest.raises(ValueError, match="unknown check"):
@@ -288,7 +294,10 @@ def test_the_null_check_runs_before_the_uniqueness_check():
     # the more specific of the two.
     with pytest.raises(ValidationError, match="null"):
         tusk.Database("x").add_table(
-            "t", pl.LazyFrame({"id": [None, None]}), primary_key="id", validate=True
+            "t",
+            pl.LazyFrame({"id": [None, None]}),
+            primary_key="id",
+            validate=True,
         )
 
 
@@ -321,7 +330,8 @@ def test_a_datetime_row_creation_time_passes():
 
 def test_a_tz_aware_row_creation_time_passes():
     check_datetime_row_creation_time(
-        frame([1]), temporal_schema(nw.Datetime(time_zone="UTC"))
+        frame([1]),
+        temporal_schema(nw.Datetime(time_zone="UTC")),
     )
 
 
@@ -332,7 +342,8 @@ def test_a_non_temporal_row_creation_time_is_reported():
 
 def test_a_table_without_a_row_creation_time_is_skipped():
     check_datetime_row_creation_time(
-        frame([1]), TableSchema("events", "id", None, {"id": nw.Int64})
+        frame([1]),
+        TableSchema("events", "id", None, {"id": nw.Int64}),
     )
 
 
@@ -374,7 +385,8 @@ def test_a_database_check_runs_once_not_per_table(monkeypatch):
     calls = []
     db = temporal_db(None, None)
     monkeypatch.setattr(
-        "tusk.validation.DATABASE_CHECKS", {"counted": lambda d: calls.append(d)}
+        "tusk.validation.DATABASE_CHECKS",
+        {"counted": lambda d: calls.append(d)},
     )
     db.validate(database="counted")
     assert calls == [db]
@@ -429,7 +441,9 @@ def test_relationships_are_exposed_in_insertion_order():
     db = linked([1], [1])
     assert db.relationships == (
         tusk.Relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         ),
     )
 
@@ -478,7 +492,11 @@ def test_a_childless_parent_is_not_a_defect():
 
 def test_mismatched_key_dtypes_are_reported():
     db = linked(
-        [1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String, validate=False
+        [1, 2],
+        ["1", "2"],
+        parent_dtype=pl.Int64,
+        child_dtype=pl.String,
+        validate=False,
     )
     with pytest.raises(ValidationError) as excinfo:
         db.validate(relationships="matching_key_dtypes")
@@ -516,12 +534,13 @@ def test_key_dtypes_must_match_exactly(parent_dtype, child_dtype):
 
 
 @pytest.mark.parametrize(
-    "dtype", [pl.Int64, pl.String, pl.Categorical, pl.Enum(["a", "b"])]
+    "dtype",
+    [pl.Int64, pl.String, pl.Categorical, pl.Enum(["a", "b"])],
 )
 def test_identical_key_dtypes_pass(dtype):
     values = [1, 2] if dtype == pl.Int64 else ["a", "b"]
     linked(values, values, parent_dtype=dtype, child_dtype=dtype).validate(
-        relationships="matching_key_dtypes"
+        relationships="matching_key_dtypes",
     )
 
 
@@ -532,7 +551,9 @@ def test_relationship_checks_run_once_per_relationship(monkeypatch):
         {"counted": lambda d, r: seen.append(r.child)},
     )
     db = linked([1], [1], validate=False).add_table(
-        "transactions", pl.LazyFrame({"id": [1], "session_id": [0]}), primary_key="id"
+        "transactions",
+        pl.LazyFrame({"id": [1], "session_id": [0]}),
+        primary_key="id",
     )
     db.add_relationship(
         parent="sessions",
@@ -580,13 +601,16 @@ def test_each_scope_selects_from_its_own_registry():
 def test_scopes_are_switched_off_independently(monkeypatch):
     seen = []
     monkeypatch.setattr(
-        "tusk.validation.CHECKS", {"t": lambda f, s: seen.append("table")}
+        "tusk.validation.CHECKS",
+        {"t": lambda f, s: seen.append("table")},
     )
     monkeypatch.setattr(
-        "tusk.validation.RELATIONSHIP_CHECKS", {"r": lambda d, x: seen.append("rel")}
+        "tusk.validation.RELATIONSHIP_CHECKS",
+        {"r": lambda d, x: seen.append("rel")},
     )
     monkeypatch.setattr(
-        "tusk.validation.DATABASE_CHECKS", {"d": lambda d: seen.append("db")}
+        "tusk.validation.DATABASE_CHECKS",
+        {"d": lambda d: seen.append("db")},
     )
     db = linked([1], [1], validate=False)
     db.validate(tables=False)
@@ -602,7 +626,11 @@ def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
     # family. matching_key_dtypes must report that first, or validate=True
     # surfaces the backend's error instead of ours.
     db = linked(
-        ["a"], ["a"], parent_dtype=pl.String, child_dtype=pl.Categorical, validate=False
+        ["a"],
+        ["a"],
+        parent_dtype=pl.String,
+        child_dtype=pl.Categorical,
+        validate=False,
     )
     with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
         db.validate()
@@ -630,7 +658,9 @@ def test_a_failed_add_relationship_registers_nothing():
     )
     with pytest.raises(ValidationError):
         db.add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
         )
     assert db.relationships == ()
     assert db.children_of("customers") == []
@@ -638,7 +668,11 @@ def test_a_failed_add_relationship_registers_nothing():
 
 def test_add_relationship_can_opt_out():
     db = linked(
-        [1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String, validate=False
+        [1, 2],
+        ["1", "2"],
+        parent_dtype=pl.Int64,
+        child_dtype=pl.String,
+        validate=False,
     )
     assert len(db.relationships) == 1
 

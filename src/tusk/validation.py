@@ -38,7 +38,7 @@ def check_non_null_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None
         return
 
     raise ValidationError(
-        f"primary_key {key!r} of {schema.name!r} has {nulls} null values"
+        f"primary_key {key!r} of {schema.name!r} has {nulls} null values",
     )
 
 
@@ -74,7 +74,7 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
 
     raise ValidationError(
         f"primary_key {key!r} of {schema.name!r} is not unique: "
-        f"{total} rows, {distinct} distinct values"
+        f"{total} rows, {distinct} distinct values",
     )
 
 
@@ -131,7 +131,7 @@ def check_consistent_time_zones(database: Database) -> None:
     raise ValidationError(
         f"database mixes tz-aware and tz-naive datetimes: "
         f"{len(aware)} tz-aware ({', '.join(aware)}), "
-        f"{len(naive)} tz-naive ({', '.join(naive)})"
+        f"{len(naive)} tz-naive ({', '.join(naive)})",
     )
 
 
@@ -164,7 +164,7 @@ def check_matching_key_dtypes(database: Database, relationship: Relationship) ->
     raise ValidationError(
         f"foreign_key {relationship.foreign_key!r} of {child.name!r} is "
         f"{child_dtype}, but primary_key {parent.primary_key!r} of "
-        f"{parent.name!r} is {parent_dtype}"
+        f"{parent.name!r} is {parent_dtype}",
     )
 
 
@@ -197,7 +197,10 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
     )
     parents = database.frame(relationship.parent).select(nw.col(primary_key))
     matched = children.join(
-        parents, left_on=foreign_key, right_on=primary_key, how="semi"
+        parents,
+        left_on=foreign_key,
+        right_on=primary_key,
+        how="semi",
     )
     if len(matched.head(1).collect()):
         return
@@ -206,7 +209,7 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
 
     raise ValidationError(
         f"no {foreign_key!r} in {relationship.child!r} matches any "
-        f"{primary_key!r} in {relationship.parent!r}"
+        f"{primary_key!r} in {relationship.parent!r}",
     )
 
 
@@ -254,7 +257,7 @@ def _select_checks(checks: bool | str | Iterable[str], registry: dict) -> list[s
         except TypeError:
             raise ValueError(
                 f"invalid checks selector {checks!r}; expected True, False, a "
-                f"check name, or an iterable of check names"
+                f"check name, or an iterable of check names",
             ) from None
 
     for name in names:
