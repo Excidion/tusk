@@ -140,7 +140,7 @@ def test_a_generator_selector_still_checks_every_table():
         .add_table("b", pl.LazyFrame({"id": [7, 7]}), primary_key="id")
     )
     with pytest.raises(ValidationError, match="'b'"):
-        db.validate(n for n in ["unique_primary_key"])
+        db.validate(tables=(n for n in ["unique_primary_key"]))
 
 
 @pytest.fixture
@@ -215,7 +215,7 @@ def test_database_validate_reports_the_offending_table():
 
 def test_database_validate_false_is_a_no_op(spy):
     db = tusk.Database("x").add_table("t", dupes(), primary_key="id")
-    assert db.validate(False) is db
+    assert db.validate(tables=False) is db
     assert spy == []
 
 
@@ -232,7 +232,7 @@ def test_unknown_check_names_reach_both_entry_points():
         )
     db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
     with pytest.raises(ValueError, match="unknown check"):
-        db.validate("nope")
+        db.validate(tables="nope")
 
 
 def test_database_validate_checks_every_table_not_just_the_first():
@@ -242,7 +242,7 @@ def test_database_validate_checks_every_table_not_just_the_first():
         .add_table("b", dupes(), primary_key="id")
     )
     with pytest.raises(ValidationError, match="'b'"):
-        db.validate(["unique_primary_key"])
+        db.validate(tables=["unique_primary_key"])
 
 
 def test_a_failed_add_table_of_the_first_table_still_accepts_other_backends():
@@ -352,7 +352,7 @@ def temporal_db(*time_zones):
 def test_mixing_tz_aware_and_naive_datetimes_is_reported():
     db = temporal_db("UTC", None, None)
     with pytest.raises(ValidationError) as excinfo:
-        db.validate("consistent_time_zones")
+        db.validate(database="consistent_time_zones")
     # One message, not a tuple of them: passing several positional args to an
     # exception makes str() render a tuple repr, parens and quotes included.
     assert len(excinfo.value.args) == 1
@@ -363,11 +363,11 @@ def test_mixing_tz_aware_and_naive_datetimes_is_reported():
 
 
 def test_differing_time_zones_pass_as_long_as_all_are_aware():
-    temporal_db("UTC", "Europe/Berlin").validate("consistent_time_zones")
+    temporal_db("UTC", "Europe/Berlin").validate(database="consistent_time_zones")
 
 
 def test_all_naive_datetimes_pass():
-    temporal_db(None, None).validate("consistent_time_zones")
+    temporal_db(None, None).validate(database="consistent_time_zones")
 
 
 def test_a_database_check_runs_once_not_per_table(monkeypatch):
@@ -376,7 +376,7 @@ def test_a_database_check_runs_once_not_per_table(monkeypatch):
     monkeypatch.setattr(
         "tusk.validation.DATABASE_CHECKS", {"counted": lambda d: calls.append(d)}
     )
-    db.validate("counted")
+    db.validate(database="counted")
     assert calls == [db]
 
 
@@ -391,9 +391,12 @@ def test_a_database_check_name_is_rejected_by_add_table():
         )
 
 
-def test_database_validate_accepts_names_from_both_registries():
+def test_a_name_given_to_the_wrong_scope_raises():
     db = temporal_db(None, None)
-    assert db.validate(["unique_primary_key", "consistent_time_zones"]) is db
+    with pytest.raises(ValueError, match="unknown check 'consistent_time_zones'"):
+        db.validate(tables="consistent_time_zones")
+    with pytest.raises(ValueError, match="unknown check 'unique_primary_key'"):
+        db.validate(database="unique_primary_key")
 
 
 def linked(
@@ -434,7 +437,7 @@ def test_relationships_are_exposed_in_insertion_order():
 def test_an_orphan_foreign_key_is_reported():
     db = linked([1, 2], [1, 99])
     with pytest.raises(ValidationError) as excinfo:
-        db.validate("referential_integrity")
+        db.validate(relationships="referential_integrity")
     message = str(excinfo.value)
     assert "1 rows of 'sessions'" in message
     assert "'customer_id'" in message
@@ -442,16 +445,16 @@ def test_an_orphan_foreign_key_is_reported():
 
 
 def test_every_foreign_key_matching_passes():
-    linked([1, 2, 3], [1, 2, 2]).validate("referential_integrity")
+    linked([1, 2, 3], [1, 2, 2]).validate(relationships="referential_integrity")
 
 
 def test_a_null_foreign_key_is_not_an_orphan():
     # A null foreign key means the row has no parent, which is allowed.
-    linked([1, 2], [1, None]).validate("referential_integrity")
+    linked([1, 2], [1, None]).validate(relationships="referential_integrity")
 
 
 def test_a_childless_parent_is_not_a_defect():
-    linked([1, 2, 3], [1]).validate("referential_integrity")
+    linked([1, 2, 3], [1]).validate(relationships="referential_integrity")
 
 
 def test_mismatched_key_dtypes_are_reported():
@@ -459,7 +462,7 @@ def test_mismatched_key_dtypes_are_reported():
         [1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String, validate=False
     )
     with pytest.raises(ValidationError) as excinfo:
-        db.validate("matching_key_dtypes")
+        db.validate(relationships="matching_key_dtypes")
     message = str(excinfo.value)
     assert "foreign_key 'customer_id' of 'sessions' is String" in message
     assert "primary_key 'id' of 'customers' is Int64" in message
@@ -490,7 +493,7 @@ def test_key_dtypes_must_match_exactly(parent_dtype, child_dtype):
         validate=False,
     )
     with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
-        db.validate("matching_key_dtypes")
+        db.validate(relationships="matching_key_dtypes")
 
 
 @pytest.mark.parametrize(
@@ -499,7 +502,7 @@ def test_key_dtypes_must_match_exactly(parent_dtype, child_dtype):
 def test_identical_key_dtypes_pass(dtype):
     values = [1, 2] if dtype == pl.Int64 else ["a", "b"]
     linked(values, values, parent_dtype=dtype, child_dtype=dtype).validate(
-        "matching_key_dtypes"
+        relationships="matching_key_dtypes"
     )
 
 
@@ -518,13 +521,13 @@ def test_relationship_checks_run_once_per_relationship(monkeypatch):
         foreign_key="session_id",
         validate=False,
     )
-    db.validate("counted")
+    db.validate(relationships="counted")
     assert seen == ["sessions", "transactions"]
 
 
 def test_a_database_with_no_relationships_runs_no_relationship_checks():
     db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
-    assert db.validate("referential_integrity") is db
+    assert db.validate(relationships="referential_integrity") is db
 
 
 def test_a_relationship_check_name_is_rejected_by_add_table():
@@ -543,14 +546,36 @@ def test_validate_true_runs_all_three_registries():
         db.validate()
 
 
-def test_names_from_all_three_registries_select_together():
+def test_each_scope_selects_from_its_own_registry():
     db = linked([1, 2], [1, 2])
     assert (
         db.validate(
-            ["unique_primary_key", "referential_integrity", "consistent_time_zones"]
+            tables="unique_primary_key",
+            relationships="referential_integrity",
+            database="consistent_time_zones",
         )
         is db
     )
+
+
+def test_scopes_are_switched_off_independently(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        "tusk.validation.CHECKS", {"t": lambda f, s: seen.append("table")}
+    )
+    monkeypatch.setattr(
+        "tusk.validation.RELATIONSHIP_CHECKS", {"r": lambda d, x: seen.append("rel")}
+    )
+    monkeypatch.setattr(
+        "tusk.validation.DATABASE_CHECKS", {"d": lambda d: seen.append("db")}
+    )
+    db = linked([1], [1], validate=False)
+    db.validate(tables=False)
+    assert seen == ["rel", "db"]
+
+    seen.clear()
+    db.validate(relationships=False, database=False)
+    assert seen == ["table", "table"]  # customers and sessions
 
 
 def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
@@ -565,7 +590,7 @@ def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
 
     # And the join really would have failed, which is why the order matters.
     with pytest.raises(Exception) as excinfo:
-        db.validate("referential_integrity")
+        db.validate(relationships="referential_integrity")
     assert not isinstance(excinfo.value, ValidationError)
 
 

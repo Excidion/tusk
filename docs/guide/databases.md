@@ -75,7 +75,8 @@ declarations hold:
 db.validate()
 ```
 
-It runs every check against every table in insertion order and raises
+It runs every check — each table, then each relationship, then the database
+as a whole — and raises
 [`ValidationError`][tusk.exceptions.ValidationError] on the first defect. It
 returns the database, so it chains.
 
@@ -84,17 +85,29 @@ example `4 rows, 3 distinct values` — but not which keys are duplicated.
 Finding them costs a second full scan, which is a real bill on a remote
 backend, so tusk leaves that query to you if you want it.
 
-Checks are selected by name. `True` runs all of them, `False` none, and a
-string or any iterable of names runs those:
+`validate()` takes one selector per scope — `tables`, `relationships` and
+`database` — each of which accepts `True` for every check in that scope,
+`False` for none, a name, or an iterable of names:
 
 ```python
-db.validate("unique_primary_key")
+db.validate(tables="unique_primary_key")     # one table check, nothing else
+db.validate(relationships=False)             # skip the joins
+db.validate(tables=["non_null_primary_key", "unique_primary_key"])
+```
+
+Each name is looked up only in its own scope, so `validate(tables=
+"consistent_time_zones")` raises `ValueError` — that check is database-wide.
+
+`add_table` and `add_relationship` take a single `validate=` selector, since
+each already knows its scope:
+
+```python
 db.add_table("customers", customers_lf, primary_key="id", validate=True)
 ```
 
-`add_table` takes the same selector, and defaults to `False`. That default is
-deliberate: without it every `add_table` would materialize a full scan, which
-is a silent performance cliff on `pl.scan_parquet` or a remote table.
+`add_table` defaults to `False`. That default is deliberate: without it every
+`add_table` would materialize a full scan, which is a silent performance cliff
+on `pl.scan_parquet` or a remote table.
 
 `add_relationship` also takes it, but defaults to `"matching_key_dtypes"`
 rather than `False`, because that check reads the declared dtypes and no

@@ -223,20 +223,13 @@ DATABASE_CHECKS = {
 }
 
 
-def _select_checks(
-    checks: bool | str | Iterable[str],
-    registry: dict,
-    vocabulary: dict | None = None,
-) -> list[str]:
+def _select_checks(checks: bool | str | Iterable[str], registry: dict) -> list[str]:
     """Return the names in ``registry`` that ``checks`` selects.
 
     Args:
         checks: ``True`` for every name in ``registry``, ``False`` for none, a
             check name, or an iterable of check names.
         registry: The registry to select from.
-        vocabulary: Every name a caller may legally give, defaulting to
-            ``registry``. Names outside ``registry`` but inside ``vocabulary``
-            are accepted and skipped, so one selector can span both registries.
 
     Returns:
         Selected names, in registry order for ``True`` and in the given order
@@ -244,9 +237,8 @@ def _select_checks(
 
     Raises:
         ValueError: If ``checks`` is not one of those forms, or names a check
-            outside ``vocabulary``.
+            outside ``registry``.
     """
-    known = registry if vocabulary is None else vocabulary
     if checks is True:
         return list(registry)
     if checks is False:
@@ -263,10 +255,10 @@ def _select_checks(
             ) from None
 
     for name in names:
-        if name not in known:
-            available = ", ".join(repr(other) for other in known)
+        if name not in registry:
+            available = ", ".join(repr(other) for other in registry)
             raise ValueError(f"unknown check {name!r}; available checks: {available}")
-    return [name for name in names if name in registry]
+    return names
 
 
 def validate_table(
@@ -312,28 +304,33 @@ def validate_relationship(
 
 
 def validate_database(
-    database: Database, checks: bool | str | Iterable[str] = True
+    database: Database,
+    *,
+    database_checks: bool | str | Iterable[str] = True,
+    table_checks: bool | str | Iterable[str] = True,
+    relationship_checks: bool | str | Iterable[str] = True,
 ) -> None:
     """Run the selected checks against a database.
 
     Table checks run against every table in insertion order, then relationship
     checks against every relationship, then database-wide checks once. The
     first failure raises :class:`~tusk.exceptions.ValidationError` and stops
-    the run. A name in none of the three registries raises :class:`ValueError`.
+    the run. A name outside the registry its selector draws from raises
+    :class:`ValueError`.
 
     Args:
         database: The database to check.
-        checks: ``True`` for every check, ``False`` for none, a check name, or
-            an iterable of check names.
+        database_checks: Selects from :data:`DATABASE_CHECKS`.
+        table_checks: Selects from :data:`CHECKS`.
+        relationship_checks: Selects from :data:`RELATIONSHIP_CHECKS`.
     """
-    vocabulary = {**CHECKS, **RELATIONSHIP_CHECKS, **DATABASE_CHECKS}
-    table_checks = _select_checks(checks, CHECKS, vocabulary)
-    relationship_checks = _select_checks(checks, RELATIONSHIP_CHECKS, vocabulary)
-    database_checks = _select_checks(checks, DATABASE_CHECKS, vocabulary)
+    tables = _select_checks(table_checks, CHECKS)
+    relationships = _select_checks(relationship_checks, RELATIONSHIP_CHECKS)
+    wide = _select_checks(database_checks, DATABASE_CHECKS)
 
     for name in database.table_names:
-        validate_table(database.frame(name), database.schema(name), table_checks)
+        validate_table(database.frame(name), database.schema(name), tables)
     for relationship in database.relationships:
-        validate_relationship(database, relationship, relationship_checks)
-    for name in database_checks:
+        validate_relationship(database, relationship, relationships)
+    for name in wide:
         DATABASE_CHECKS[name](database)

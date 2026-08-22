@@ -212,22 +212,39 @@ class Database:
         self._relationships.append(relationship)
         return self
 
-    def validate(self, checks: bool | str | Iterable[str] = True) -> Database:
+    def validate(
+        self,
+        *,
+        database: bool | str | Iterable[str] = True,
+        tables: bool | str | Iterable[str] = True,
+        relationships: bool | str | Iterable[str] = True,
+    ) -> Database:
         """Run validation checks against the database.
 
+        Each argument selects from its own registry, and takes the same forms
+        as ``validate=`` on :meth:`add_table`: ``True`` for every check in
+        that scope, ``False`` for none, a check name, or an iterable of names.
+        A name outside the scope it is given to raises :class:`ValueError`.
+
         Table checks run against every table in insertion order, then
-        database-wide checks run once. The first failure raises
-        :class:`~tusk.exceptions.ValidationError`. An unknown check name
-        raises :class:`ValueError`.
+        relationship checks against every relationship, then database-wide
+        checks once. The first failure raises
+        :class:`~tusk.exceptions.ValidationError`.
 
         Args:
-            checks: ``True`` (the default) for every check, ``False`` for
-                none, a check name, or an iterable of check names.
+            database: Checks spanning the whole database.
+            tables: Checks run against each table.
+            relationships: Checks run against each relationship.
 
         Returns:
             This database, to allow chaining.
         """
-        validate_database(self, checks)
+        validate_database(
+            self,
+            database_checks=database,
+            table_checks=tables,
+            relationship_checks=relationships,
+        )
         return self
 
     def schema(self, name: str) -> TableSchema:
