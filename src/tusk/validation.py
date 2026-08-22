@@ -119,15 +119,20 @@ def check_consistent_time_zones(database: Database) -> None:
     for table in database.table_names:
         for column, dtype in database.schema(table).dtypes.items():
             if dtype == nw.Datetime:
-                target = aware if dtype.time_zone else naive
-                target.append(f"{table}.{column}")
+                name = f"{table}.{column}"
+                if dtype.time_zone:
+                    aware.append(name)
+                else:
+                    naive.append(name)
 
     if not (aware and naive):
         return
 
     raise ValidationError(
         f"database mixes tz-aware and tz-naive datetimes: "
-        f"{aware[0]} is tz-aware, {naive[0]} is tz-naive"
+        f"{len(aware)} are tz-aware, {len(naive)} are tz-naive."
+        "Aware: " + " ,".join(aware),
+        "Naive: " + ", ".join(naive),
     )
 
 
