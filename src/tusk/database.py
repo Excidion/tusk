@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
+from tusk.validation import validate_database, validate_relationship, validate_table
 
 
 @dataclass(frozen=True)
@@ -73,12 +74,19 @@ class Database:
         """Names of every table in the database."""
         return tuple(self._schemas)
 
+    @property
+    def relationships(self) -> tuple[Relationship, ...]:
+        """Every relationship in the database, in insertion order."""
+        return tuple(self._relationships)
+
     def add_table(
         self,
         name: str,
         table: Any,
         primary_key: str | None = None,
         row_creation_time: str | None = None,
+        *,
+        validate: bool | str | Iterable[str] = False,
     ) -> Database:
         """Add a table to the database.
 
@@ -89,6 +97,12 @@ class Database:
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
                 Required for order-dependent primitives on this table.
+            validate: Checks to run against the data before registering the
+                table. ``False`` (the default) runs none and reads no rows;
+                ``True`` runs every check; a check name or an iterable of
+                names runs those. A failing check raises
+                :class:`~tusk.exceptions.ValidationError` and the table is not
+                registered.
 
         Returns:
             This database, to allow chaining.
@@ -113,9 +127,13 @@ class Database:
         is_eager = isinstance(frame, nw.DataFrame)
         lazy = frame.lazy() if is_eager else frame
 
+        # Backend and eagerness are only assigned once validation passes, so a
+        # caught ValidationError leaves this database exactly as it was --
+        # otherwise a failed first add_table would silently rewrite an empty
+        # database's backend, rejecting frames it should still accept.
+        backend, was_eager = self._backend, self._is_eager
         if self._backend is None:
-            self._backend = lazy.implementation
-            self._is_eager = is_eager
+            backend, was_eager = lazy.implementation, is_eager
         elif lazy.implementation != self._backend:
             raise SchemaError(
                 f"table {name!r} uses backend {lazy.implementation}, but this "
@@ -139,17 +157,36 @@ class Database:
                 stacklevel=2,
             )
 
+        schema = TableSchema(name, primary_key, row_creation_time, dtypes)
+        validate_table(lazy, schema, validate)
+
         self._frames[name] = lazy
-        self._schemas[name] = TableSchema(name, primary_key, row_creation_time, dtypes)
+        self._schemas[name] = schema
+        self._backend = backend
+        self._is_eager = was_eager
         return self
 
-    def add_relationship(self, parent: str, child: str, foreign_key: str) -> Database:
+    def add_relationship(
+        self,
+        parent: str,
+        child: str,
+        foreign_key: str,
+        *,
+        validate: bool | str | Iterable[str] = "matching_key_dtypes",
+    ) -> Database:
         """Link a parent table to a child table.
 
         Args:
             parent: Name of the parent table. Must have a ``primary_key``.
             child: Name of the child table.
             foreign_key: The child's column pointing at the parent's primary key.
+            validate: Which relationship checks to run before registering the
+                link. Defaults to ``"matching_key_dtypes"``, which reads the
+                declared dtypes and no rows, so it costs nothing; ``True``
+                also runs ``"overlapping_keys"``, which joins the two
+                tables. ``False`` runs none. A failing check raises
+                :class:`~tusk.exceptions.ValidationError` and the
+                relationship is not registered.
 
         Returns:
             This database, to allow chaining.
@@ -168,7 +205,46 @@ class Database:
             raise SchemaError(
                 f"child table {child!r} is missing foreign_key column {foreign_key!r}"
             )
-        self._relationships.append(Relationship(parent, child, foreign_key))
+
+        relationship = Relationship(parent, child, foreign_key)
+        validate_relationship(self, relationship, validate)
+
+        self._relationships.append(relationship)
+        return self
+
+    def validate(
+        self,
+        *,
+        database: bool | str | Iterable[str] = True,
+        tables: bool | str | Iterable[str] = True,
+        relationships: bool | str | Iterable[str] = True,
+    ) -> Database:
+        """Run validation checks against the database.
+
+        Each argument selects from its own registry, and takes the same forms
+        as ``validate=`` on :meth:`add_table`: ``True`` for every check in
+        that scope, ``False`` for none, a check name, or an iterable of names.
+        A name outside the scope it is given to raises :class:`ValueError`.
+
+        Table checks run against every table in insertion order, then
+        relationship checks against every relationship, then database-wide
+        checks once. The first failure raises
+        :class:`~tusk.exceptions.ValidationError`.
+
+        Args:
+            database: Checks spanning the whole database.
+            tables: Checks run against each table.
+            relationships: Checks run against each relationship.
+
+        Returns:
+            This database, to allow chaining.
+        """
+        validate_database(
+            self,
+            database_checks=database,
+            table_checks=tables,
+            relationship_checks=relationships,
+        )
         return self
 
     def schema(self, name: str) -> TableSchema:

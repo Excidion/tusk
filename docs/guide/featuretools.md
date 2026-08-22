@@ -44,6 +44,14 @@ different answer.
 - **Three-argument relationships.** `add_relationship(parent=, child=,
   foreign_key=)` — the parent side is always the parent's primary key.
 
+- **Opt-in [validation](databases.md#validation).** featuretools has no
+  equivalent: a declaration that a column is an index is simply believed. tusk
+  will spend real queries to confirm it — that the primary key is populated
+  and unique, that foreign keys resolve, that key dtypes can actually be
+  joined — but only when you ask, via `db.validate()` or `validate=` on
+  `add_table`. The one exception is `add_relationship`, which checks key
+  dtypes by default because that check reads no rows.
+
 - **One global `cutoff_time`**, not per-row cutoff times. It filters the target
   table too, so the matrix can have fewer rows than the target — a row that did
   not exist yet at the cutoff has no features to compute. Tables with no

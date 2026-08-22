@@ -47,6 +47,8 @@ db.add_table(
 db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
 db.add_relationship(parent="sessions", child="transactions", foreign_key="session_id")
 
+db.validate()  # optional: confirm the keys really are keys, before you trust the numbers
+
 feature_matrix, features = tusk.deep_feature_synthesis(
     database=db,
     target_table="customers",
@@ -67,7 +69,8 @@ matrix = tusk.apply_features(features, db_new)
 
 ## Where to go next
 
-- [Databases](guide/databases.md) — declaring tables, keys and relationships.
+- [Databases](guide/databases.md) — declaring tables, keys and
+  relationships, and [validating](guide/databases.md#validation) them.
 - [Running DFS](guide/deep-feature-synthesis.md) — depth, cutoff times, and the column naming scheme.
 - [Primitives](guide/primitives.md) — what ships with tusk and how it behaves.
 - [Custom primitives](guide/custom-primitives.md) — the extension point.

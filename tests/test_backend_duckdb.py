@@ -150,3 +150,34 @@ def test_direct_feature_crosses_a_join_on_duckdb(duck_db):
     matrix = tusk.apply_features(features, database).pl()
     ages = {r["id"]: r["customers__age"] for r in matrix.to_dicts()}
     assert ages == {10: 30, 20: 30, 30: 40}
+
+
+def test_uniqueness_check_runs_on_duckdb(duck_db):
+    db, con = duck_db
+    assert db.validate() is db
+
+    con.execute("CREATE TABLE dupes AS SELECT * FROM (VALUES (1),(1),(2)) t(id)")
+    with pytest.raises(tusk.exceptions.ValidationError, match="not unique"):
+        db.add_table("dupes", con.table("dupes"), primary_key="id", validate=True)
+    assert "dupes" not in db.table_names
+
+
+def test_empty_relation_passes_uniqueness_on_duckdb(duck_db):
+    # narwhals lowers n_unique on SQL backends to
+    # count_distinct(x) + max(x IS NULL). MAX() over zero rows is SQL NULL,
+    # so an empty duckdb relation used to make the distinct count come back
+    # as None, and 0 == None is False -- a false ValidationError on data with
+    # no rows to contradict the declaration. polars cannot reproduce this: it
+    # returns 0 distinct values for the same empty frame, not None.
+    db, con = duck_db
+    con.execute("CREATE TABLE empty (id INTEGER)")
+    db.add_table("empty", con.table("empty"), primary_key="id", validate=True)
+    assert "empty" in db.table_names
+
+
+def test_null_primary_key_is_caught_on_duckdb(duck_db):
+    db, con = duck_db
+    con.execute("CREATE TABLE nulls AS SELECT * FROM (VALUES (1),(NULL)) t(id)")
+    with pytest.raises(tusk.exceptions.ValidationError, match="null"):
+        db.add_table("nulls", con.table("nulls"), primary_key="id", validate=True)
+    assert "nulls" not in db.table_names
