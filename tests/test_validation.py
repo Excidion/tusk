@@ -453,15 +453,34 @@ def test_mismatched_key_dtypes_are_reported():
     assert "primary_key 'id' of 'customers' is Int64" in message
 
 
-def test_two_numeric_key_dtypes_may_differ():
-    # Backends join Int32 to Int64 without complaint.
-    linked([1, 2], [1, 2], parent_dtype=pl.Int64, child_dtype=pl.Int32).validate(
-        "matching_key_dtypes"
-    )
+@pytest.mark.parametrize(
+    ("parent_dtype", "child_dtype"),
+    [
+        # pyarrow refuses to join mismatched integer widths, and polars
+        # refuses int to float, so neither may pass validation.
+        (pl.Int64, pl.Int32),
+        (pl.Int64, pl.Float64),
+        # polars refuses every crossing of the string family, including two
+        # Enums whose categories differ.
+        (pl.String, pl.Categorical),
+        (pl.String, pl.Enum(["a", "b"])),
+        (pl.Categorical, pl.Enum(["a", "b"])),
+        (pl.Enum(["a", "b"]), pl.Enum(["a", "b", "c"])),
+    ],
+)
+def test_key_dtypes_must_match_exactly(parent_dtype, child_dtype):
+    values = [1, 2] if parent_dtype == pl.Int64 else ["a", "b"]
+    db = linked(values, values, parent_dtype=parent_dtype, child_dtype=child_dtype)
+    with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
+        db.validate("matching_key_dtypes")
 
 
-def test_identical_key_dtypes_pass():
-    linked(["a"], ["a"], parent_dtype=pl.String, child_dtype=pl.String).validate(
+@pytest.mark.parametrize(
+    "dtype", [pl.Int64, pl.String, pl.Categorical, pl.Enum(["a", "b"])]
+)
+def test_identical_key_dtypes_pass(dtype):
+    values = [1, 2] if dtype == pl.Int64 else ["a", "b"]
+    linked(values, values, parent_dtype=dtype, child_dtype=dtype).validate(
         "matching_key_dtypes"
     )
 
@@ -511,3 +530,17 @@ def test_names_from_all_three_registries_select_together():
         )
         is db
     )
+
+
+def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
+    # polars raises NarwhalsError when join key dtypes cross the string
+    # family. matching_key_dtypes must report that first, or validate=True
+    # surfaces the backend's error instead of ours.
+    db = linked(["a"], ["a"], parent_dtype=pl.String, child_dtype=pl.Categorical)
+    with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
+        db.validate()
+
+    # And the join really would have failed, which is why the order matters.
+    with pytest.raises(Exception) as excinfo:
+        db.validate("referential_integrity")
+    assert not isinstance(excinfo.value, ValidationError)

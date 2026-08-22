@@ -138,16 +138,18 @@ def check_consistent_time_zones(database: Database) -> None:
 def check_matching_key_dtypes(database: Database, relationship: Relationship) -> None:
     """Confirm a foreign key has the same dtype as the primary key it points at.
 
-    Reads the schemas only. Two numeric dtypes are accepted however they
-    differ, since backends join Int32 to Int64 without complaint; anything
-    else must match exactly.
+    Reads the schemas only. The dtypes must match exactly: pyarrow refuses to
+    join Int64 to Int32, polars refuses Int64 to Float64 and refuses every
+    String/Categorical/Enum crossing, and polars also refuses two Enums whose
+    categories differ. Anything looser passes validation here and then fails
+    the join.
 
     Args:
         database: The database holding both tables.
         relationship: The link to check.
 
     Raises:
-        ValidationError: If the two dtypes cannot be joined.
+        ValidationError: If the two dtypes differ.
     """
     parent = database.schema(relationship.parent)
     child = database.schema(relationship.child)
@@ -156,10 +158,7 @@ def check_matching_key_dtypes(database: Database, relationship: Relationship) ->
 
     parent_dtype = parent.dtypes[parent.primary_key]
     child_dtype = child.dtypes[relationship.foreign_key]
-
     if parent_dtype == child_dtype:
-        return
-    if parent_dtype.is_numeric() and child_dtype.is_numeric():
         return
 
     raise ValidationError(

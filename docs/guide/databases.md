@@ -114,7 +114,7 @@ and raises `ValueError` if you name one:
 
 | Name | Scope | Confirms |
 | --- | --- | --- |
-| `matching_key_dtypes` | relationship | The `foreign_key` dtype matches the parent's `primary_key`. Two numeric dtypes may differ; anything else must match. |
+| `matching_key_dtypes` | relationship | The `foreign_key` dtype matches the parent's `primary_key` exactly. |
 | `referential_integrity` | relationship | Every `foreign_key` value exists in the parent. Nulls are ignored — they mean no parent. |
 | `consistent_time_zones` | database | Every `Datetime` column is tz-aware, or every one is naive. Zones may differ; mixing awareness does not. |
 
@@ -125,6 +125,14 @@ explicit list runs in the order you write it.
 A table with no `primary_key` is skipped by the key checks rather than failed —
 you were already warned about that at `add_table` time. A table with no
 `row_creation_time` is skipped by `datetime_row_creation_time`.
+
+`matching_key_dtypes` demands an exact match rather than anything looser,
+because the backends disagree about what they will join and the strictest one
+decides: pyarrow refuses `Int64` against `Int32`, polars refuses `Int64`
+against `Float64`, and polars refuses every crossing of `String`,
+`Categorical` and `Enum` — including two `Enum`s whose categories differ. A
+looser rule would pass validation and then fail the join. Cast the column
+instead.
 
 `datetime_row_creation_time`, `matching_key_dtypes` and
 `consistent_time_zones` read the declared dtypes, not the rows, so they cost
