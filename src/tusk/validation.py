@@ -168,18 +168,22 @@ def check_matching_key_dtypes(database: Database, relationship: Relationship) ->
     )
 
 
-def check_referential_integrity(database: Database, relationship: Relationship) -> None:
-    """Confirm every foreign key value exists in the parent's primary key.
+def check_overlapping_keys(database: Database, relationship: Relationship) -> None:
+    """Confirm the foreign key matches at least one of the parent's primary keys.
 
-    Null foreign keys are ignored: they mean the row has no parent, which is
-    allowed.
+    Stops at the first match rather than proving every foreign key resolves.
+    Orphan rows are ordinary in real data; no overlap at all means the link
+    itself is wrong -- the wrong column, or two id spaces that never met.
+
+    Null foreign keys are ignored, and a child holding no non-null foreign key
+    is skipped: it has nothing to match.
 
     Args:
         database: The database holding both tables.
         relationship: The link to check.
 
     Raises:
-        ValidationError: If any foreign key value has no matching parent row.
+        ValidationError: If no foreign key value appears in the parent.
     """
     foreign_key = relationship.foreign_key
     primary_key = database.schema(relationship.parent).primary_key
@@ -192,18 +196,17 @@ def check_referential_integrity(database: Database, relationship: Relationship) 
         .filter(~nw.col(foreign_key).is_null())
     )
     parents = database.frame(relationship.parent).select(nw.col(primary_key))
-    orphans = (
-        children.join(parents, left_on=foreign_key, right_on=primary_key, how="anti")
-        .select(orphans=nw.len())
-        .collect()["orphans"]
-        .item()
+    matched = children.join(
+        parents, left_on=foreign_key, right_on=primary_key, how="semi"
     )
-    if not orphans:
+    if len(matched.head(1).collect()):
+        return
+    if not len(children.head(1).collect()):
         return
 
     raise ValidationError(
-        f"{orphans} rows of {relationship.child!r} have a {foreign_key!r} with "
-        f"no matching {primary_key!r} in {relationship.parent!r}"
+        f"no {foreign_key!r} in {relationship.child!r} matches any "
+        f"{primary_key!r} in {relationship.parent!r}"
     )
 
 
@@ -215,7 +218,7 @@ CHECKS = {
 
 RELATIONSHIP_CHECKS = {
     "matching_key_dtypes": check_matching_key_dtypes,
-    "referential_integrity": check_referential_integrity,
+    "overlapping_keys": check_overlapping_keys,
 }
 
 DATABASE_CHECKS = {

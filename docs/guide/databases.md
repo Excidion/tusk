@@ -119,7 +119,7 @@ db.add_relationship(parent="customers", child="sessions", foreign_key="customer_
 # ValidationError: foreign_key 'customer_id' of 'sessions' is String,
 # but primary_key 'id' of 'customers' is Int64
 
-db.add_relationship(..., validate=True)   # also joins, for referential integrity
+db.add_relationship(..., validate=True)   # also checks the keys overlap
 db.add_relationship(..., validate=False)  # check nothing
 ```
 
@@ -144,7 +144,7 @@ and raises `ValueError` if you name one:
 | Name | Scope | Confirms |
 | --- | --- | --- |
 | `matching_key_dtypes` | relationship | The `foreign_key` dtype matches the parent's `primary_key` exactly. |
-| `referential_integrity` | relationship | Every `foreign_key` value exists in the parent. Nulls are ignored — they mean no parent. |
+| `overlapping_keys` | relationship | The `foreign_key` matches at least one of the parent's keys. Nulls are ignored. |
 | `consistent_time_zones` | database | Every `Datetime` column is tz-aware, or every one is naive. Zones may differ; mixing awareness does not. |
 
 With `validate=True` checks run in the order above, so `non_null_primary_key`
@@ -165,9 +165,15 @@ instead.
 
 `datetime_row_creation_time`, `matching_key_dtypes` and
 `consistent_time_zones` read the declared dtypes, not the rows, so they cost
-no query. `referential_integrity` is the most expensive check here: it joins
-each child against its parent.
+no query. `overlapping_keys` is the only one that reads rows on a
+relationship, and it stops at the first match rather than scanning the child.
 
-Nulls count as one distinct value, so **repeated nulls fail** this check while
-**a single null passes** it. A lone null key is a real defect, but a
-nullability one rather than a uniqueness one.
+`overlapping_keys` asks only whether the two key columns meet at all, not
+whether every foreign key resolves. Orphan rows are ordinary in real data —
+a warehouse that deletes parents, an extract that cuts a table short — and
+failing on them would make the check unusable. Zero overlap is the defect it
+looks for: the wrong column, or two id spaces that never met.
+
+In `unique_primary_key`, nulls count as one distinct value, so **repeated
+nulls fail** while **a single null passes**. A lone null key is a real defect,
+but `non_null_primary_key` is the check that reports it.

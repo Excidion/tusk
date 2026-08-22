@@ -183,7 +183,7 @@ class Database:
             validate: Which relationship checks to run before registering the
                 link. Defaults to ``"matching_key_dtypes"``, which reads the
                 declared dtypes and no rows, so it costs nothing; ``True``
-                also runs ``"referential_integrity"``, which joins the two
+                also runs ``"overlapping_keys"``, which joins the two
                 tables. ``False`` runs none. A failing check raises
                 :class:`~tusk.exceptions.ValidationError` and the
                 relationship is not registered.

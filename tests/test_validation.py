@@ -434,27 +434,46 @@ def test_relationships_are_exposed_in_insertion_order():
     )
 
 
-def test_an_orphan_foreign_key_is_reported():
-    db = linked([1, 2], [1, 99])
+def test_keys_that_never_overlap_are_reported():
+    db = linked([1, 2], [98, 99])
     with pytest.raises(ValidationError) as excinfo:
-        db.validate(relationships="referential_integrity")
+        db.validate(relationships="overlapping_keys")
     message = str(excinfo.value)
-    assert "1 rows of 'sessions'" in message
     assert "'customer_id'" in message
+    assert "'sessions'" in message
     assert "'customers'" in message
 
 
+def test_orphan_rows_are_tolerated():
+    # Orphans are ordinary in real data. One match is enough to show the link
+    # itself is right, which is all this check claims.
+    linked([1, 2], [1, 99]).validate(relationships="overlapping_keys")
+
+
 def test_every_foreign_key_matching_passes():
-    linked([1, 2, 3], [1, 2, 2]).validate(relationships="referential_integrity")
+    linked([1, 2, 3], [1, 2, 2]).validate(relationships="overlapping_keys")
 
 
-def test_a_null_foreign_key_is_not_an_orphan():
-    # A null foreign key means the row has no parent, which is allowed.
-    linked([1, 2], [1, None]).validate(relationships="referential_integrity")
+def test_a_null_foreign_key_is_ignored():
+    linked([1, 2], [1, None]).validate(relationships="overlapping_keys")
+
+
+def test_a_child_with_only_null_foreign_keys_is_skipped():
+    # Nothing to match, so nothing to report.
+    linked([1, 2], [None, None]).validate(relationships="overlapping_keys")
+
+
+def test_an_empty_child_is_skipped():
+    linked([1, 2], []).validate(relationships="overlapping_keys")
+
+
+def test_an_empty_parent_cannot_match_anything():
+    with pytest.raises(ValidationError, match="matches any"):
+        linked([], [1, 2]).validate(relationships="overlapping_keys")
 
 
 def test_a_childless_parent_is_not_a_defect():
-    linked([1, 2, 3], [1]).validate(relationships="referential_integrity")
+    linked([1, 2, 3], [1]).validate(relationships="overlapping_keys")
 
 
 def test_mismatched_key_dtypes_are_reported():
@@ -527,22 +546,22 @@ def test_relationship_checks_run_once_per_relationship(monkeypatch):
 
 def test_a_database_with_no_relationships_runs_no_relationship_checks():
     db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
-    assert db.validate(relationships="referential_integrity") is db
+    assert db.validate(relationships="overlapping_keys") is db
 
 
 def test_a_relationship_check_name_is_rejected_by_add_table():
-    with pytest.raises(ValueError, match="unknown check 'referential_integrity'"):
+    with pytest.raises(ValueError, match="unknown check 'overlapping_keys'"):
         tusk.Database("x").add_table(
             "t",
             pl.LazyFrame({"id": [1]}),
             primary_key="id",
-            validate="referential_integrity",
+            validate="overlapping_keys",
         )
 
 
 def test_validate_true_runs_all_three_registries():
-    db = linked([1, 2], [1, 99])
-    with pytest.raises(ValidationError, match="no matching"):
+    db = linked([1, 2], [98, 99])
+    with pytest.raises(ValidationError, match="matches any"):
         db.validate()
 
 
@@ -551,7 +570,7 @@ def test_each_scope_selects_from_its_own_registry():
     assert (
         db.validate(
             tables="unique_primary_key",
-            relationships="referential_integrity",
+            relationships="overlapping_keys",
             database="consistent_time_zones",
         )
         is db
@@ -590,7 +609,7 @@ def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
 
     # And the join really would have failed, which is why the order matters.
     with pytest.raises(Exception) as excinfo:
-        db.validate(relationships="referential_integrity")
+        db.validate(relationships="overlapping_keys")
     assert not isinstance(excinfo.value, ValidationError)
 
 
@@ -625,20 +644,18 @@ def test_add_relationship_can_opt_out():
 
 
 def test_add_relationship_does_not_join_by_default(monkeypatch):
-    # The default is the free schema check, not referential_integrity, which
+    # The default is the free schema check, not overlapping_keys, which
     # would read every row of both tables on every add_relationship.
     def explode(database, relationship):
-        raise AssertionError("referential_integrity must not run by default")
+        raise AssertionError("overlapping_keys must not run by default")
 
-    monkeypatch.setitem(
-        validation.RELATIONSHIP_CHECKS, "referential_integrity", explode
-    )
-    linked([1, 2], [1, 99])
+    monkeypatch.setitem(validation.RELATIONSHIP_CHECKS, "overlapping_keys", explode)
+    linked([1, 2], [98, 99])
 
 
 def test_add_relationship_runs_the_join_when_asked():
-    with pytest.raises(ValidationError, match="no matching"):
-        linked([1, 2], [1, 99], validate=True)
+    with pytest.raises(ValidationError, match="matches any"):
+        linked([1, 2], [98, 99], validate=True)
 
 
 def test_add_relationship_rejects_a_table_check_name():
