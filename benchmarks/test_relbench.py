@@ -152,8 +152,14 @@ def staged(tmp_path_factory):
     relationships = 0
     for name, (_, _, foreign_keys) in schemas.items():
         for foreign_key, parent in foreign_keys.items():
+            # validate=False: matching_key_dtypes demands the foreign key and
+            # the parent's primary key have identical dtypes, because pyarrow
+            # will not join Int64 to Int32. duckdb will, and this tier measures
+            # DFS throughput on a third-party dataset whose key widths are not
+            # ours to police -- a mismatch here would abort the benchmark over
+            # a join duckdb performs happily.
             database.add_relationship(
-                parent=parent, child=name, foreign_key=foreign_key
+                parent=parent, child=name, foreign_key=foreign_key, validate=False
             )
             relationships += 1
 
