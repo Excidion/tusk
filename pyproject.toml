@@ -62,7 +62,7 @@ ignore-init-module = true
 ignore-private = true
 ignore-magic = true
 ignore-nested-functions = true
-exclude = ["tests"]
+exclude = ["tests", ".venv", ".claude"]
 
 [tool.pydoclint]
 style = "google"
