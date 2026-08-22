@@ -349,12 +349,16 @@ def temporal_db(*time_zones):
 
 
 def test_mixing_tz_aware_and_naive_datetimes_is_reported():
-    db = temporal_db("UTC", None)
+    db = temporal_db("UTC", None, None)
     with pytest.raises(ValidationError) as excinfo:
         db.validate("consistent_time_zones")
-    message = str(excinfo.value)
-    assert "t0.at" in message
-    assert "t1.at" in message
+    # One message, not a tuple of them: passing several positional args to an
+    # exception makes str() render a tuple repr, parens and quotes included.
+    assert len(excinfo.value.args) == 1
+    assert str(excinfo.value) == (
+        "database mixes tz-aware and tz-naive datetimes: "
+        "1 tz-aware (t0.at), 2 tz-naive (t1.at, t2.at)"
+    )
 
 
 def test_differing_time_zones_pass_as_long_as_all_are_aware():
@@ -389,3 +393,121 @@ def test_a_database_check_name_is_rejected_by_add_table():
 def test_database_validate_accepts_names_from_both_registries():
     db = temporal_db(None, None)
     assert db.validate(["unique_primary_key", "consistent_time_zones"]) is db
+
+
+def linked(parent_ids, child_fks, parent_dtype=pl.Int64, child_dtype=pl.Int64):
+    """A two-table database with one customers -> sessions relationship."""
+    parents = pl.LazyFrame({"id": parent_ids}, schema={"id": parent_dtype})
+    children = pl.LazyFrame(
+        {"id": list(range(len(child_fks))), "customer_id": child_fks},
+        schema={"id": pl.Int64, "customer_id": child_dtype},
+    )
+    return (
+        tusk.Database("retail")
+        .add_table("customers", parents, primary_key="id")
+        .add_table("sessions", children, primary_key="id")
+        .add_relationship(
+            parent="customers", child="sessions", foreign_key="customer_id"
+        )
+    )
+
+
+def test_relationships_are_exposed_in_insertion_order():
+    db = linked([1], [1])
+    assert db.relationships == (
+        tusk.Relationship(
+            parent="customers", child="sessions", foreign_key="customer_id"
+        ),
+    )
+
+
+def test_an_orphan_foreign_key_is_reported():
+    db = linked([1, 2], [1, 99])
+    with pytest.raises(ValidationError) as excinfo:
+        db.validate("referential_integrity")
+    message = str(excinfo.value)
+    assert "1 rows of 'sessions'" in message
+    assert "'customer_id'" in message
+    assert "'customers'" in message
+
+
+def test_every_foreign_key_matching_passes():
+    linked([1, 2, 3], [1, 2, 2]).validate("referential_integrity")
+
+
+def test_a_null_foreign_key_is_not_an_orphan():
+    # A null foreign key means the row has no parent, which is allowed.
+    linked([1, 2], [1, None]).validate("referential_integrity")
+
+
+def test_a_childless_parent_is_not_a_defect():
+    linked([1, 2, 3], [1]).validate("referential_integrity")
+
+
+def test_mismatched_key_dtypes_are_reported():
+    db = linked([1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String)
+    with pytest.raises(ValidationError) as excinfo:
+        db.validate("matching_key_dtypes")
+    message = str(excinfo.value)
+    assert "foreign_key 'customer_id' of 'sessions' is String" in message
+    assert "primary_key 'id' of 'customers' is Int64" in message
+
+
+def test_two_numeric_key_dtypes_may_differ():
+    # Backends join Int32 to Int64 without complaint.
+    linked([1, 2], [1, 2], parent_dtype=pl.Int64, child_dtype=pl.Int32).validate(
+        "matching_key_dtypes"
+    )
+
+
+def test_identical_key_dtypes_pass():
+    linked(["a"], ["a"], parent_dtype=pl.String, child_dtype=pl.String).validate(
+        "matching_key_dtypes"
+    )
+
+
+def test_relationship_checks_run_once_per_relationship(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        "tusk.validation.RELATIONSHIP_CHECKS",
+        {"counted": lambda d, r: seen.append(r.child)},
+    )
+    db = linked([1], [1]).add_table(
+        "transactions", pl.LazyFrame({"id": [1], "session_id": [0]}), primary_key="id"
+    )
+    db.add_relationship(
+        parent="sessions", child="transactions", foreign_key="session_id"
+    )
+    db.validate("counted")
+    assert seen == ["sessions", "transactions"]
+
+
+def test_a_database_with_no_relationships_runs_no_relationship_checks():
+    db = tusk.Database("x").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
+    assert db.validate("referential_integrity") is db
+
+
+def test_a_relationship_check_name_is_rejected_by_add_table():
+    with pytest.raises(ValueError, match="unknown check 'referential_integrity'"):
+        tusk.Database("x").add_table(
+            "t",
+            pl.LazyFrame({"id": [1]}),
+            primary_key="id",
+            validate="referential_integrity",
+        )
+
+
+def test_validate_true_runs_all_three_registries():
+    db = linked([1, 2], [1, 99])
+    with pytest.raises(ValidationError, match="no matching"):
+        db.validate()
+
+
+def test_names_from_all_three_registries_select_together():
+    db = linked([1, 2], [1, 2])
+    assert (
+        db.validate(
+            ["unique_primary_key", "referential_integrity", "consistent_time_zones"]
+        )
+        is db
+    )

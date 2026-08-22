@@ -74,6 +74,11 @@ class Database:
         """Names of every table in the database."""
         return tuple(self._schemas)
 
+    @property
+    def relationships(self) -> tuple[Relationship, ...]:
+        """Every relationship in the database, in insertion order."""
+        return tuple(self._relationships)
+
     def add_table(
         self,
         name: str,

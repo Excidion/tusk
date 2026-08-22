@@ -14,7 +14,7 @@ import narwhals as nw
 from tusk.exceptions import ValidationError
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
-    from tusk.database import Database, TableSchema
+    from tusk.database import Database, Relationship, TableSchema
 
 
 def check_non_null_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
@@ -130,9 +130,81 @@ def check_consistent_time_zones(database: Database) -> None:
 
     raise ValidationError(
         f"database mixes tz-aware and tz-naive datetimes: "
-        f"{len(aware)} are tz-aware, {len(naive)} are tz-naive."
-        "Aware: " + " ,".join(aware),
-        "Naive: " + ", ".join(naive),
+        f"{len(aware)} tz-aware ({', '.join(aware)}), "
+        f"{len(naive)} tz-naive ({', '.join(naive)})"
+    )
+
+
+def check_matching_key_dtypes(database: Database, relationship: Relationship) -> None:
+    """Confirm a foreign key has the same dtype as the primary key it points at.
+
+    Reads the schemas only. Two numeric dtypes are accepted however they
+    differ, since backends join Int32 to Int64 without complaint; anything
+    else must match exactly.
+
+    Args:
+        database: The database holding both tables.
+        relationship: The link to check.
+
+    Raises:
+        ValidationError: If the two dtypes cannot be joined.
+    """
+    parent = database.schema(relationship.parent)
+    child = database.schema(relationship.child)
+    if parent.primary_key is None:
+        return
+
+    parent_dtype = parent.dtypes[parent.primary_key]
+    child_dtype = child.dtypes[relationship.foreign_key]
+
+    if parent_dtype == child_dtype:
+        return
+    if parent_dtype.is_numeric() and child_dtype.is_numeric():
+        return
+
+    raise ValidationError(
+        f"foreign_key {relationship.foreign_key!r} of {child.name!r} is "
+        f"{child_dtype}, but primary_key {parent.primary_key!r} of "
+        f"{parent.name!r} is {parent_dtype}"
+    )
+
+
+def check_referential_integrity(database: Database, relationship: Relationship) -> None:
+    """Confirm every foreign key value exists in the parent's primary key.
+
+    Null foreign keys are ignored: they mean the row has no parent, which is
+    allowed.
+
+    Args:
+        database: The database holding both tables.
+        relationship: The link to check.
+
+    Raises:
+        ValidationError: If any foreign key value has no matching parent row.
+    """
+    foreign_key = relationship.foreign_key
+    primary_key = database.schema(relationship.parent).primary_key
+    if primary_key is None:
+        return
+
+    children = (
+        database.frame(relationship.child)
+        .select(nw.col(foreign_key))
+        .filter(~nw.col(foreign_key).is_null())
+    )
+    parents = database.frame(relationship.parent).select(nw.col(primary_key))
+    orphans = (
+        children.join(parents, left_on=foreign_key, right_on=primary_key, how="anti")
+        .select(orphans=nw.len())
+        .collect()["orphans"]
+        .item()
+    )
+    if not orphans:
+        return
+
+    raise ValidationError(
+        f"{orphans} rows of {relationship.child!r} have a {foreign_key!r} with "
+        f"no matching {primary_key!r} in {relationship.parent!r}"
     )
 
 
@@ -140,6 +212,11 @@ CHECKS = {
     "non_null_primary_key": check_non_null_primary_key,
     "unique_primary_key": check_unique_primary_key,
     "datetime_row_creation_time": check_datetime_row_creation_time,
+}
+
+RELATIONSHIP_CHECKS = {
+    "matching_key_dtypes": check_matching_key_dtypes,
+    "referential_integrity": check_referential_integrity,
 }
 
 DATABASE_CHECKS = {
@@ -219,22 +296,25 @@ def validate_database(
 ) -> None:
     """Run the selected checks against a database.
 
-    Table checks run against every table in insertion order, then
-    database-wide checks run once. The first failure raises
-    :class:`~tusk.exceptions.ValidationError` and stops the run. A name in
-    neither :data:`CHECKS` nor :data:`DATABASE_CHECKS` raises
-    :class:`ValueError`.
+    Table checks run against every table in insertion order, then relationship
+    checks against every relationship, then database-wide checks once. The
+    first failure raises :class:`~tusk.exceptions.ValidationError` and stops
+    the run. A name in none of the three registries raises :class:`ValueError`.
 
     Args:
         database: The database to check.
         checks: ``True`` for every check, ``False`` for none, a check name, or
             an iterable of check names.
     """
-    vocabulary = {**CHECKS, **DATABASE_CHECKS}
+    vocabulary = {**CHECKS, **RELATIONSHIP_CHECKS, **DATABASE_CHECKS}
     table_checks = _select_checks(checks, CHECKS, vocabulary)
+    relationship_checks = _select_checks(checks, RELATIONSHIP_CHECKS, vocabulary)
     database_checks = _select_checks(checks, DATABASE_CHECKS, vocabulary)
 
     for name in database.table_names:
         validate_table(database.frame(name), database.schema(name), table_checks)
+    for relationship in database.relationships:
+        for name in relationship_checks:
+            RELATIONSHIP_CHECKS[name](database, relationship)
     for name in database_checks:
         DATABASE_CHECKS[name](database)

@@ -108,12 +108,15 @@ Table checks run against one table. `add_table` and `validate()` both run them:
 | `unique_primary_key` | The declared `primary_key` holds no repeated value. |
 | `datetime_row_creation_time` | The declared `row_creation_time` is a `Datetime`, not a `Date`. |
 
-Database checks span tables, so only `validate()` runs them — `add_table` sees
-one table and raises `ValueError` if you name one:
+Relationship checks run against each relationship, and database checks against
+the whole database. Only `validate()` runs those — `add_table` sees one table
+and raises `ValueError` if you name one:
 
-| Name | Confirms |
-| --- | --- |
-| `consistent_time_zones` | Every `Datetime` column is tz-aware, or every one is naive. Zones may differ; mixing awareness does not. |
+| Name | Scope | Confirms |
+| --- | --- | --- |
+| `matching_key_dtypes` | relationship | The `foreign_key` dtype matches the parent's `primary_key`. Two numeric dtypes may differ; anything else must match. |
+| `referential_integrity` | relationship | Every `foreign_key` value exists in the parent. Nulls are ignored — they mean no parent. |
+| `consistent_time_zones` | database | Every `Datetime` column is tz-aware, or every one is naive. Zones may differ; mixing awareness does not. |
 
 With `validate=True` checks run in the order above, so `non_null_primary_key`
 reports a null key before `unique_primary_key` reports it as a duplicate. An
@@ -123,8 +126,10 @@ A table with no `primary_key` is skipped by the key checks rather than failed �
 you were already warned about that at `add_table` time. A table with no
 `row_creation_time` is skipped by `datetime_row_creation_time`.
 
-`datetime_row_creation_time` and `consistent_time_zones` read the declared
-dtypes, not the rows, so they cost no query.
+`datetime_row_creation_time`, `matching_key_dtypes` and
+`consistent_time_zones` read the declared dtypes, not the rows, so they cost
+no query. `referential_integrity` is the most expensive check here: it joins
+each child against its parent.
 
 Nulls count as one distinct value, so **repeated nulls fail** this check while
 **a single null passes** it. A lone null key is a real defect, but a
