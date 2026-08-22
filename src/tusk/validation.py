@@ -290,6 +290,27 @@ def validate_table(
         CHECKS[name](frame, schema)
 
 
+def validate_relationship(
+    database: Database,
+    relationship: Relationship,
+    checks: bool | str | Iterable[str] = True,
+) -> None:
+    """Run the selected relationship checks against one relationship.
+
+    Checks run in the order given; the first failure raises
+    :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
+    is not in :data:`RELATIONSHIP_CHECKS` raises :class:`ValueError`.
+
+    Args:
+        database: The database holding both tables.
+        relationship: The link to check.
+        checks: ``True`` for every relationship check, ``False`` for none, a
+            check name, or an iterable of check names.
+    """
+    for name in _select_checks(checks, RELATIONSHIP_CHECKS):
+        RELATIONSHIP_CHECKS[name](database, relationship)
+
+
 def validate_database(
     database: Database, checks: bool | str | Iterable[str] = True
 ) -> None:
@@ -313,7 +334,6 @@ def validate_database(
     for name in database.table_names:
         validate_table(database.frame(name), database.schema(name), table_checks)
     for relationship in database.relationships:
-        for name in relationship_checks:
-            RELATIONSHIP_CHECKS[name](database, relationship)
+        validate_relationship(database, relationship, relationship_checks)
     for name in database_checks:
         DATABASE_CHECKS[name](database)

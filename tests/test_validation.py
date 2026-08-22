@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import tusk
+from tusk import validation
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
@@ -395,7 +396,13 @@ def test_database_validate_accepts_names_from_both_registries():
     assert db.validate(["unique_primary_key", "consistent_time_zones"]) is db
 
 
-def linked(parent_ids, child_fks, parent_dtype=pl.Int64, child_dtype=pl.Int64):
+def linked(
+    parent_ids,
+    child_fks,
+    parent_dtype=pl.Int64,
+    child_dtype=pl.Int64,
+    validate="matching_key_dtypes",
+):
     """A two-table database with one customers -> sessions relationship."""
     parents = pl.LazyFrame({"id": parent_ids}, schema={"id": parent_dtype})
     children = pl.LazyFrame(
@@ -407,7 +414,10 @@ def linked(parent_ids, child_fks, parent_dtype=pl.Int64, child_dtype=pl.Int64):
         .add_table("customers", parents, primary_key="id")
         .add_table("sessions", children, primary_key="id")
         .add_relationship(
-            parent="customers", child="sessions", foreign_key="customer_id"
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
+            validate=validate,
         )
     )
 
@@ -445,7 +455,9 @@ def test_a_childless_parent_is_not_a_defect():
 
 
 def test_mismatched_key_dtypes_are_reported():
-    db = linked([1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String)
+    db = linked(
+        [1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String, validate=False
+    )
     with pytest.raises(ValidationError) as excinfo:
         db.validate("matching_key_dtypes")
     message = str(excinfo.value)
@@ -470,7 +482,13 @@ def test_mismatched_key_dtypes_are_reported():
 )
 def test_key_dtypes_must_match_exactly(parent_dtype, child_dtype):
     values = [1, 2] if parent_dtype == pl.Int64 else ["a", "b"]
-    db = linked(values, values, parent_dtype=parent_dtype, child_dtype=child_dtype)
+    db = linked(
+        values,
+        values,
+        parent_dtype=parent_dtype,
+        child_dtype=child_dtype,
+        validate=False,
+    )
     with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
         db.validate("matching_key_dtypes")
 
@@ -491,11 +509,14 @@ def test_relationship_checks_run_once_per_relationship(monkeypatch):
         "tusk.validation.RELATIONSHIP_CHECKS",
         {"counted": lambda d, r: seen.append(r.child)},
     )
-    db = linked([1], [1]).add_table(
+    db = linked([1], [1], validate=False).add_table(
         "transactions", pl.LazyFrame({"id": [1], "session_id": [0]}), primary_key="id"
     )
     db.add_relationship(
-        parent="sessions", child="transactions", foreign_key="session_id"
+        parent="sessions",
+        child="transactions",
+        foreign_key="session_id",
+        validate=False,
     )
     db.validate("counted")
     assert seen == ["sessions", "transactions"]
@@ -536,7 +557,9 @@ def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
     # polars raises NarwhalsError when join key dtypes cross the string
     # family. matching_key_dtypes must report that first, or validate=True
     # surfaces the backend's error instead of ours.
-    db = linked(["a"], ["a"], parent_dtype=pl.String, child_dtype=pl.Categorical)
+    db = linked(
+        ["a"], ["a"], parent_dtype=pl.String, child_dtype=pl.Categorical, validate=False
+    )
     with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
         db.validate()
 
@@ -544,3 +567,55 @@ def test_the_dtype_check_precedes_the_join_that_would_fail_on_it():
     with pytest.raises(Exception) as excinfo:
         db.validate("referential_integrity")
     assert not isinstance(excinfo.value, ValidationError)
+
+
+def test_add_relationship_checks_key_dtypes_by_default():
+    with pytest.raises(ValidationError, match="foreign_key 'customer_id'"):
+        linked([1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String)
+
+
+def test_a_failed_add_relationship_registers_nothing():
+    db = (
+        tusk.Database("retail")
+        .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "sessions",
+            pl.LazyFrame({"id": [1], "customer_id": ["1"]}),
+            primary_key="id",
+        )
+    )
+    with pytest.raises(ValidationError):
+        db.add_relationship(
+            parent="customers", child="sessions", foreign_key="customer_id"
+        )
+    assert db.relationships == ()
+    assert db.children_of("customers") == []
+
+
+def test_add_relationship_can_opt_out():
+    db = linked(
+        [1, 2], ["1", "2"], parent_dtype=pl.Int64, child_dtype=pl.String, validate=False
+    )
+    assert len(db.relationships) == 1
+
+
+def test_add_relationship_does_not_join_by_default(monkeypatch):
+    # The default is the free schema check, not referential_integrity, which
+    # would read every row of both tables on every add_relationship.
+    def explode(database, relationship):
+        raise AssertionError("referential_integrity must not run by default")
+
+    monkeypatch.setitem(
+        validation.RELATIONSHIP_CHECKS, "referential_integrity", explode
+    )
+    linked([1, 2], [1, 99])
+
+
+def test_add_relationship_runs_the_join_when_asked():
+    with pytest.raises(ValidationError, match="no matching"):
+        linked([1, 2], [1, 99], validate=True)
+
+
+def test_add_relationship_rejects_a_table_check_name():
+    with pytest.raises(ValueError, match="unknown check 'unique_primary_key'"):
+        linked([1], [1], validate="unique_primary_key")

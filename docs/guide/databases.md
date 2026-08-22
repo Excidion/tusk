@@ -94,9 +94,25 @@ db.add_table("customers", customers_lf, primary_key="id", validate=True)
 
 `add_table` takes the same selector, and defaults to `False`. That default is
 deliberate: without it every `add_table` would materialize a full scan, which
-is a silent performance cliff on `pl.scan_parquet` or a remote table. A
-misspelled check name raises `ValueError`, not `ValidationError`, so catching
-validation failures never swallows a typo.
+is a silent performance cliff on `pl.scan_parquet` or a remote table.
+
+`add_relationship` also takes it, but defaults to `"matching_key_dtypes"`
+rather than `False`, because that check reads the declared dtypes and no
+rows — it costs nothing, and a key dtype mismatch is worth hearing about at
+the point you declare the link rather than at the join:
+
+```python
+db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
+# ValidationError: foreign_key 'customer_id' of 'sessions' is String,
+# but primary_key 'id' of 'customers' is Int64
+
+db.add_relationship(..., validate=True)   # also joins, for referential integrity
+db.add_relationship(..., validate=False)  # check nothing
+```
+
+A relationship that fails validation is not registered, exactly as a table
+that fails is not added. A misspelled check name raises `ValueError`, not
+`ValidationError`, so catching validation failures never swallows a typo.
 
 ### Available checks
 

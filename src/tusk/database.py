@@ -10,7 +10,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
-from tusk.validation import validate_database, validate_table
+from tusk.validation import validate_database, validate_relationship, validate_table
 
 
 @dataclass(frozen=True)
@@ -166,13 +166,27 @@ class Database:
         self._is_eager = was_eager
         return self
 
-    def add_relationship(self, parent: str, child: str, foreign_key: str) -> Database:
+    def add_relationship(
+        self,
+        parent: str,
+        child: str,
+        foreign_key: str,
+        *,
+        validate: bool | str | Iterable[str] = "matching_key_dtypes",
+    ) -> Database:
         """Link a parent table to a child table.
 
         Args:
             parent: Name of the parent table. Must have a ``primary_key``.
             child: Name of the child table.
             foreign_key: The child's column pointing at the parent's primary key.
+            validate: Which relationship checks to run before registering the
+                link. Defaults to ``"matching_key_dtypes"``, which reads the
+                declared dtypes and no rows, so it costs nothing; ``True``
+                also runs ``"referential_integrity"``, which joins the two
+                tables. ``False`` runs none. A failing check raises
+                :class:`~tusk.exceptions.ValidationError` and the
+                relationship is not registered.
 
         Returns:
             This database, to allow chaining.
@@ -191,7 +205,11 @@ class Database:
             raise SchemaError(
                 f"child table {child!r} is missing foreign_key column {foreign_key!r}"
             )
-        self._relationships.append(Relationship(parent, child, foreign_key))
+
+        relationship = Relationship(parent, child, foreign_key)
+        validate_relationship(self, relationship, validate)
+
+        self._relationships.append(relationship)
         return self
 
     def validate(self, checks: bool | str | Iterable[str] = True) -> Database:
