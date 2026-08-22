@@ -5,7 +5,10 @@ workflow is always the same three steps:
 
 1. **Describe your data.** Build a [database](databases.md): register each
    table, say which column is its primary key and which column records when a
-   row became knowable, then link the tables with relationships.
+   row became knowable, then link the tables with relationships. Those are
+   declarations tusk takes on trust — call
+   [`validate()`](databases.md#validation) when you want them checked against
+   the data.
 2. **Synthesize.** Call [`deep_feature_synthesis()`](deep-feature-synthesis.md).
    It walks the relationship graph, stacking [primitives](primitives.md) up to
    `max_depth`, and returns both the feature matrix and the feature definitions
