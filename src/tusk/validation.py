@@ -14,7 +14,32 @@ import narwhals as nw
 from tusk.exceptions import ValidationError
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
-    from tusk.database import TableSchema
+    from tusk.database import Database, TableSchema
+
+
+def check_non_null_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm the declared primary key holds no null.
+
+    A table with no ``primary_key`` is skipped.
+
+    Args:
+        frame: The table's lazy frame.
+        schema: The table's schema, naming the column to check.
+
+    Raises:
+        ValidationError: If the primary key column holds a null.
+    """
+    key = schema.primary_key
+    if key is None:
+        return
+
+    nulls = frame.select(nulls=nw.col(key).is_null().sum()).collect()["nulls"].item()
+    if not nulls:
+        return
+
+    raise ValidationError(
+        f"primary_key {key!r} of {schema.name!r} has {nulls} null values"
+    )
 
 
 def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
@@ -53,36 +78,99 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     )
 
 
+def check_datetime_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm the declared row creation time is a Datetime, not a Date.
+
+    A table with no ``row_creation_time`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the column to check.
+
+    Raises:
+        ValidationError: If the column is not a Datetime.
+    """
+    column = schema.row_creation_time
+    if column is None:
+        return
+
+    dtype = schema.dtypes[column]
+    if dtype == nw.Datetime:
+        return
+
+    raise ValidationError(
+        f"row_creation_time {column!r} of {schema.name!r} is {dtype}, expected Datetime"
+    )
+
+
+def check_consistent_time_zones(database: Database) -> None:
+    """Confirm every Datetime column in the database agrees on time zone awareness.
+
+    Reads the schemas only. Time zone *values* may differ; only mixing aware
+    with naive fails.
+
+    Args:
+        database: The database to check.
+
+    Raises:
+        ValidationError: If some Datetime columns are tz-aware and others naive.
+    """
+    aware, naive = [], []
+    for table in database.table_names:
+        for column, dtype in database.schema(table).dtypes.items():
+            if dtype == nw.Datetime:
+                target = aware if dtype.time_zone else naive
+                target.append(f"{table}.{column}")
+
+    if not (aware and naive):
+        return
+
+    raise ValidationError(
+        f"database mixes tz-aware and tz-naive datetimes: "
+        f"{aware[0]} is tz-aware, {naive[0]} is tz-naive"
+    )
+
+
 CHECKS = {
+    "non_null_primary_key": check_non_null_primary_key,
     "unique_primary_key": check_unique_primary_key,
+    "datetime_row_creation_time": check_datetime_row_creation_time,
+}
+
+DATABASE_CHECKS = {
+    "consistent_time_zones": check_consistent_time_zones,
 }
 
 
-def validate_table(
-    frame: nw.LazyFrame,
-    schema: TableSchema,
-    checks: bool | str | Iterable[str] = True,
-) -> None:
-    """Run the selected checks against one table.
-
-    Checks run in the order given; the first failure raises
-    :class:`~tusk.exceptions.ValidationError` and stops the run.
+def _select_checks(
+    checks: bool | str | Iterable[str],
+    registry: dict,
+    vocabulary: dict | None = None,
+) -> list[str]:
+    """Return the names in ``registry`` that ``checks`` selects.
 
     Args:
-        frame: The table's lazy frame.
-        schema: The table's schema.
-        checks: ``True`` for every check, ``False`` for none, a check name, or
-            an iterable of check names.
+        checks: ``True`` for every name in ``registry``, ``False`` for none, a
+            check name, or an iterable of check names.
+        registry: The registry to select from.
+        vocabulary: Every name a caller may legally give, defaulting to
+            ``registry``. Names outside ``registry`` but inside ``vocabulary``
+            are accepted and skipped, so one selector can span both registries.
+
+    Returns:
+        Selected names, in registry order for ``True`` and in the given order
+        otherwise.
 
     Raises:
         ValueError: If ``checks`` is not one of those forms, or names a check
-            that is not in :data:`CHECKS`.
+            outside ``vocabulary``.
     """
+    known = registry if vocabulary is None else vocabulary
     if checks is True:
-        names = list(CHECKS)
-    elif checks is False:
-        names = []
-    elif isinstance(checks, str):
+        return list(registry)
+    if checks is False:
+        return []
+    if isinstance(checks, str):
         names = [checks]
     else:
         try:
@@ -94,11 +182,54 @@ def validate_table(
             ) from None
 
     for name in names:
-        try:
-            check = CHECKS[name]
-        except KeyError:
-            available = ", ".join(repr(known) for known in CHECKS)
-            raise ValueError(
-                f"unknown check {name!r}; available checks: {available}"
-            ) from None
-        check(frame, schema)
+        if name not in known:
+            available = ", ".join(repr(other) for other in known)
+            raise ValueError(f"unknown check {name!r}; available checks: {available}")
+    return [name for name in names if name in registry]
+
+
+def validate_table(
+    frame: nw.LazyFrame,
+    schema: TableSchema,
+    checks: bool | str | Iterable[str] = True,
+) -> None:
+    """Run the selected table checks against one table.
+
+    Checks run in the order given; the first failure raises
+    :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
+    is not in :data:`CHECKS` raises :class:`ValueError`.
+
+    Args:
+        frame: The table's lazy frame.
+        schema: The table's schema.
+        checks: ``True`` for every table check, ``False`` for none, a check
+            name, or an iterable of check names.
+    """
+    for name in _select_checks(checks, CHECKS):
+        CHECKS[name](frame, schema)
+
+
+def validate_database(
+    database: Database, checks: bool | str | Iterable[str] = True
+) -> None:
+    """Run the selected checks against a database.
+
+    Table checks run against every table in insertion order, then
+    database-wide checks run once. The first failure raises
+    :class:`~tusk.exceptions.ValidationError` and stops the run. A name in
+    neither :data:`CHECKS` nor :data:`DATABASE_CHECKS` raises
+    :class:`ValueError`.
+
+    Args:
+        database: The database to check.
+        checks: ``True`` for every check, ``False`` for none, a check name, or
+            an iterable of check names.
+    """
+    vocabulary = {**CHECKS, **DATABASE_CHECKS}
+    table_checks = _select_checks(checks, CHECKS, vocabulary)
+    database_checks = _select_checks(checks, DATABASE_CHECKS, vocabulary)
+
+    for name in database.table_names:
+        validate_table(database.frame(name), database.schema(name), table_checks)
+    for name in database_checks:
+        DATABASE_CHECKS[name](database)

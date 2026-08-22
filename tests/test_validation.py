@@ -1,3 +1,6 @@
+import datetime as dt
+from zoneinfo import ZoneInfo
+
 import narwhals as nw
 import polars as pl
 import pyarrow as pa
@@ -6,7 +9,12 @@ import pytest
 import tusk
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
-from tusk.validation import check_unique_primary_key, validate_table
+from tusk.validation import (
+    check_datetime_row_creation_time,
+    check_non_null_primary_key,
+    check_unique_primary_key,
+    validate_table,
+)
 
 
 def frame(values):
@@ -251,3 +259,133 @@ def test_a_failed_add_table_of_an_eager_frame_leaves_is_eager_false():
     with pytest.raises(ValidationError):
         db.add_table("t", pl.DataFrame({"id": [1, 1]}), primary_key="id", validate=True)
     assert db.is_eager is False
+
+
+def test_a_null_primary_key_is_reported():
+    with pytest.raises(ValidationError) as excinfo:
+        check_non_null_primary_key(frame([1, None, 3]), schema())
+    message = str(excinfo.value)
+    assert "primary_key 'id'" in message
+    assert "'customers'" in message
+    assert "1 null" in message
+
+
+def test_a_fully_populated_primary_key_passes_the_null_check():
+    check_non_null_primary_key(frame([1, 2, 3]), schema())
+
+
+def test_an_empty_table_passes_the_null_check():
+    check_non_null_primary_key(frame([]), schema())
+
+
+def test_a_table_without_a_primary_key_skips_the_null_check():
+    check_non_null_primary_key(frame([None, None]), schema(primary_key=None))
+
+
+def test_the_null_check_runs_before_the_uniqueness_check():
+    # Two nulls fail both checks. validate=True must report the null defect,
+    # the more specific of the two.
+    with pytest.raises(ValidationError, match="null"):
+        tusk.Database("x").add_table(
+            "t", pl.LazyFrame({"id": [None, None]}), primary_key="id", validate=True
+        )
+
+
+def test_an_explicit_list_runs_in_the_order_given_not_registry_order():
+    # The caller asked for uniqueness first, so they get the uniqueness error
+    # even though the null check would also have failed.
+    with pytest.raises(ValidationError, match="not unique"):
+        validate_table(
+            frame([None, None]),
+            schema(),
+            ["unique_primary_key", "non_null_primary_key"],
+        )
+
+
+def temporal_schema(dtype, column="created_at"):
+    return TableSchema("events", "id", column, {"id": nw.Int64, column: dtype})
+
+
+def test_a_date_row_creation_time_is_reported():
+    with pytest.raises(ValidationError) as excinfo:
+        check_datetime_row_creation_time(frame([1]), temporal_schema(nw.Date))
+    message = str(excinfo.value)
+    assert "row_creation_time 'created_at'" in message
+    assert "expected Datetime" in message
+
+
+def test_a_datetime_row_creation_time_passes():
+    check_datetime_row_creation_time(frame([1]), temporal_schema(nw.Datetime()))
+
+
+def test_a_tz_aware_row_creation_time_passes():
+    check_datetime_row_creation_time(
+        frame([1]), temporal_schema(nw.Datetime(time_zone="UTC"))
+    )
+
+
+def test_a_non_temporal_row_creation_time_is_reported():
+    with pytest.raises(ValidationError, match="expected Datetime"):
+        check_datetime_row_creation_time(frame([1]), temporal_schema(nw.Int64))
+
+
+def test_a_table_without_a_row_creation_time_is_skipped():
+    check_datetime_row_creation_time(
+        frame([1]), TableSchema("events", "id", None, {"id": nw.Int64})
+    )
+
+
+def temporal_db(*time_zones):
+    """A database with one datetime column per given zone; None means naive."""
+    db = tusk.Database("x")
+    for index, zone in enumerate(time_zones):
+        stamp = dt.datetime(2024, 1, 1, tzinfo=ZoneInfo(zone) if zone else None)
+        db.add_table(
+            f"t{index}",
+            pl.LazyFrame({"id": [index], "at": [stamp]}),
+            primary_key="id",
+        )
+    return db
+
+
+def test_mixing_tz_aware_and_naive_datetimes_is_reported():
+    db = temporal_db("UTC", None)
+    with pytest.raises(ValidationError) as excinfo:
+        db.validate("consistent_time_zones")
+    message = str(excinfo.value)
+    assert "t0.at" in message
+    assert "t1.at" in message
+
+
+def test_differing_time_zones_pass_as_long_as_all_are_aware():
+    temporal_db("UTC", "Europe/Berlin").validate("consistent_time_zones")
+
+
+def test_all_naive_datetimes_pass():
+    temporal_db(None, None).validate("consistent_time_zones")
+
+
+def test_a_database_check_runs_once_not_per_table(monkeypatch):
+    calls = []
+    db = temporal_db(None, None)
+    monkeypatch.setattr(
+        "tusk.validation.DATABASE_CHECKS", {"counted": lambda d: calls.append(d)}
+    )
+    db.validate("counted")
+    assert calls == [db]
+
+
+def test_a_database_check_name_is_rejected_by_add_table():
+    # add_table sees one table, so it cannot answer a database-wide question.
+    with pytest.raises(ValueError, match="unknown check 'consistent_time_zones'"):
+        tusk.Database("x").add_table(
+            "t",
+            pl.LazyFrame({"id": [1]}),
+            primary_key="id",
+            validate="consistent_time_zones",
+        )
+
+
+def test_database_validate_accepts_names_from_both_registries():
+    db = temporal_db(None, None)
+    assert db.validate(["unique_primary_key", "consistent_time_zones"]) is db

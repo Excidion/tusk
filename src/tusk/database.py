@@ -10,7 +10,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
-from tusk.validation import validate_table
+from tusk.validation import validate_database, validate_table
 
 
 @dataclass(frozen=True)
@@ -190,9 +190,10 @@ class Database:
         return self
 
     def validate(self, checks: bool | str | Iterable[str] = True) -> Database:
-        """Run validation checks against every table in the database.
+        """Run validation checks against the database.
 
-        Tables are checked in insertion order; the first failure raises
+        Table checks run against every table in insertion order, then
+        database-wide checks run once. The first failure raises
         :class:`~tusk.exceptions.ValidationError`. An unknown check name
         raises :class:`ValueError`.
 
@@ -203,13 +204,7 @@ class Database:
         Returns:
             This database, to allow chaining.
         """
-        # One-shot iterators are accepted, so materialize before the loop:
-        # otherwise the first table consumes the selector and every table
-        # after it is silently skipped.
-        if not isinstance(checks, (bool, str)):
-            checks = list(checks)
-        for name, schema in self._schemas.items():
-            validate_table(self._frames[name], schema, checks)
+        validate_database(self, checks)
         return self
 
     def schema(self, name: str) -> TableSchema:

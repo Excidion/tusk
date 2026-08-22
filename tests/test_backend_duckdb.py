@@ -173,3 +173,11 @@ def test_empty_relation_passes_uniqueness_on_duckdb(duck_db):
     con.execute("CREATE TABLE empty (id INTEGER)")
     db.add_table("empty", con.table("empty"), primary_key="id", validate=True)
     assert "empty" in db.table_names
+
+
+def test_null_primary_key_is_caught_on_duckdb(duck_db):
+    db, con = duck_db
+    con.execute("CREATE TABLE nulls AS SELECT * FROM (VALUES (1),(NULL)) t(id)")
+    with pytest.raises(tusk.exceptions.ValidationError, match="null"):
+        db.add_table("nulls", con.table("nulls"), primary_key="id", validate=True)
+    assert "nulls" not in db.table_names
