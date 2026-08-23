@@ -1,7 +1,8 @@
 """Phase 2: turn feature definitions into a single lazy query plan.
 
-The only ``collect()`` in tusk is the documented eager round-trip in
-:func:`compile_features`' caller; nothing here materializes a frame.
+Nothing here materializes a frame, and neither does the caller: the only
+``collect()`` calls in tusk are the ones :mod:`tusk.validation` makes when a
+check is explicitly requested.
 """
 
 from __future__ import annotations

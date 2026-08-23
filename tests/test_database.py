@@ -75,9 +75,18 @@ def test_unknown_foreign_key_raises(db):
         db.add_relationship(parent="customers", child="sessions", foreign_key="nope")
 
 
-def test_eager_input_is_recorded_and_lazified():
-    db = tusk.Database("x").add_table("t", pl.DataFrame({"a": [1]}), primary_key="a")
-    assert db.is_eager is True
+@pytest.mark.parametrize(
+    "table",
+    [
+        pl.DataFrame({"a": [1]}),
+        pl.LazyFrame({"a": [1]}),
+        nw.from_native(pl.DataFrame({"a": [1]})),
+        nw.from_native(pl.LazyFrame({"a": [1]})),
+    ],
+    ids=["native-eager", "native-lazy", "narwhals-eager", "narwhals-lazy"],
+)
+def test_every_input_frame_form_is_lazified(table):
+    db = tusk.Database("x").add_table("t", table, primary_key="a")
     assert isinstance(db.frame("t"), nw.LazyFrame)
 
 

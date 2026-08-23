@@ -55,10 +55,11 @@ One database uses one backend. The first table you add fixes it; a later
 table on a different backend raises `SchemaError`, because narwhals cannot join
 across backends.
 
-The first table also fixes eagerness. If you hand tusk eager frames,
-[`is_eager`][tusk.Database.is_eager] is true and the feature matrix is
-collected once at the end. If you hand it lazy frames, you get a lazy frame
-back and nothing is computed until you collect it yourself.
+Eagerness, by contrast, is not sticky and not remembered. `add_table` accepts
+a native or narwhals frame in either form and immediately lazifies it, so an
+eager frame and a lazy one are interchangeable — you can mix both forms of the
+same backend in one database. Either way the feature matrix comes back
+[uncomputed](deep-feature-synthesis.md#lazy-out-always).
 
 ## Validation
 

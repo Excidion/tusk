@@ -19,12 +19,11 @@ different answer.
   A collection of tables joined by primary and foreign keys is a database, and
   a function name should be a verb or a spelled-out term of art rather than an
   acronym. `apply_features` is neutral about laziness: it returns a query plan
-  for lazy input and a materialized frame for eager input.
+  for any input, eager or lazy.
 
-- **Lazy in, lazy out.** Feed tusk lazy frames and it returns a lazy frame: it
-  builds one query plan and never collects, so you decide when to compute. Feed
-  it eager frames and it returns an eager frame, collecting once at the end —
-  that single `collect()` is the only one in the library.
+- **Lazy out, always.** tusk builds one query plan and never collects. Eager or
+  lazy frames both go in; an uncomputed matrix comes back, and you decide when
+  to compute it. Featuretools hands you a materialized pandas frame instead.
 
 - **Any narwhals backend**, not just pandas. One database uses one backend.
 
