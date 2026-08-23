@@ -33,6 +33,11 @@ def test_container_is_named_database():
     assert not hasattr(db, "add_dataframe")
 
 
+def test_eagerness_is_not_part_of_the_public_surface():
+    db = tusk.Database("retail")
+    assert not hasattr(db, "is_eager")
+
+
 def test_entry_points_are_spelled_out():
     assert callable(tusk.deep_feature_synthesis)
     assert callable(tusk.apply_features)

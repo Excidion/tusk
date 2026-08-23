@@ -261,11 +261,11 @@ def test_a_failed_add_table_of_the_first_table_still_accepts_other_backends():
     assert db.table_names == ("ok",)
 
 
-def test_a_failed_add_table_of_an_eager_frame_leaves_is_eager_false():
+def test_a_failed_add_table_of_an_eager_frame_leaves_the_database_empty():
     db = tusk.Database("x")
     with pytest.raises(ValidationError):
         db.add_table("t", pl.DataFrame({"id": [1, 1]}), primary_key="id", validate=True)
-    assert db.is_eager is False
+    assert db.table_names == ()
 
 
 def test_a_null_primary_key_is_reported():

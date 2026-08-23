@@ -18,12 +18,21 @@ The matrix has one row per *visible* row of the target table, keyed by its
 primary key. The target must have a `primary_key`; without one, compilation
 raises [`SchemaError`][tusk.exceptions.SchemaError].
 
-## Lazy in, lazy out
+## Lazy out, always
 
-Feed tusk lazy frames and it returns a lazy frame: it builds one query plan and
-never collects, so you decide when to compute. Feed it eager frames and it
-returns an eager frame, collecting once at the end — that single `collect()` is
-the only one in the library.
+tusk builds one query plan and **never collects**. Whatever you feed it — a
+`pl.DataFrame`, a `pl.LazyFrame`, a pandas frame, a duckdb relation — the
+matrix comes back uncomputed, in your backend's native type, and you decide
+when to compute:
+
+```python
+matrix = feature_matrix.collect()
+```
+
+On a backend with no separate lazy type, such as pandas or pyarrow, there is
+nothing to collect and you already have your frame. The only `collect()` calls
+in tusk are the ones [validation](databases.md#validation) makes when you ask
+for a check by name.
 
 ## Definitions without computation
 

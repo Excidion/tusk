@@ -59,8 +59,14 @@ feature_matrix, features = tusk.deep_feature_synthesis(
 )
 ```
 
-`feature_matrix` comes back in the frame type you put in — lazy in, lazy out —
-so if you passed lazy frames, nothing is computed until you collect it.
+`feature_matrix` comes back as an uncomputed query plan — tusk never collects —
+so on a backend with a lazy frame type you get one back and decide when to
+compute:
+
+```python
+matrix = feature_matrix.collect()
+```
+
 `features` is a list of inspectable definitions you can re-apply to new data:
 
 ```python

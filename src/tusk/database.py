@@ -62,12 +62,6 @@ class Database:
         self._schemas: dict[str, TableSchema] = {}
         self._relationships: list[Relationship] = []
         self._backend: Any = None
-        self._is_eager: bool | None = None
-
-    @property
-    def is_eager(self) -> bool:
-        """Whether the caller supplied eager frames."""
-        return bool(self._is_eager)
 
     @property
     def table_names(self) -> tuple[str, ...]:
@@ -92,7 +86,9 @@ class Database:
 
         Args:
             name: Name to register the table under.
-            table: A native frame or a narwhals frame.
+            table: A native frame or a narwhals frame, eager or lazy.
+                It is lazified on the way in, so the two forms are
+                interchangeable and may be mixed within one database.
             primary_key: Column uniquely identifying a row. Required for a
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
@@ -119,21 +115,18 @@ class Database:
         _reject_composite(primary_key, "primary_key")
         _reject_composite(row_creation_time, "row_creation_time")
 
-        frame = (
-            table
-            if isinstance(table, (nw.DataFrame, nw.LazyFrame))
-            else nw.from_native(table)
-        )
-        is_eager = isinstance(frame, nw.DataFrame)
-        lazy = frame.lazy() if is_eager else frame
+        # nw.from_native and .lazy() are both idempotent, so this one line
+        # accepts a native or narwhals frame, eager or lazy, and normalizes
+        # every one of them to the lazy frame the rest of tusk works on.
+        lazy = nw.from_native(table).lazy()
 
-        # Backend and eagerness are only assigned once validation passes, so a
-        # caught ValidationError leaves this database exactly as it was --
-        # otherwise a failed first add_table would silently rewrite an empty
-        # database's backend, rejecting frames it should still accept.
-        backend, was_eager = self._backend, self._is_eager
+        # The backend is only assigned once validation passes, so a caught
+        # ValidationError leaves this database exactly as it was -- otherwise
+        # a failed first add_table would silently rewrite an empty database's
+        # backend, rejecting frames it should still accept.
+        backend = self._backend
         if self._backend is None:
-            backend, was_eager = lazy.implementation, is_eager
+            backend = lazy.implementation
         elif lazy.implementation != self._backend:
             raise SchemaError(
                 f"table {name!r} uses backend {lazy.implementation}, but this "
@@ -163,7 +156,6 @@ class Database:
         self._frames[name] = lazy
         self._schemas[name] = schema
         self._backend = backend
-        self._is_eager = was_eager
         return self
 
     def add_relationship(

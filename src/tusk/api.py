@@ -52,9 +52,10 @@ def deep_feature_synthesis(
         features_only: Return the feature definitions without computing them.
 
     Returns:
-        A ``(feature_matrix, features)`` tuple, where the matrix is in the
-        caller's native frame type; or just the feature list when
-        ``features_only`` is true. Synthesis raises
+        A ``(feature_matrix, features)`` tuple, where the matrix is an
+        uncomputed query plan in the caller's native frame type -- a lazy
+        frame on a backend that has one, so call ``.collect()`` to compute it;
+        or just the feature list when ``features_only`` is true. Synthesis raises
         :class:`~tusk.exceptions.SchemaError` if the target table is unknown
         and :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive
         name or an order-dependent primitive on a table with no
@@ -103,14 +104,13 @@ def apply_features(
             None disables filtering.
 
     Returns:
-        The feature matrix in the caller's native frame type, with one row per
-        visible target row. ``compile_features`` raises
+        The feature matrix as an uncomputed query plan in the caller's native
+        frame type, with one row per visible target row. tusk never collects,
+        so on a backend with a lazy frame type you get one back and decide
+        when to compute. ``compile_features`` raises
         :class:`~tusk.exceptions.SchemaError` if ``features`` is empty, spans
         more than one table, or targets a table with no ``primary_key``, and
         :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
         primitive lands on a table with no ``row_creation_time``.
     """
-    frame = compile_features(features, database, cutoff_time)
-    if database.is_eager:
-        return frame.collect().to_native()
-    return frame.to_native()
+    return compile_features(features, database, cutoff_time).to_native()

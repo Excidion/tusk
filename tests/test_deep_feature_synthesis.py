@@ -147,7 +147,7 @@ def test_apply_features_reapplies_definitions(db):
     assert "COUNT__sessions" in matrix.collect().columns
 
 
-def test_eager_input_round_trips_to_eager_output():
+def test_eager_input_still_returns_a_lazy_plan():
     customers = pl.DataFrame({"id": [1, 2], "age": [30, 40]})
     sessions = pl.DataFrame({"id": [10, 11], "customer_id": [1, 1]})
     db = (
@@ -167,8 +167,46 @@ def test_eager_input_round_trips_to_eager_output():
         trans_primitives=[],
         max_depth=1,
     )
-    assert isinstance(matrix, pl.DataFrame)
-    assert matrix.sort("id")["COUNT__sessions"].to_list() == [2, 0]
+    assert isinstance(matrix, pl.LazyFrame)
+    assert matrix.collect().sort("id")["COUNT__sessions"].to_list() == [2, 0]
+
+
+def test_mixing_eager_and_lazy_frames_gives_the_same_plan_either_way():
+    """Eagerness of any one table must not decide the whole database's output.
+
+    The order the tables go in used to pick the return type, so an eager frame
+    added first silently collected a lazy scan added second.
+    """
+    eager_customers = pl.DataFrame({"id": [1, 2], "age": [30, 40]})
+    lazy_sessions = pl.LazyFrame({"id": [10, 11], "customer_id": [1, 1]})
+
+    matrices = []
+    for customers, sessions in (
+        (eager_customers, lazy_sessions),
+        (eager_customers.lazy(), lazy_sessions.collect()),
+    ):
+        db = (
+            tusk.Database("x")
+            .add_table("customers", customers, primary_key="id")
+            .add_table("sessions", sessions, primary_key="id")
+            .add_relationship(
+                parent="customers",
+                child="sessions",
+                foreign_key="customer_id",
+            )
+        )
+        matrix, _ = tusk.deep_feature_synthesis(
+            database=db,
+            target_table="customers",
+            agg_primitives=["count"],
+            trans_primitives=[],
+            max_depth=1,
+        )
+        assert isinstance(matrix, pl.LazyFrame)
+        matrices.append(matrix.collect().sort("id"))
+
+    assert matrices[0].equals(matrices[1])
+    assert matrices[0]["COUNT__sessions"].to_list() == [2, 0]
 
 
 def test_deep_feature_synthesis_never_materializes_for_lazy_input(tmp_path):
