@@ -11,8 +11,10 @@ from tusk import validation
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
+    check_cutoff_time_zone,
     check_datetime_row_creation_time,
     check_non_null_primary_key,
+    check_row_creation_time_awareness,
     check_unique_primary_key,
     validate_table,
 )
@@ -379,6 +381,139 @@ def test_differing_time_zones_pass_as_long_as_all_are_aware():
 
 def test_all_naive_datetimes_pass():
     temporal_db(None, None).validate(database="consistent_time_zones")
+
+
+def row_creation_db(*time_zones):
+    """A database declaring one row_creation_time per given zone; None is naive."""
+    db = tusk.Database("x")
+    for index, zone in enumerate(time_zones):
+        stamp = dt.datetime(2024, 1, 1, tzinfo=ZoneInfo(zone) if zone else None)
+        db.add_table(
+            f"t{index}",
+            pl.LazyFrame({"id": [index], "at": [stamp]}),
+            primary_key="id",
+            row_creation_time="at",
+        )
+    return db
+
+
+def test_all_aware_row_creation_times_report_aware():
+    assert check_row_creation_time_awareness(row_creation_db("UTC")) is True
+
+
+def test_differing_zones_still_report_aware():
+    db = row_creation_db("UTC", "Europe/Berlin")
+    assert check_row_creation_time_awareness(db) is True
+
+
+def test_all_naive_row_creation_times_report_naive():
+    assert check_row_creation_time_awareness(row_creation_db(None, None)) is False
+
+
+def test_a_timeless_database_reports_no_awareness():
+    db = tusk.Database("x").add_table(
+        "t",
+        pl.LazyFrame({"id": [1]}),
+        primary_key="id",
+    )
+    assert check_row_creation_time_awareness(db) is None
+
+
+def test_mixed_row_creation_time_awareness_is_reported():
+    db = row_creation_db("UTC", None, None)
+    with pytest.raises(ValidationError) as excinfo:
+        check_row_creation_time_awareness(db)
+    assert len(excinfo.value.args) == 1
+    assert str(excinfo.value) == (
+        "database mixes tz-aware and tz-naive row creation times: "
+        "1 tz-aware (t0.at), 2 tz-naive (t1.at, t2.at)"
+    )
+
+
+def test_a_datetime_column_that_is_not_the_row_creation_time_is_ignored():
+    # consistent_time_zones covers every Datetime column; this one answers
+    # only what the cutoff has to be comparable against.
+    db = tusk.Database("x").add_table(
+        "t",
+        pl.LazyFrame(
+            {
+                "id": [1],
+                "at": [dt.datetime(2024, 1, 1)],
+                "other": [dt.datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))],
+            },
+        ),
+        primary_key="id",
+        row_creation_time="at",
+    )
+    assert check_row_creation_time_awareness(db) is False
+
+
+def test_a_non_datetime_row_creation_time_counts_as_naive():
+    db = tusk.Database("x").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "at": [dt.date(2024, 1, 1)]}),
+        primary_key="id",
+        row_creation_time="at",
+    )
+    assert check_row_creation_time_awareness(db) is False
+
+
+def test_a_cutoff_matching_naive_row_creation_times_passes():
+    check_cutoff_time_zone(row_creation_db(None), dt.datetime(2026, 1, 1))
+
+
+def test_a_cutoff_matching_aware_row_creation_times_passes():
+    # The zones differ; only awareness has to match.
+    check_cutoff_time_zone(
+        row_creation_db("Europe/Berlin"),
+        dt.datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
+    )
+
+
+def test_an_aware_cutoff_against_naive_row_creation_times_is_reported():
+    with pytest.raises(ValidationError) as excinfo:
+        check_cutoff_time_zone(
+            row_creation_db(None),
+            dt.datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
+        )
+    assert "is tz-aware" in str(excinfo.value)
+    assert "row creation times are tz-naive" in str(excinfo.value)
+
+
+def test_a_naive_cutoff_against_aware_row_creation_times_is_reported():
+    with pytest.raises(ValidationError) as excinfo:
+        check_cutoff_time_zone(row_creation_db("UTC"), dt.datetime(2026, 1, 1))
+    assert "is tz-naive" in str(excinfo.value)
+    assert "row creation times are tz-aware" in str(excinfo.value)
+
+
+def test_a_cutoff_against_mixed_row_creation_times_is_reported():
+    with pytest.raises(ValidationError, match="mixes tz-aware and tz-naive"):
+        check_cutoff_time_zone(row_creation_db("UTC", None), dt.datetime(2026, 1, 1))
+
+
+def test_any_cutoff_passes_against_a_timeless_database():
+    db = tusk.Database("x").add_table(
+        "t",
+        pl.LazyFrame({"id": [1]}),
+        primary_key="id",
+    )
+    check_cutoff_time_zone(db, dt.datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")))
+    check_cutoff_time_zone(db, dt.datetime(2026, 1, 1))
+
+
+def test_a_utc_offset_of_zero_still_counts_as_aware():
+    # tzinfo is not None is not enough on its own; utcoffset() is the test.
+    with pytest.raises(ValidationError, match="is tz-aware"):
+        check_cutoff_time_zone(
+            row_creation_db(None),
+            dt.datetime(2026, 1, 1, tzinfo=dt.timezone(dt.timedelta(0))),
+        )
+
+
+def test_row_creation_time_awareness_is_not_a_registered_check():
+    with pytest.raises(ValueError, match="unknown check"):
+        row_creation_db(None).validate(database="row_creation_time_awareness")
 
 
 def test_a_database_check_runs_once_not_per_table(monkeypatch):

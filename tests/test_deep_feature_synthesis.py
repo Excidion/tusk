@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import polars as pl
 import pytest
@@ -245,3 +246,154 @@ def test_unknown_primitive_fails_before_any_query(db):
             trans_primitives=["dubbled"],
             features_only=True,
         )
+
+
+def aware_db():
+    """The retail schema with every row creation time in UTC."""
+    return (
+        tusk.Database("retail")
+        .add_table(
+            "customers",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2],
+                    "age": [30, 40],
+                    "signed_up_at": [datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))] * 2,
+                },
+            ),
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "sessions",
+            pl.LazyFrame(
+                {
+                    "id": [10, 20],
+                    "customer_id": [1, 1],
+                    "started_at": [datetime(2024, 3, 4, tzinfo=ZoneInfo("UTC"))] * 2,
+                },
+            ),
+            primary_key="id",
+            row_creation_time="started_at",
+        )
+        .add_relationship(
+            parent="customers", child="sessions", foreign_key="customer_id"
+        )
+    )
+
+
+def count_features(database):
+    return tusk.deep_feature_synthesis(
+        database=database,
+        target_table="customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        max_depth=1,
+        features_only=True,
+    )
+
+
+def test_a_naive_cutoff_on_naive_row_creation_times_computes(db):
+    matrix = tusk.apply_features(
+        count_features(db),
+        db,
+        cutoff_time=datetime(2026, 1, 1),
+    )
+    assert len(matrix.collect()) == 3
+
+
+def test_an_aware_cutoff_on_aware_row_creation_times_computes():
+    database = aware_db()
+    matrix = tusk.apply_features(
+        count_features(database),
+        database,
+        cutoff_time=datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
+    )
+    assert len(matrix.collect()) == 2
+
+
+def test_an_aware_cutoff_on_naive_row_creation_times_is_rejected(db):
+    with pytest.raises(tusk.exceptions.ValidationError) as excinfo:
+        tusk.apply_features(
+            count_features(db),
+            db,
+            cutoff_time=datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
+        )
+    assert "tz-aware" in str(excinfo.value)
+    assert "row creation times are tz-naive" in str(excinfo.value)
+
+
+def test_a_naive_cutoff_on_aware_row_creation_times_is_rejected():
+    database = aware_db()
+    with pytest.raises(tusk.exceptions.ValidationError, match="tz-naive"):
+        tusk.apply_features(
+            count_features(database),
+            database,
+            cutoff_time=datetime(2026, 1, 1),
+        )
+
+
+def test_deep_feature_synthesis_rejects_a_mismatched_cutoff(db):
+    with pytest.raises(tusk.exceptions.ValidationError):
+        tusk.deep_feature_synthesis(
+            database=db,
+            target_table="customers",
+            agg_primitives=["count"],
+            trans_primitives=[],
+            max_depth=1,
+            cutoff_time=datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
+        )
+
+
+def test_a_date_cutoff_is_rejected(db):
+    with pytest.raises(TypeError, match="must be a datetime.datetime"):
+        tusk.apply_features(
+            count_features(db),
+            db,
+            cutoff_time=date(2026, 1, 1),  # ty: ignore[invalid-argument-type]
+        )
+
+
+def test_a_string_cutoff_is_rejected(db):
+    with pytest.raises(TypeError, match="not a str"):
+        tusk.apply_features(
+            count_features(db),
+            db,
+            cutoff_time="2026-01-01",  # ty: ignore[invalid-argument-type]
+        )
+
+
+def test_a_timeless_database_accepts_any_cutoff():
+    # The cutoff is a documented no-op here, so there is nothing to mismatch.
+    database = tusk.Database("x").add_table(
+        "customers",
+        pl.LazyFrame({"id": [1, 2], "age": [30, 40]}),
+        primary_key="id",
+    )
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="customers",
+        agg_primitives=[],
+        trans_primitives=[],
+        max_depth=1,
+        features_only=True,
+    )
+    matrix = tusk.apply_features(
+        features,
+        database,
+        cutoff_time=datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
+    )
+    assert len(matrix.collect()) == 2
+
+
+def test_features_only_ignores_a_mismatched_cutoff(db):
+    # Nothing is computed, so the cutoff never reaches a comparison.
+    tusk.deep_feature_synthesis(
+        database=db,
+        target_table="customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        max_depth=1,
+        cutoff_time=date(2026, 1, 1),  # ty: ignore[invalid-argument-type]
+        features_only=True,
+    )

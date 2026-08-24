@@ -53,6 +53,14 @@ target table.
 `cutoff_time` is **one global value**, not a per-row frame. Only rows whose
 `row_creation_time` is at or before it are visible.
 
+It must be a `datetime`, not just a `date`. A date has no time of day, and
+therefore risks differing behaviors across dataframe backends.
+
+Its time zone awareness must match the database's row creation times. A
+comparison between a tz-aware timestamp and a naive one has no defined
+ordering, so a mismatch raises
+[`ValidationError`][tusk.exceptions.ValidationError].
+
 It filters the target table too, so the matrix can have fewer rows than the
 target — a row that did not exist yet at the cutoff has no features to compute.
 

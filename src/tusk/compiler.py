@@ -8,7 +8,7 @@ check is explicitly requested.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from datetime import datetime
 
 import narwhals as nw
 
@@ -27,7 +27,7 @@ from tusk.features import (
 def compile_features(
     features: Sequence[Feature],
     database: Database,
-    cutoff_time: Any = None,
+    cutoff_time: datetime | None = None,
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
 
@@ -124,7 +124,11 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
     return out
 
 
-def _base_frame(database: Database, table: str, cutoff_time: Any) -> nw.LazyFrame:
+def _base_frame(
+    database: Database,
+    table: str,
+    cutoff_time: datetime | None,
+) -> nw.LazyFrame:
     """Return a table's frame with the cutoff filter applied.
 
     Tables without a ``row_creation_time`` are timeless and pass through
@@ -156,7 +160,7 @@ def _table_frame(
     database: Database,
     table: str,
     needed: set[Feature],
-    cutoff_time: Any,
+    cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
     """Build a frame for ``table`` carrying a column for every needed feature.
 
@@ -226,7 +230,7 @@ def _add_aggregations(
     table: str,
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
-    cutoff_time: Any,
+    cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
     """Fold one child table's aggregations into the parent with a single join.
 
@@ -276,7 +280,7 @@ def _add_directs(
     database: Database,
     relationship: Relationship,
     batch: Sequence[DirectFeature],
-    cutoff_time: Any,
+    cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
     """Join one parent table's features down onto the child with a single join.
 

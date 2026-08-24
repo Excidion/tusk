@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from datetime import datetime
 from typing import Any
 
 from tusk.compiler import compile_features
@@ -16,6 +17,7 @@ from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import Primitive
 from tusk.primitives.transform import TRANS_DEFAULTS
 from tusk.synthesis import synthesize
+from tusk.validation import check_cutoff_time_zone
 
 
 def deep_feature_synthesis(
@@ -25,7 +27,7 @@ def deep_feature_synthesis(
     trans_primitives: Iterable[str | Primitive] | None = None,
     groupby_trans_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
-    cutoff_time: Any = None,
+    cutoff_time: datetime | None = None,
     features_only: bool = False,
 ) -> Any:
     """Run deep feature synthesis over a database.
@@ -44,9 +46,10 @@ def deep_feature_synthesis(
         max_depth: Maximum number of stacked primitive applications.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives.
+            Its tz awareness must match the database's row creation times'.
             A table with no ``row_creation_time`` is timeless and passes
-            through unfiltered, so a cutoff on a database that declares none
-            is silently a no-op. None disables filtering. Ignored entirely when
+            through unfiltered, so a cutoff on a database that declares none is
+            silently a no-op. None disables filtering. Ignored entirely when
             ``features_only`` is true, since nothing is computed: the cutoff
             belongs to compilation, and feature definitions do not record it.
         features_only: Return the feature definitions without computing them.
@@ -61,7 +64,8 @@ def deep_feature_synthesis(
         name or an order-dependent primitive on a table with no
         ``row_creation_time``; compilation raises
         :class:`~tusk.exceptions.SchemaError` if the target table has no
-        ``primary_key``.
+        ``primary_key``. Computing also raises what :func:`apply_features`
+        documents for ``cutoff_time``.
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
@@ -87,7 +91,7 @@ def deep_feature_synthesis(
 def apply_features(
     features: Sequence[Feature],
     database: Database,
-    cutoff_time: Any = None,
+    cutoff_time: datetime | None = None,
 ) -> Any:
     """Apply existing feature definitions to a database.
 
@@ -98,9 +102,10 @@ def apply_features(
         database: The database to compute over.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives, so
-            the matrix may have fewer rows than the target. A table with no
-            ``row_creation_time`` is timeless and passes through unfiltered, so
-            a cutoff on a database that declares none is silently a no-op.
+            the matrix may have fewer rows than the target. Its tz awareness
+            must match the database's row creation times'. A table with no
+            ``row_creation_time`` is timeless and passes through unfiltered,
+            so a cutoff on a database that declares none is silently a no-op.
             None disables filtering.
 
     Returns:
@@ -112,5 +117,16 @@ def apply_features(
         more than one table, or targets a table with no ``primary_key``, and
         :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
         primitive lands on a table with no ``row_creation_time``.
+        ``check_cutoff_time_zone`` raises
+        :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` differs
+        from the database's row creation times in tz awareness, or if those
+        disagree among themselves.
+
+    Raises:
+        TypeError: If ``cutoff_time`` is not a ``datetime``.
     """
+    if cutoff_time is not None:
+        if not isinstance(cutoff_time, datetime):
+            raise TypeError("'cutoff_time' must be a datetime.")
+        check_cutoff_time_zone(database, cutoff_time)
     return compile_features(features, database, cutoff_time).to_native()

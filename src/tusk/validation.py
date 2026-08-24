@@ -7,6 +7,7 @@ Nothing here runs unless the caller asks, through
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import narwhals as nw
@@ -132,6 +133,83 @@ def check_consistent_time_zones(database: Database) -> None:
         f"database mixes tz-aware and tz-naive datetimes: "
         f"{len(aware)} tz-aware ({', '.join(aware)}), "
         f"{len(naive)} tz-naive ({', '.join(naive)})",
+    )
+
+
+def check_row_creation_time_awareness(database: Database) -> bool | None:
+    """Report whether the database's row creation times are tz-aware.
+
+    Reads the schemas only. Anything but a Datetime carrying a time zone
+    counts as naive. Time zone values may differ.
+
+    Args:
+        database: The database to check.
+
+    Returns:
+        ``True`` if every declared ``row_creation_time`` is tz-aware,
+        ``False`` if every one is naive, ``None`` if no table declares one.
+
+    Raises:
+        ValidationError: If some row creation times are tz-aware and others
+            naive.
+    """
+    # Not in DATABASE_CHECKS: it returns an answer rather than only raising,
+    # and consistent_time_zones already rejects the same mixing across every
+    # Datetime column, so db.validate() loses nothing.
+    aware, naive = [], []
+    for table in database.table_names:
+        schema = database.schema(table)
+        column = schema.row_creation_time
+        if column is None:
+            continue
+        dtype = schema.dtypes[column]
+        name = f"{table}.{column}"
+        if dtype == nw.Datetime and dtype.time_zone:
+            aware.append(name)
+        else:
+            naive.append(name)
+
+    if aware and naive:
+        raise ValidationError(
+            f"database mixes tz-aware and tz-naive row creation times: "
+            f"{len(aware)} tz-aware ({', '.join(aware)}), "
+            f"{len(naive)} tz-naive ({', '.join(naive)})",
+        )
+    if aware:
+        return True
+    if naive:
+        return False
+    return None
+
+
+def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
+    """Confirm a cutoff matches the database's row creation times in tz awareness.
+
+    Reads the schemas only. A timeless database accepts any cutoff.
+
+    Args:
+        database: The database the cutoff will filter.
+        cutoff_time: The cutoff.
+
+    Raises:
+        ValidationError: If the cutoff's time zone awareness differs from the
+            row creation times', or if those disagree among themselves.
+    """
+    # A tz-aware timestamp and a naive one have no defined ordering: the
+    # filter would either raise inside the backend or coerce one side and cut
+    # at the wrong instant.
+    database_aware = check_row_creation_time_awareness(database)
+    if database_aware is None:
+        return
+
+    cutoff_aware = cutoff_time.utcoffset() is not None
+    if cutoff_aware == database_aware:
+        return
+
+    raise ValidationError(
+        f"cutoff_time {cutoff_time!r} is "
+        f"tz-{'aware' if cutoff_aware else 'naive'}, but the database's row "
+        f"creation times are tz-{'aware' if database_aware else 'naive'}",
     )
 
 
