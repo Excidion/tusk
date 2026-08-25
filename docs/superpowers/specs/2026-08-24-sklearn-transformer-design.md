@@ -53,8 +53,10 @@ friends, and belong in the selector the user supplies.
 | `src/tusk/sklearn.py` | New module. Not imported by `tusk/__init__.py`. |
 | `sklearn.DFSTransformer` | DFS as a `TransformerMixin`. |
 | `sklearn.DFSSelectorTransformer` | DFS plus lineage-aware feature pruning. |
+| `sklearn.dtype_selector` | Backend-agnostic column selector for `ColumnTransformer`. |
 | `exceptions.LineageWarning(UserWarning)` | Lineage could not be recovered; nothing was pruned. |
 | `exceptions.LineageError(TuskError)` | The post-refit lineage invariant was violated. |
+| `exceptions.EncoderError(TuskError)` | The supplied encoder cannot be refit on a column subset. |
 | `[project.optional-dependencies] sklearn` | `tusk[sklearn]`, pulling `scikit-learn`. |
 
 Nothing is added to `tusk.__all__`, and `tusk/__init__.py` does not import the
@@ -166,6 +168,13 @@ happens in `transform`. It sets `self.features_` and `self.database_`.
 4. reorder onto `X`;
 5. drop the primary key and return the feature columns.
 
+Step 4 reorders by joining the collected matrix onto a frame built from the
+keys plus a position column, then sorting on it. That frame must be built with
+an **explicit schema** taking the primary key's dtype from the collected
+matrix: inferring it instead produces `int64` against a duckdb `int32` and the
+join fails with `ArrowInvalid: Incompatible data types for corresponding join
+field keys`.
+
 Step 4 **raises** on a key that produced no row, whether because it is absent
 from the table or because `cutoff_time` filtered it out. Returning fewer rows
 than `y` has is the precise failure this design exists to prevent, so it is
@@ -248,6 +257,49 @@ pre-selection encoded names come from the prefix. `encoder_prefix` is
 
 The refit reuses the **identical** sentinel mapping on the surviving subset.
 That is what keeps the recorded `kept` names matchable afterwards.
+
+### The encoder must tolerate a column subset
+
+The refit hands the encoder fewer columns than the first fit saw, so the
+encoder has to be indifferent to which columns are present. Callable column
+selectors and bare transformers are; a `ColumnTransformer` that names its
+columns **explicitly** is not, and fails with
+`ValueError: A given column is not a column of the dataframe`.
+
+Explicit column lists are refused with `EncoderError` rather than worked
+around, because after DFS they are an anti-pattern on three independent
+counts:
+
+- The column names do not exist until DFS has run. Writing them out means
+  hardcoding synthesized names like `MEAN__transactions__amount`, which change
+  silently when a primitive or a relationship changes.
+- `ColumnTransformer` defaults to `remainder="drop"`, so any generated feature
+  the user did not name is **silently discarded** — a correctness trap
+  independent of pruning.
+- They are the only shape that cannot be refit.
+
+Accommodating them was considered and rejected: a recursive `restrict_columns`
+helper rewriting each `ColumnTransformer`'s column list was prototyped and does
+work, but it is machinery built to support a pattern that is broken for two
+other reasons anyway.
+
+### `dtype_selector`
+
+sklearn's own `make_column_selector` is the right shape but is pandas-only
+(`ValueError: make_column_selector can only be applied to pandas dataframes`),
+which fights the native `output_backend` default. `tusk.sklearn.dtype_selector`
+is the same idea over narwhals, so it works on every backend a tusk database
+can use:
+
+```python
+ColumnTransformer([
+    ("oh",  OneHotEncoder(handle_unknown="ignore"), dtype_selector("categorical")),
+    ("num", StandardScaler(),                       dtype_selector("numeric")),
+])
+```
+
+Being a callable, it re-evaluates against whatever frame it is given, which is
+what makes the refit work at all.
 
 ### The selector is fitted once and frozen
 
@@ -357,9 +409,16 @@ the frame the database already uses, with no conversion.
 pandas.
 
 Setting `output_backend="pandas"` without pandas installed raises a tusk error
-naming the fix. And any exception raised out of the inner pipeline is re-raised
-`from e`, original traceback intact, with a note giving the backend the matrix
-was collected as and suggesting `output_backend="pandas"`.
+naming the fix.
+
+Any exception raised out of the inner pipeline gets a hint attached naming the
+backend the matrix was collected as and suggesting `output_backend="pandas"`,
+then is re-raised **unchanged** by a bare `raise`. Not `raise TuskError(...)
+from e`: wrapping would change the exception *type*, breaking a user's
+`except ValueError` around their own pipeline. On Python 3.11+ the hint is
+attached with `exc.add_note()` and appears in the traceback; on 3.10, which
+tusk still supports and which has no `add_note`, it is emitted as a warning
+first.
 
 The hint attaches **at the point of failure**, not as a warning on every fit. A
 proactive warning would fire on every pyarrow run, including all the ones that
@@ -372,6 +431,7 @@ work.
 | Key in `X` produced no row | raise |
 | Duplicate key in `X` | raise |
 | `inner` does not end in a `SelectorMixin` | raise, in `fit` |
+| `ColumnTransformer` names columns explicitly | raise `EncoderError`, naming `dtype_selector` |
 | Kept column mentions no sentinel | keep all features, `LineageWarning` |
 | `kept ⊄ refit` after encoder refit | raise `LineageError` |
 | Selection eliminated every feature | raise |
@@ -393,7 +453,12 @@ Behaviour and contracts, not source text.
 - **sklearn integration**: `cross_val_score` and `GridSearchCV` over
   `dfs__max_depth` both run and produce finite scores.
 - **Backends**: polars and duckdb; the pyarrow failure carries the hint.
-- **Row alignment**: a missing key and a duplicate key each raise.
+- **Row alignment**: a missing key and a duplicate key each raise; a duckdb
+  database reorders correctly despite the `int32`/`int64` key dtype.
+- **Encoder contract**: `dtype_selector` and bare encoders refit on a subset
+  with names preserved; an explicit-column-list `ColumnTransformer` raises
+  `EncoderError`.
+- **`dtype_selector`** selects the same columns on polars and pandas.
 
 Gated on `pytest.importorskip("sklearn")`, with `scikit-learn` added to the dev
 group.
