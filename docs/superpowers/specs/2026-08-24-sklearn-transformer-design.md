@@ -369,9 +369,20 @@ making them unusable through the sklearn path.
 CATEGORICAL = "categorical"   # Categorical, Enum
 ```
 
-`dtypes.matches` gains the corresponding branch. No primitive declares
-`CATEGORICAL`, so primitive matching is unchanged; this closes a gap that
-exists in tusk today rather than creating one.
+`dtypes.matches` gains the corresponding branch.
+
+**Primitive behaviour does not change, and no primitive gains `CATEGORICAL`.**
+Primitives match on their declared `input_dtypes`; none declares the new
+family, so synthesis output is identical. Nor is one added speculatively:
+`N_UNIQUE` already reaches `Categorical` and `Enum` columns through
+`DtypeFamily.ANY`, and the primitive that would genuinely want the family —
+a `MODE` — does not exist in tusk. The gap being closed is in the *selector*
+vocabulary, not in primitive matching.
+
+The family does become available to custom primitives, which is free. Worth
+noting for whoever looks next: no built-in primitive declares `STRING` either,
+so `CategoricalDtypeWarning` only ever fires for a user-defined primitive that
+does.
 
 An unrecognized family value raises `ValueError` from the enum itself. A dtype
 matching no family — a nested or binary column — is selected by nothing, which
