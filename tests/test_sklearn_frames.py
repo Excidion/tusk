@@ -55,24 +55,35 @@ def test_collect_matrix_rejects_a_key_with_no_row():
 
 
 def test_backend_hint_reraises_the_original_exception_type():
+    import warnings
+
     from tusk.sklearn._frames import backend_hint
 
-    with pytest.raises(ValueError, match="boom"):
-        with backend_hint(pl.DataFrame({"a": [1]})):
-            raise ValueError("boom")
+    # Below 3.11, backend_hint warns instead of using add_note (no such
+    # method exists yet); catch_warnings keeps that expected UserWarning
+    # from leaking into the test run's output on those interpreters.
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match="boom"):
+            with backend_hint(pl.DataFrame({"a": [1]})):
+                raise ValueError("boom")
 
 
 def test_backend_hint_names_the_backend_and_the_fix():
-    import sys
+    import warnings
 
     from tusk.sklearn._frames import backend_hint
 
-    try:
-        with backend_hint(pl.DataFrame({"a": [1]})):
-            raise ValueError("boom")
-    except ValueError as exc:
-        hint = " ".join(getattr(exc, "__notes__", []))
-        if sys.version_info < (3, 11):
-            return
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            with backend_hint(pl.DataFrame({"a": [1]})):
+                raise ValueError("boom")
+        except ValueError as exc:
+            notes = " ".join(getattr(exc, "__notes__", []))
+            warned = " ".join(str(w.message) for w in caught)
+    # 3.11+ carries the hint as a note on the exception; below that, as the
+    # warning caught above -- exactly one of the two is populated.
+    hint = notes or warned
     assert "polars" in hint.lower()
     assert "output_backend" in hint
