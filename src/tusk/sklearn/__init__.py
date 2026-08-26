@@ -7,4 +7,6 @@ break every install without the ``sklearn`` extra. Reach these through
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from tusk.sklearn._encoders import dtype_selector
+
+__all__ = ["dtype_selector"]

@@ -14,11 +14,19 @@ import narwhals as nw
 
 
 class DtypeFamily(Enum):
-    """A group of narwhals dtypes that a primitive can accept."""
+    """A group of narwhals dtypes that a primitive can accept.
+
+    ``STRING`` and ``CATEGORICAL`` are disjoint: a ``String`` column is not a
+    ``Categorical`` or ``Enum`` one, even though all three hold text-like
+    values. That distinction is deliberate -- it is what
+    :class:`~tusk.exceptions.CategoricalDtypeWarning` reports -- and it is why
+    both families exist rather than one wider one.
+    """
 
     NUMERIC = "numeric"
     TEMPORAL = "temporal"
     STRING = "string"
+    CATEGORICAL = "categorical"
     BOOLEAN = "boolean"
     ANY = "any"
 
@@ -44,6 +52,8 @@ def matches(dtype: nw.dtypes.DType, family: DtypeFamily) -> bool:
         return bool(dtype.is_temporal())
     if family is DtypeFamily.STRING:
         return dtype == nw.String
+    if family is DtypeFamily.CATEGORICAL:
+        return dtype == nw.Categorical or dtype == nw.Enum
     if family is DtypeFamily.BOOLEAN:
         return dtype == nw.Boolean
     raise ValueError(f"Unrecognized DtypeFamily: {family}")
