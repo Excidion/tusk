@@ -54,6 +54,7 @@ friends, and belong in the selector the user supplies.
 | `sklearn.DFSTransformer` | DFS as a `TransformerMixin`. |
 | `sklearn.DFSSelectorTransformer` | DFS plus lineage-aware feature pruning. |
 | `sklearn.dtype_selector` | Backend-agnostic column selector for `ColumnTransformer`. |
+| `dtypes.DtypeFamily.CATEGORICAL` | New member matching `Categorical` and `Enum`. |
 | `exceptions.LineageWarning(UserWarning)` | Lineage could not be recovered; nothing was pruned. |
 | `exceptions.UnencodedFeatureWarning(UserWarning)` | A feature fed no encoded column and was pruned. |
 | `exceptions.LineageError(TuskError)` | The post-refit lineage invariant was violated. |
@@ -324,7 +325,7 @@ can use:
 
 ```python
 ColumnTransformer([
-    ("oh",  OneHotEncoder(handle_unknown="ignore"), dtype_selector("categorical")),
+    ("oh",  OneHotEncoder(handle_unknown="ignore"), dtype_selector("string")),
     ("num", StandardScaler(),                       dtype_selector("numeric")),
 ])
 ```
@@ -340,21 +341,41 @@ transformer rather than a column spec, and has no `get_feature_names_out`.
 Neither targets the shape needed here, because neither is solving a lineage
 problem.
 
-The `kind` vocabulary is four explicit families, not a numeric/other split.
-narwhals reports `is_numeric()` for numbers and `is_temporal()` for dates, and
-**neither** for `Boolean`, `String` or `Categorical` — so "everything that is
-not numeric" would route Booleans and Datetimes into the one-hot encoder.
+**The vocabulary is `tusk.dtypes.DtypeFamily`, not a new one.** tusk already
+groups dtypes there to decide which primitives accept which columns, and an
+earlier draft of this spec invented a parallel set of names that contradicted
+it — notably a `"categorical"` that lumped in `String`, where
+`DtypeFamily.STRING` is `dtype == nw.String` and deliberately excludes
+`Categorical` and `Enum`. That exclusion is what `CategoricalDtypeWarning`
+exists to report. Two meanings of "dtype family" in one library is worse than
+either, so `dtype_selector` takes a `DtypeFamily` or its string value and
+delegates to `dtypes.matches`.
 
-| `kind` | Matches |
-| --- | --- |
-| `"numeric"` | `dtype.is_numeric()` |
-| `"temporal"` | `dtype.is_temporal()` |
-| `"boolean"` | `Boolean` |
-| `"categorical"` | `String`, `Categorical`, `Enum` |
+This also settles what a "text" family would be. `dtypes.py` opens by stating
+that matching is on narwhals dtypes alone, with "no logical types and no
+semantic tags". Free text and a low-cardinality label are both `String`; no
+dtype inspection separates them, so a `"text"` family would name a distinction
+tusk cannot make. The existing name for strings-but-not-categoricals is
+`string`.
 
-An unrecognized `kind` raises `ValueError`. A dtype matching no family — a
-nested or binary column — is selected by nothing, which surfaces as
-`UnencodedFeatureWarning` rather than silently landing in the wrong encoder.
+### One addition to `DtypeFamily`
+
+`DtypeFamily` has no member matching `Categorical` or `Enum`. Those columns do
+reach a feature matrix — any identity feature on one — so without a member for
+them they would match no selector, feed no encoder, and be pruned every time,
+making them unusable through the sklearn path.
+
+```python
+CATEGORICAL = "categorical"   # Categorical, Enum
+```
+
+`dtypes.matches` gains the corresponding branch. No primitive declares
+`CATEGORICAL`, so primitive matching is unchanged; this closes a gap that
+exists in tusk today rather than creating one.
+
+An unrecognized family value raises `ValueError` from the enum itself. A dtype
+matching no family — a nested or binary column — is selected by nothing, which
+surfaces as `UnencodedFeatureWarning` rather than landing in the wrong encoder.
 
 ### The selector is fitted once and frozen
 
@@ -515,8 +536,11 @@ Behaviour and contracts, not source text.
 - **Encoder contract**: `dtype_selector` and bare encoders refit on a subset
   with names preserved; an explicit-column-list `ColumnTransformer` raises
   `EncoderError`.
-- **`dtype_selector`** selects the same columns on polars and pandas, and
-  routes Boolean and Datetime columns away from the categorical family.
+- **`dtype_selector`** selects the same columns on polars and pandas, agrees
+  with `dtypes.matches` for every family, and routes Boolean and Datetime
+  columns away from `string`.
+- **`DtypeFamily.CATEGORICAL`** matches `Categorical` and `Enum` and not
+  `String`, and no primitive's behaviour changes.
 - **Encoder contract**: a transformer without `get_feature_names_out` raises
   `EncoderError` rather than `AttributeError`.
 - **`UnencodedFeatureWarning`** fires for a partial `ColumnTransformer` whose

@@ -604,19 +604,98 @@ git commit -m "feat: recover encoded-column lineage via sentinel names"
 ### Task 3: The encoder contract and `dtype_selector`
 
 **Files:**
+- Modify: `src/tusk/dtypes.py`
+- Modify: `tests/test_dtypes.py`
 - Create: `src/tusk/sklearn/_encoders.py`
 - Modify: `src/tusk/sklearn/__init__.py`
 - Test: `tests/test_sklearn_encoders.py` (create)
 
 **Interfaces:**
-- Consumes: `tusk.exceptions.EncoderError` (Task 1).
+- Consumes: `tusk.exceptions.EncoderError` (Task 1), `tusk.dtypes.DtypeFamily`, `tusk.dtypes.matches`.
 - Produces:
-  - `tusk.sklearn.dtype_selector(kind: str)` — callable column selector, `kind` in `{"numeric", "categorical"}`
+  - `tusk.dtypes.DtypeFamily.CATEGORICAL` — matches `Categorical` and `Enum`
+  - `tusk.sklearn.dtype_selector(family: DtypeFamily | str)` — callable column selector
   - `tusk.sklearn._encoders.encoder_prefix(inner: Any) -> Any`
   - `tusk.sklearn._encoders.selector_of(inner: Any) -> Any`
   - `tusk.sklearn._encoders.validate_inner(inner: Any) -> None`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test for the new dtype family**
+
+Append to `tests/test_dtypes.py`:
+
+```python
+def test_categorical_family_matches_categorical_and_enum():
+    import polars as pl
+
+    frame = nw.from_native(
+        pl.DataFrame(
+            {
+                "s": ["t"],
+                "c": pl.Series(["x"]).cast(pl.Categorical),
+                "e": pl.Series(["a"]).cast(pl.Enum(["a", "b"])),
+            },
+        ),
+        eager_only=True,
+    )
+    schema = frame.schema
+    assert matches(schema["c"], DtypeFamily.CATEGORICAL)
+    assert matches(schema["e"], DtypeFamily.CATEGORICAL)
+    assert not matches(schema["s"], DtypeFamily.CATEGORICAL)
+
+
+def test_string_family_still_excludes_categorical_and_enum():
+    import polars as pl
+
+    frame = nw.from_native(
+        pl.DataFrame(
+            {
+                "s": ["t"],
+                "c": pl.Series(["x"]).cast(pl.Categorical),
+                "e": pl.Series(["a"]).cast(pl.Enum(["a", "b"])),
+            },
+        ),
+        eager_only=True,
+    )
+    schema = frame.schema
+    assert matches(schema["s"], DtypeFamily.STRING)
+    assert not matches(schema["c"], DtypeFamily.STRING)
+    assert not matches(schema["e"], DtypeFamily.STRING)
+```
+
+Check the existing imports at the top of `tests/test_dtypes.py` already bring in `narwhals as nw`, `DtypeFamily` and `matches`; add whichever are missing.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `uv run --group validation pytest tests/test_dtypes.py -q`
+Expected: FAIL — `AttributeError: CATEGORICAL`
+
+- [ ] **Step 3: Add the family**
+
+In `src/tusk/dtypes.py`, add the member to `DtypeFamily` after `STRING`:
+
+```python
+    CATEGORICAL = "categorical"
+```
+
+and the branch to `matches`, after the `STRING` branch:
+
+```python
+    if family is DtypeFamily.CATEGORICAL:
+        return dtype == nw.Categorical or dtype == nw.Enum
+```
+
+Update the `DtypeFamily` docstring to note that `STRING` and `CATEGORICAL` are
+disjoint — `String` is not a `Categorical` — since that is the distinction
+`CategoricalDtypeWarning` reports and the reason both families exist.
+
+- [ ] **Step 4: Run it to verify it passes**
+
+Run: `uv run --group validation pytest tests/test_dtypes.py -q`
+Expected: PASS, and every pre-existing dtype test still passes. No primitive
+declares `CATEGORICAL`, so primitive matching must be unchanged — confirm with
+`uv run --group validation pytest tests/test_primitives_base.py tests/test_synthesis.py -q`.
+
+- [ ] **Step 5: Write the failing test**
 
 Create `tests/test_sklearn_encoders.py`:
 
@@ -631,6 +710,7 @@ from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from tusk.dtypes import DtypeFamily
 from tusk.exceptions import EncoderError
 from tusk.sklearn import dtype_selector
 from tusk.sklearn._encoders import encoder_prefix, selector_of, validate_inner
@@ -640,12 +720,12 @@ FRAME = pl.DataFrame(
 )
 
 
-def test_dtype_selector_splits_numeric_from_categorical():
+def test_dtype_selector_splits_numeric_from_string():
     assert dtype_selector("numeric")(FRAME) == ["age", "cnt"]
-    assert dtype_selector("categorical")(FRAME) == ["cat"]
+    assert dtype_selector("string")(FRAME) == ["cat"]
 
 
-def test_dtype_selector_keeps_booleans_and_dates_out_of_categorical():
+def test_dtype_selector_keeps_booleans_and_dates_out_of_string():
     frame = pl.DataFrame(
         {
             "n": [1.0],
@@ -655,14 +735,26 @@ def test_dtype_selector_keeps_booleans_and_dates_out_of_categorical():
         },
     )
     assert dtype_selector("numeric")(frame) == ["n"]
-    assert dtype_selector("categorical")(frame) == ["s"]
+    assert dtype_selector("string")(frame) == ["s"]
     assert dtype_selector("boolean")(frame) == ["b"]
     assert dtype_selector("temporal")(frame) == ["d"]
 
 
+def test_dtype_selector_separates_categorical_from_string():
+    frame = pl.DataFrame(
+        {
+            "s": ["t"],
+            "c": pl.Series(["x"]).cast(pl.Categorical),
+            "e": pl.Series(["a"]).cast(pl.Enum(["a", "b"])),
+        },
+    )
+    assert dtype_selector("string")(frame) == ["s"]
+    assert dtype_selector(DtypeFamily.CATEGORICAL)(frame) == ["c", "e"]
+
+
 def test_dtype_selector_rejects_an_unknown_family():
-    with pytest.raises(ValueError, match="kind must be one of"):
-        dtype_selector("stringy")
+    with pytest.raises(ValueError):
+        dtype_selector("texty")
 
 
 def test_dtype_selector_reevaluates_on_a_subset():
@@ -672,7 +764,7 @@ def test_dtype_selector_reevaluates_on_a_subset():
 def test_dtype_selector_works_inside_a_column_transformer_on_polars():
     encoder = ColumnTransformer(
         [
-            ("oh", OneHotEncoder(handle_unknown="ignore"), dtype_selector("categorical")),
+            ("oh", OneHotEncoder(handle_unknown="ignore"), dtype_selector("string")),
             ("num", StandardScaler(), dtype_selector("numeric")),
         ],
     ).fit(FRAME)
@@ -750,12 +842,12 @@ def test_a_callable_column_list_is_accepted():
     validate_inner(inner)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 6: Run the test to verify it fails**
 
 Run: `uv run --group validation pytest tests/test_sklearn_encoders.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'tusk.sklearn._encoders'`
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 7: Write the implementation**
 
 Create `src/tusk/sklearn/_encoders.py`:
 
@@ -778,38 +870,12 @@ from sklearn.feature_selection import SelectorMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
+from tusk.dtypes import DtypeFamily, matches
 from tusk.exceptions import EncoderError
 
 
-FAMILIES = ("numeric", "temporal", "boolean", "categorical")
-
-
-def _matches(kind: str, dtype: Any) -> bool:
-    """Whether a dtype belongs to a family.
-
-    Four explicit families rather than "numeric or not": narwhals reports
-    ``is_numeric()`` for numbers and ``is_temporal()`` for dates and reports
-    **neither** for ``Boolean``, ``String`` and ``Categorical``, so a binary
-    split would feed Booleans and Datetimes to a one-hot encoder.
-
-    Args:
-        kind: One of :data:`FAMILIES`.
-        dtype: A narwhals dtype.
-
-    Returns:
-        Whether the dtype is in that family.
-    """
-    if kind == "numeric":
-        return bool(dtype.is_numeric())
-    if kind == "temporal":
-        return bool(dtype.is_temporal())
-    if kind == "boolean":
-        return bool(dtype == nw.Boolean)
-    return dtype in (nw.String, nw.Categorical, nw.Enum)
-
-
 class dtype_selector:  # noqa: N801
-    """Select columns by dtype family, on any backend narwhals supports.
+    """Select columns by :class:`~tusk.dtypes.DtypeFamily`, on any backend.
 
     scikit-learn's ``make_column_selector`` is the right shape but rejects
     anything that is not pandas, which collides with collecting natively. skrub
@@ -818,26 +884,30 @@ class dtype_selector:  # noqa: N801
     transformer with no ``get_feature_names_out``, which lineage depends on.
     So this is the same idea through narwhals.
 
+    The families are tusk's own rather than a new set, so ``"string"`` means
+    here exactly what it means to a primitive: ``String`` and not
+    ``Categorical`` or ``Enum``.
+
     Being a callable rather than a fixed list is what makes the refit work: it
     re-evaluates against whatever frame it is handed, so narrowing the matrix
     narrows the selection instead of breaking it.
 
     Attributes:
-        kind: One of :data:`FAMILIES`.
+        family: The :class:`~tusk.dtypes.DtypeFamily` to select.
     """
 
-    def __init__(self, kind: str) -> None:
+    def __init__(self, family: DtypeFamily | str) -> None:
         """Create a selector.
 
         Args:
-            kind: One of :data:`FAMILIES`.
+            family: A ``DtypeFamily`` or its string value, such as
+                ``"numeric"`` or ``"string"``.
 
         Raises:
-            ValueError: If ``kind`` is not a known family.
+            ValueError: If the string names no family. Raised by the enum, so
+                the message lists the valid values.
         """
-        if kind not in FAMILIES:
-            raise ValueError(f"kind must be one of {FAMILIES}; got {kind!r}")
-        self.kind = kind
+        self.family = DtypeFamily(family)
 
     def __call__(self, X: Any) -> list[str]:
         """Return the matching column names.
@@ -849,11 +919,11 @@ class dtype_selector:  # noqa: N801
             Matching column names, in frame order.
         """
         schema = nw.from_native(X, eager_only=True).schema
-        return [c for c, d in schema.items() if _matches(self.kind, d)]
+        return [c for c, d in schema.items() if matches(d, self.family)]
 
     def __repr__(self) -> str:
-        """Show the kind, so cloned estimators print readably."""
-        return f"dtype_selector({self.kind!r})"
+        """Show the family, so cloned estimators print readably."""
+        return f"dtype_selector({self.family.value!r})"
 
 
 def selector_of(inner: Any) -> Any:
@@ -961,16 +1031,17 @@ def _reject_explicit_columns(estimator: Any) -> None:
             if not callable(columns):
                 raise EncoderError(
                     f"ColumnTransformer step {name!r} names its columns "
-                    f"explicitly ({list(columns)[:3]}...). DFS generates column "
-                    "names, so they cannot be known in advance, and "
-                    'remainder="drop" would silently discard every feature not '
-                    "named. Use tusk.sklearn.dtype_selector('numeric') or "
-                    "dtype_selector('categorical') instead.",
+                    f"explicitly ({list(columns)[:3]}...), which cannot be "
+                    "refit once selection narrows the matrix, and DFS "
+                    "generates its column names so they cannot be known in "
+                    "advance anyway. Use a callable instead, such as "
+                    "tusk.sklearn.dtype_selector('numeric') or "
+                    "dtype_selector('string').",
                 )
             _reject_explicit_columns(transformer)
 ```
 
-- [ ] **Step 4: Export `dtype_selector`**
+- [ ] **Step 8: Export `dtype_selector`**
 
 Replace the `__all__` line in `src/tusk/sklearn/__init__.py`:
 
@@ -980,15 +1051,15 @@ from tusk.sklearn._encoders import dtype_selector
 __all__ = ["dtype_selector"]
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 9: Run the tests to verify they pass**
 
 Run: `uv run --group validation pytest tests/test_sklearn_encoders.py -q`
-Expected: PASS, 12 tests.
+Expected: PASS, 13 tests.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add src/tusk/sklearn tests/test_sklearn_encoders.py
+git add src/tusk/dtypes.py tests/test_dtypes.py src/tusk/sklearn tests/test_sklearn_encoders.py
 git commit -m "feat: add dtype_selector and the inner-pipeline contract"
 ```
 
@@ -1415,7 +1486,7 @@ def _inner(k=2):
                         (
                             "oh",
                             OneHotEncoder(handle_unknown="ignore"),
-                            dtype_selector("categorical"),
+                            dtype_selector("string"),
                         ),
                         ("num", StandardScaler(), dtype_selector("numeric")),
                     ],
@@ -1514,7 +1585,7 @@ def test_a_partial_encoder_warns_about_features_it_never_saw(db):
                         (
                             "oh",
                             OneHotEncoder(handle_unknown="ignore"),
-                            dtype_selector("categorical"),
+                            dtype_selector("string"),
                         ),
                     ],
                 ),
@@ -1993,7 +2064,7 @@ selector = DFSSelectorTransformer(
     target_table="customers",
     inner=Pipeline([
         ("enc", ColumnTransformer([
-            ("oh", OneHotEncoder(handle_unknown="ignore"), dtype_selector("categorical")),
+            ("oh", OneHotEncoder(handle_unknown="ignore"), dtype_selector("string")),
             ("num", StandardScaler(), dtype_selector("numeric")),
         ])),
         ("sel", SelectKBest(k=50)),
@@ -2016,6 +2087,31 @@ silently discard every feature you did not name.
 `make_column_selector` does the same job but only accepts pandas;
 `dtype_selector` goes through narwhals and works on every backend a tusk
 database can use.
+
+It takes a [`DtypeFamily`](../api/dtypes.md) — the same families that decide
+which primitives apply to which columns, so `"string"` means here exactly what
+it means to a primitive:
+
+| Family | Matches |
+| --- | --- |
+| `"numeric"` | any integer or float |
+| `"temporal"` | `Date`, `Datetime`, `Duration` |
+| `"string"` | `String`, and **not** `Categorical` or `Enum` |
+| `"categorical"` | `Categorical`, `Enum` |
+| `"boolean"` | `Boolean` |
+
+`"string"` and `"categorical"` are disjoint on purpose. If your database
+declares a column `Categorical`, you have told tusk it is a label; a plain
+`String` column carries no such promise.
+
+There is deliberately no `"text"` family. Free text and a short label are both
+`String`, and no dtype inspection can separate them — tusk matches on narwhals
+dtypes alone, with no logical types or semantic tags. If you need one text
+column treated differently, encode it before it reaches DFS.
+
+A column matching no family you have covered feeds no encoder, so its feature
+is pruned. tusk warns with `UnencodedFeatureWarning` naming the count rather
+than dropping it silently.
 
 ## Frame backends
 
