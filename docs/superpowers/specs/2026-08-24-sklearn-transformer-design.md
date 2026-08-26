@@ -55,6 +55,7 @@ friends, and belong in the selector the user supplies.
 | `sklearn.DFSSelectorTransformer` | DFS plus lineage-aware feature pruning. |
 | `sklearn.dtype_selector` | Backend-agnostic column selector for `ColumnTransformer`. |
 | `exceptions.LineageWarning(UserWarning)` | Lineage could not be recovered; nothing was pruned. |
+| `exceptions.UnencodedFeatureWarning(UserWarning)` | A feature fed no encoded column and was pruned. |
 | `exceptions.LineageError(TuskError)` | The post-refit lineage invariant was violated. |
 | `exceptions.EncoderError(TuskError)` | The supplied encoder cannot be refit on a column subset. |
 | `[project.optional-dependencies] sklearn` | `tusk[sklearn]`, pulling `scikit-learn`. |
@@ -266,22 +267,52 @@ selectors and bare transformers are; a `ColumnTransformer` that names its
 columns **explicitly** is not, and fails with
 `ValueError: A given column is not a column of the dataframe`.
 
-Explicit column lists are refused with `EncoderError` rather than worked
-around, because after DFS they are an anti-pattern on three independent
-counts:
+Explicit column lists are refused with `EncoderError`. **The decisive reason is
+the refit and nothing else:** a named column that pruning removed is simply not
+there, and no setting makes it there. In particular `remainder` is orthogonal —
+`"drop"` and `"passthrough"` both fail identically:
 
-- The column names do not exist until DFS has run. Writing them out means
-  hardcoding synthesized names like `MEAN__transactions__amount`, which change
-  silently when a primitive or a relationship changes.
-- `ColumnTransformer` defaults to `remainder="drop"`, so any generated feature
-  the user did not name is **silently discarded** — a correctness trap
-  independent of pruning.
-- They are the only shape that cannot be refit.
+```
+remainder='drop'         ValueError: A given column is not a column of the dataframe
+remainder='passthrough'  ValueError: A given column is not a column of the dataframe
+```
 
-Accommodating them was considered and rejected: a recursive `restrict_columns`
-helper rewriting each `ColumnTransformer`'s column list was prototyped and does
-work, but it is machinery built to support a pattern that is broken for two
-other reasons anyway.
+so refusing only `remainder="drop"` would leave the failure in place.
+
+A secondary argument, worth stating but *not* load-bearing: the column names do
+not exist until DFS has run, so writing them out hardcodes synthesized names
+like `MEAN__transactions__amount` that go stale silently when a primitive
+changes.
+
+A third argument that appeared in an earlier draft has been **withdrawn**:
+`remainder="drop"` silently discarding unnamed features is real, but it is not
+specific to explicit lists — a single callable selector covering only some
+columns drops the rest just as quietly. It is therefore not a reason to refuse
+this shape, and is handled separately by `UnencodedFeatureWarning` below.
+
+Accommodating explicit lists was considered and rejected: a recursive
+`restrict_columns` helper rewriting each `ColumnTransformer`'s column list was
+prototyped and does work, but it is machinery whose only purpose is to support
+a pattern with no advantage over a callable selector.
+
+### Every encoder must expose `get_feature_names_out`
+
+Lineage reads nothing else, so a transformer lacking that method is totally
+opaque — worse than the `PCA` case, which at least returns *names*. It is
+checked in `fit` and raises `EncoderError`, because the alternative is an
+`AttributeError` thrown from deep inside the fit with nothing pointing at the
+cause.
+
+This is not hypothetical: scikit-lego's `TypeSelector` is backend-agnostic and
+otherwise a natural fit here, and does not implement it.
+
+### `UnencodedFeatureWarning`
+
+After the first fit, any matrix column that is the source of *no* encoded
+column will inevitably be pruned — the encoder chose not to look at it. That is
+self-consistent behaviour rather than a bug, but it is invisible, and it is how
+a partial `ColumnTransformer` with `remainder="drop"` quietly throws away every
+numeric feature. tusk warns, naming the count, and prunes as usual.
 
 ### `dtype_selector`
 
@@ -300,6 +331,30 @@ ColumnTransformer([
 
 Being a callable, it re-evaluates against whatever frame it is given, which is
 what makes the refit work at all.
+
+**Existing libraries were surveyed first and none fit.** skrub's
+`selectors.numeric()` is not callable and `ColumnTransformer` rejects it
+outright (`No valid specification of the columns`); the selectors are built for
+skrub's own `SelectCols`/`ApplyToCols`. scikit-lego's `TypeSelector` is a
+transformer rather than a column spec, and has no `get_feature_names_out`.
+Neither targets the shape needed here, because neither is solving a lineage
+problem.
+
+The `kind` vocabulary is four explicit families, not a numeric/other split.
+narwhals reports `is_numeric()` for numbers and `is_temporal()` for dates, and
+**neither** for `Boolean`, `String` or `Categorical` — so "everything that is
+not numeric" would route Booleans and Datetimes into the one-hot encoder.
+
+| `kind` | Matches |
+| --- | --- |
+| `"numeric"` | `dtype.is_numeric()` |
+| `"temporal"` | `dtype.is_temporal()` |
+| `"boolean"` | `Boolean` |
+| `"categorical"` | `String`, `Categorical`, `Enum` |
+
+An unrecognized `kind` raises `ValueError`. A dtype matching no family — a
+nested or binary column — is selected by nothing, which surfaces as
+`UnencodedFeatureWarning` rather than silently landing in the wrong encoder.
 
 ### The selector is fitted once and frozen
 
@@ -432,6 +487,8 @@ work.
 | Duplicate key in `X` | raise |
 | `inner` does not end in a `SelectorMixin` | raise, in `fit` |
 | `ColumnTransformer` names columns explicitly | raise `EncoderError`, naming `dtype_selector` |
+| Encoder prefix has no `get_feature_names_out` | raise `EncoderError` |
+| A matrix column feeds no encoded column | `UnencodedFeatureWarning`, prune as usual |
 | Kept column mentions no sentinel | keep all features, `LineageWarning` |
 | `kept ⊄ refit` after encoder refit | raise `LineageError` |
 | Selection eliminated every feature | raise |
@@ -458,7 +515,12 @@ Behaviour and contracts, not source text.
 - **Encoder contract**: `dtype_selector` and bare encoders refit on a subset
   with names preserved; an explicit-column-list `ColumnTransformer` raises
   `EncoderError`.
-- **`dtype_selector`** selects the same columns on polars and pandas.
+- **`dtype_selector`** selects the same columns on polars and pandas, and
+  routes Boolean and Datetime columns away from the categorical family.
+- **Encoder contract**: a transformer without `get_feature_names_out` raises
+  `EncoderError` rather than `AttributeError`.
+- **`UnencodedFeatureWarning`** fires for a partial `ColumnTransformer` whose
+  `remainder="drop"` leaves some features unencoded.
 
 Gated on `pytest.importorskip("sklearn")`, with `scikit-learn` added to the dev
 group.

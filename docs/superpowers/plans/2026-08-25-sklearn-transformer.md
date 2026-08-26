@@ -183,6 +183,17 @@ class EncoderError(TuskError):
     """
 
 
+class UnencodedFeatureWarning(UserWarning):
+    """Warns that a feature fed no encoded column, so it was pruned.
+
+    The encoder simply never looked at it -- most often a ``ColumnTransformer``
+    covering only some dtypes while ``remainder`` stays at its ``"drop"``
+    default. Pruning it is self-consistent, but doing so silently would let a
+    user lose every numeric feature without a word. Its own class, so it can be
+    filtered independently.
+    """
+
+
 class LineageWarning(UserWarning):
     """Warns that lineage was unrecoverable, so nothing was pruned.
 
@@ -610,8 +621,11 @@ git commit -m "feat: recover encoded-column lineage via sentinel names"
 Create `tests/test_sklearn_encoders.py`:
 
 ```python
+import datetime as dt
+
 import polars as pl
 import pytest
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.pipeline import Pipeline
@@ -629,6 +643,26 @@ FRAME = pl.DataFrame(
 def test_dtype_selector_splits_numeric_from_categorical():
     assert dtype_selector("numeric")(FRAME) == ["age", "cnt"]
     assert dtype_selector("categorical")(FRAME) == ["cat"]
+
+
+def test_dtype_selector_keeps_booleans_and_dates_out_of_categorical():
+    frame = pl.DataFrame(
+        {
+            "n": [1.0],
+            "s": ["a"],
+            "b": [True],
+            "d": [dt.datetime(2024, 1, 1)],
+        },
+    )
+    assert dtype_selector("numeric")(frame) == ["n"]
+    assert dtype_selector("categorical")(frame) == ["s"]
+    assert dtype_selector("boolean")(frame) == ["b"]
+    assert dtype_selector("temporal")(frame) == ["d"]
+
+
+def test_dtype_selector_rejects_an_unknown_family():
+    with pytest.raises(ValueError, match="kind must be one of"):
+        dtype_selector("stringy")
 
 
 def test_dtype_selector_reevaluates_on_a_subset():
@@ -683,6 +717,29 @@ def test_explicit_column_lists_are_refused():
         validate_inner(inner)
 
 
+class _Opaque(BaseEstimator, TransformerMixin):
+    """A transformer with no get_feature_names_out.
+
+    TransformerMixin does not supply one -- only OneToOneFeatureMixin and
+    ClassNamePrefixFeaturesOutMixin do -- so this needs no trickery. It stands
+    in for scikit-lego's TypeSelector without taking the dependency.
+    """
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return X
+
+
+def test_a_step_without_feature_names_is_refused():
+    inner = Pipeline(
+        [("opaque", _Opaque()), ("sel", SelectKBest(f_classif, k=1))],
+    )
+    with pytest.raises(EncoderError, match="get_feature_names_out"):
+        validate_inner(inner)
+
+
 def test_a_callable_column_list_is_accepted():
     inner = Pipeline(
         [
@@ -724,34 +781,62 @@ from sklearn.preprocessing import FunctionTransformer
 from tusk.exceptions import EncoderError
 
 
+FAMILIES = ("numeric", "temporal", "boolean", "categorical")
+
+
+def _matches(kind: str, dtype: Any) -> bool:
+    """Whether a dtype belongs to a family.
+
+    Four explicit families rather than "numeric or not": narwhals reports
+    ``is_numeric()`` for numbers and ``is_temporal()`` for dates and reports
+    **neither** for ``Boolean``, ``String`` and ``Categorical``, so a binary
+    split would feed Booleans and Datetimes to a one-hot encoder.
+
+    Args:
+        kind: One of :data:`FAMILIES`.
+        dtype: A narwhals dtype.
+
+    Returns:
+        Whether the dtype is in that family.
+    """
+    if kind == "numeric":
+        return bool(dtype.is_numeric())
+    if kind == "temporal":
+        return bool(dtype.is_temporal())
+    if kind == "boolean":
+        return bool(dtype == nw.Boolean)
+    return dtype in (nw.String, nw.Categorical, nw.Enum)
+
+
 class dtype_selector:  # noqa: N801
     """Select columns by dtype family, on any backend narwhals supports.
 
     scikit-learn's ``make_column_selector`` is the right shape but rejects
-    anything that is not pandas, which collides with collecting natively. This
-    is the same idea through narwhals.
+    anything that is not pandas, which collides with collecting natively. skrub
+    and scikit-lego were surveyed too: skrub's selectors are not callable and
+    ``ColumnTransformer`` rejects them, and scikit-lego's ``TypeSelector`` is a
+    transformer with no ``get_feature_names_out``, which lineage depends on.
+    So this is the same idea through narwhals.
 
-    Being a callable rather than a fixed list is what makes the refit work:
-    it re-evaluates against whatever frame it is handed, so narrowing the
-    matrix narrows the selection instead of breaking it.
+    Being a callable rather than a fixed list is what makes the refit work: it
+    re-evaluates against whatever frame it is handed, so narrowing the matrix
+    narrows the selection instead of breaking it.
 
     Attributes:
-        kind: Either ``"numeric"`` or ``"categorical"``.
+        kind: One of :data:`FAMILIES`.
     """
 
     def __init__(self, kind: str) -> None:
         """Create a selector.
 
         Args:
-            kind: ``"numeric"`` or ``"categorical"``.
+            kind: One of :data:`FAMILIES`.
 
         Raises:
-            ValueError: If ``kind`` is neither.
+            ValueError: If ``kind`` is not a known family.
         """
-        if kind not in {"numeric", "categorical"}:
-            raise ValueError(
-                f"kind must be 'numeric' or 'categorical'; got {kind!r}",
-            )
+        if kind not in FAMILIES:
+            raise ValueError(f"kind must be one of {FAMILIES}; got {kind!r}")
         self.kind = kind
 
     def __call__(self, X: Any) -> list[str]:
@@ -764,8 +849,7 @@ class dtype_selector:  # noqa: N801
             Matching column names, in frame order.
         """
         schema = nw.from_native(X, eager_only=True).schema
-        numeric = self.kind == "numeric"
-        return [c for c, d in schema.items() if d.is_numeric() is numeric]
+        return [c for c, d in schema.items() if _matches(self.kind, d)]
 
     def __repr__(self) -> str:
         """Show the kind, so cloned estimators print readably."""
@@ -819,6 +903,39 @@ def validate_inner(inner: Any) -> None:
             f"{type(selector_of(inner)).__name__}",
         )
     _reject_explicit_columns(inner)
+    _require_feature_names(encoder_prefix(inner))
+
+
+def _require_feature_names(estimator: Any) -> None:
+    """Refuse an encoder step that cannot report its output names.
+
+    Lineage reads ``get_feature_names_out`` and nothing else, so a transformer
+    without it is wholly opaque. Checking each step rather than the pipeline is
+    the point: ``Pipeline`` always *has* the attribute and only fails when it
+    reaches the step that does not, deep inside the fit and far from the cause.
+    scikit-lego's ``TypeSelector`` is a real example.
+
+    Args:
+        estimator: An estimator to inspect, recursively.
+
+    Raises:
+        EncoderError: If any step cannot report output names.
+    """
+    if isinstance(estimator, Pipeline):
+        for _, step in estimator.steps:
+            _require_feature_names(step)
+        return
+    if isinstance(estimator, ColumnTransformer):
+        for _, transformer, _columns in estimator.transformers:
+            if transformer not in ("drop", "passthrough"):
+                _require_feature_names(transformer)
+        return
+    if not hasattr(estimator, "get_feature_names_out"):
+        raise EncoderError(
+            f"{type(estimator).__name__} has no get_feature_names_out(), so "
+            "tusk cannot tell which features its output columns came from. "
+            "Every step before the selector must implement it.",
+        )
 
 
 def _reject_explicit_columns(estimator: Any) -> None:
@@ -866,7 +983,7 @@ __all__ = ["dtype_selector"]
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run --group validation pytest tests/test_sklearn_encoders.py -q`
-Expected: PASS, 9 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1281,7 +1398,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from tusk.exceptions import LineageWarning
+from tusk.exceptions import LineageWarning, UnencodedFeatureWarning
 from tusk.sklearn import DFSSelectorTransformer, dtype_selector
 
 KEYS = [1, 2, 3]
@@ -1383,6 +1500,31 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(db):
     with pytest.warns(LineageWarning):
         fitted = transformer.fit(KEYS, database=db)
     assert len(fitted.features_) == everything
+
+
+def test_a_partial_encoder_warns_about_features_it_never_saw(db):
+    # Only categorical columns are encoded, and remainder defaults to "drop",
+    # so every numeric feature silently feeds nothing and gets pruned.
+    inner = Pipeline(
+        [
+            (
+                "enc",
+                ColumnTransformer(
+                    [
+                        (
+                            "oh",
+                            OneHotEncoder(handle_unknown="ignore"),
+                            dtype_selector("categorical"),
+                        ),
+                    ],
+                ),
+            ),
+            ("sel", SelectKBest(f_classif, k=1)),
+        ],
+    )
+    transformer = DFSSelectorTransformer(target_table="customers", inner=inner)
+    with pytest.warns(UnencodedFeatureWarning, match="fed no encoded column"):
+        transformer.fit(KEYS, Y, database=db)
 
 
 def test_it_works_as_a_pipeline_step(db):
@@ -1505,7 +1647,7 @@ class DFSSelectorTransformer(DFSTransformer):
             if keep
         ]
 
-        self.features_ = self._prune(kept, sentinels)
+        self.features_ = self._prune(kept, encoded, sentinels)
         if not self.features_:
             raise SchemaError("feature selection eliminated every feature")
 
@@ -1568,7 +1710,12 @@ class DFSSelectorTransformer(DFSTransformer):
         names = [self.sentinels_.restore(n) for n in self.kept_names_]
         return np.asarray(names, dtype=object)
 
-    def _prune(self, kept: list[str], sentinels: Sentinels) -> list[Feature]:
+    def _prune(
+        self,
+        kept: list[str],
+        encoded: list[str],
+        sentinels: Sentinels,
+    ) -> list[Feature]:
         """Features with at least one column feeding a kept encoded column.
 
         A multi-output feature is all-or-nothing: one output cannot be computed
@@ -1576,6 +1723,9 @@ class DFSSelectorTransformer(DFSTransformer):
 
         Args:
             kept: Encoded-space names the selector chose.
+            encoded: Every encoded-space name, kept or not. Needed to tell a
+                feature the selector *rejected* from one the encoder never
+                looked at, which are worth reporting differently.
             sentinels: The renaming used to read provenance.
 
         Returns:
@@ -1584,6 +1734,9 @@ class DFSSelectorTransformer(DFSTransformer):
         Warns:
             LineageWarning: If any kept name mentions no sentinel, in which
                 case every feature is kept.
+            UnencodedFeatureWarning: If a matrix column fed no encoded column
+                at all, so its feature is pruned for a reason the user may not
+                have intended.
         """
         sources = {name: sentinels.sources(name) for name in kept}
         opaque = [name for name, s in sources.items() if not s]
@@ -1597,7 +1750,19 @@ class DFSSelectorTransformer(DFSTransformer):
                 stacklevel=3,
             )
             return list(self.features_)
+
         live = {column for s in sources.values() for column in s}
+        touched = {c for name in encoded for c in sentinels.sources(name)}
+        unencoded = [c for c in sentinels.columns if c not in touched]
+        if unencoded:
+            warnings.warn(
+                f"{len(unencoded)} features fed no encoded column (e.g. "
+                f"{unencoded[:3]}) and have been pruned. The encoder never "
+                'looked at them -- a ColumnTransformer with remainder="drop" '
+                "covering only some dtypes is the usual cause.",
+                UnencodedFeatureWarning,
+                stacklevel=3,
+            )
         return [
             f for f in self.features_ if any(n in live for n in f.output_names)
         ]
@@ -1632,7 +1797,11 @@ import warnings
 import narwhals as nw
 from sklearn.base import clone
 
-from tusk.exceptions import LineageError, LineageWarning
+from tusk.exceptions import (
+    LineageError,
+    LineageWarning,
+    UnencodedFeatureWarning,
+)
 from tusk.features import Feature
 from tusk.sklearn._encoders import encoder_prefix, selector_of, validate_inner
 from tusk.sklearn._frames import backend_hint
@@ -1657,7 +1826,7 @@ __all__ = ["DFSSelectorTransformer", "DFSTransformer", "dtype_selector"]
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run --group validation pytest tests/test_sklearn_selector_transformer.py -q`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 6: Run the full suite**
 
