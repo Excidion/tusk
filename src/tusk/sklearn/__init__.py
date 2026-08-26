@@ -8,5 +8,6 @@ break every install without the ``sklearn`` extra. Reach these through
 from __future__ import annotations
 
 from tusk.sklearn._encoders import dtype_selector
+from tusk.sklearn._transformers import DFSTransformer
 
-__all__ = ["dtype_selector"]
+__all__ = ["DFSTransformer", "dtype_selector"]
