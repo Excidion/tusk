@@ -195,13 +195,13 @@ class WidthStamped(TransformerMixin, BaseEstimator):
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
 def test_fitting_prunes_the_feature_list(shop):
-    pruned = len(_transformer().fit(KEYS, Y, database=shop).features_)
+    dropped = len(_transformer().fit(KEYS, Y, database=shop).features_)
     everything = len(
         DFSTransformer(target_table="customers", max_depth=2)
         .fit(KEYS, database=shop)
         .features_,
     )
-    assert 0 < pruned < everything
+    assert 0 < dropped < everything
 
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
@@ -225,7 +225,7 @@ def test_pruned_features_are_never_computed(shop):
     assert dropped, "selection kept every feature, so this proves nothing"
 
     # The parent's transform computes the tusk-space matrix for whatever
-    # features_ currently holds, which after fit is the pruned list.
+    # features_ currently holds, which after fit is the dropped list.
     computed = set(
         nw.from_native(DFSTransformer.transform(fitted, KEYS, database=shop)).columns,
     )
@@ -279,7 +279,7 @@ def test_a_multi_output_feature_survives_whole(shop):
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
 def test_transform_matches_encoding_the_whole_matrix(shop):
-    # Pruning is an optimization: encoding only the survivors must give the
+    # Pruning is an optimization: encoding only the kept features must give the
     # same numbers as encoding everything and applying the selector.
     expected = _inner(k=3).fit_transform(_matrix(shop), Y)
     fitted = _transformer(k=3).fit(KEYS, Y, database=shop)
@@ -329,7 +329,7 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
         .fit(KEYS, database=shop)
         .features_,
     )
-    with pytest.warns(LineageWarning, match="pruned nothing"):
+    with pytest.warns(LineageWarning, match="dropped nothing"):
         fitted = transformer.fit(KEYS, Y, database=shop)
     assert len(fitted.features_) == everything
     assert np.asarray(fitted.transform(KEYS, database=shop)).shape == (12, 1)
@@ -338,7 +338,7 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
 def test_a_partial_encoder_warns_about_features_it_never_saw(shop):
     # Only string columns are encoded, and remainder defaults to "drop", so
-    # every numeric feature silently feeds nothing and gets pruned.
+    # every numeric feature silently feeds nothing and gets dropped.
     selection_pipeline = Pipeline(
         [
             (

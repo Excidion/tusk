@@ -84,12 +84,7 @@ class Sentinels:
 
 
 def make_sentinels(columns: Sequence[str]) -> Sentinels:
-    """Build an opaque renaming for one fit.
-
-    The prefix is random per fit. A data *value* that happens to look like a
-    sentinel would otherwise be misread as a column reference; randomness makes
-    that vanishingly unlikely, and its only consequence is an extra source,
-    which over-keeps rather than over-prunes.
+    """Build an opaque renaming of ``columns`` for one fit.
 
     Args:
         columns: The matrix's column names, in order.
@@ -97,6 +92,10 @@ def make_sentinels(columns: Sequence[str]) -> Sentinels:
     Returns:
         The sentinel mapping and the map back.
     """
+    # The prefix is random per fit: a data value that happens to look like a
+    # sentinel would be misread as a column reference, and randomness makes
+    # that vanishingly unlikely. Its only consequence is an extra source, which
+    # over-keeps rather than over-drops.
     prefix = f"_t{secrets.token_hex(4)}_"
     width = max(4, len(str(max(len(columns) - 1, 0))))
     mapping = {c: f"{prefix}{i:0{width}d}" for i, c in enumerate(columns)}

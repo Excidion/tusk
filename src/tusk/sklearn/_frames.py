@@ -1,6 +1,6 @@
 """Materializes a lazy feature matrix for scikit-learn.
 
-:func:`collect_keys` materializes the key column ``X`` as a list.
+:func:`collect_keys` materializes the primary key ``X`` as a list.
 :func:`collect_matrix` filters the matrix to those keys, collects it, and
 returns the rows in key order. :func:`backend_hint` annotates exceptions from
 a user's pipeline with the frame backend in play.
@@ -81,13 +81,13 @@ def collect_matrix(
 
     Args:
         matrix: The uncomputed feature matrix from ``apply_features``.
-        primary_key: The target table's key column.
+        primary_key: The target table's primary key.
         keys: Key values selecting and ordering the rows.
         output_backend: Backend to collect to, or None to collect natively.
 
     Returns:
         An eager native frame with one row per key, in key order, without the
-        primary key column -- it is a join key, not a feature.
+        primary primary key -- it is a join key, not a feature.
 
     Raises:
         SchemaError: If ``keys`` repeats a value, or names a key that produced
@@ -143,9 +143,10 @@ def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
     if output_backend is None:
         return frame.collect()
     try:
-        # narwhals types `backend` as a 3-way Literal, but it resolves any
-        # installed backend module by name; a bad name surfaces below as
-        # ModuleNotFoundError, which is what this except clause is for.
+        # narwhals types `backend` as a 3-way Literal but accepts a plain
+        # string. It rejects an unknown name itself, with a ValueError listing
+        # what it accepts; this clause is for a name it accepts whose package
+        # is not installed.
         return frame.collect(backend=output_backend)  # ty: ignore[invalid-argument-type]
     except ModuleNotFoundError as exc:
         raise TuskError(

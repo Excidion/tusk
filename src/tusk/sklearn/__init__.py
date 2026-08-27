@@ -2,7 +2,7 @@
 
 :class:`DFSTransformer` runs synthesis as a pipeline step.
 :class:`DFSSelectorTransformer` additionally drops the features a selector
-did not use, so later calls compute only the survivors.
+did not keep, so later calls compute only the rest.
 :class:`dtype_selector` picks columns by dtype for a ``ColumnTransformer``.
 
 Requires the ``sklearn`` extra: ``pip install "tusk[sklearn]"``. :mod:`tusk`

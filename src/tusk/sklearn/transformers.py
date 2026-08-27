@@ -1,6 +1,6 @@
 """Deep feature synthesis as scikit-learn estimators.
 
-Both estimators take ``X`` as the target table's primary-key column and
+Both estimators take ``X`` as the target table's primary key and
 receive the database as routed metadata, so scikit-learn must be configured
 with ``sklearn.set_config(enable_metadata_routing=True)`` to use them inside
 a ``Pipeline``.
@@ -8,7 +8,7 @@ a ``Pipeline``.
 :class:`DFSTransformer` synthesizes features and computes them for the keys
 in ``X``. :class:`DFSSelectorTransformer` additionally fits a supplied
 encode-and-select pipeline, drops the features whose columns the selector did
-not keep, and computes only the survivors thereafter.
+not keep, and computes only the rest thereafter.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         """Compute the feature matrix for the keys in ``X``.
 
         Args:
-            X: The target's primary-key column. Its order becomes the matrix's
+            X: The target's primary key. Its order becomes the matrix's
                 row order.
             database: The database, routed as metadata. When absent, the one
                 seen at fit is used.
@@ -160,7 +160,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         """Fit, then transform, passing ``database`` to both.
 
         Args:
-            X: The target's primary-key column.
+            X: The target's primary key.
             y: Ignored.
             database: The database, routed as metadata.
             **kwargs: Ignored; absorbs scikit-learn's fit parameters.
@@ -187,13 +187,13 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         return np.asarray(names, dtype=object)
 
     def _require_primary_key(self, database: Database) -> str:
-        """Return the target table's key column.
+        """Return the target table's primary key.
 
         Args:
             database: The database to read the schema from.
 
         Returns:
-            The primary key column name.
+            The primary primary key name.
 
         Raises:
             SchemaError: If the target table declares none.
@@ -208,7 +208,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
 
 
 class DFSSelectorTransformer(DFSTransformer):
-    """DFS whose feature list is pruned to what a selector actually kept.
+    """DFS whose feature list is dropped to what a selector actually kept.
 
     The point is inference cost. A run that generates eight hundred features
     and keeps forty should compute forty when it next sees data, not eight
@@ -220,7 +220,7 @@ class DFSSelectorTransformer(DFSTransformer):
     mask indexes encoded space, pruning happens in tusk space, and sentinel
     lineage is the only bridge between them.
 
-    Fitting adds ``encoder_``, the encoder prefix refitted on the surviving
+    Fitting adds ``encoder_``, the encoder prefix refitted on the kept
     columns; ``kept_names_``, the encoded-space names the selector chose, in
     encoder order; and ``sentinels_``, the renaming that recovers lineage.
     Like the parent's fitted attributes, none is declared at class level:
@@ -270,15 +270,10 @@ class DFSSelectorTransformer(DFSTransformer):
         y: Any = None,
         database: Database | None = None,
     ) -> DFSSelectorTransformer:
-        """Synthesize, select, then prune.
-
-        The selector is fitted once here and then frozen; only the encoder is
-        refitted on the survivors. Refitting the selector would let it reach a
-        different verdict -- ``SelectKBest(k=50)`` choosing 50 out of 60 need
-        not choose the 50 it chose out of 500.
+        """Synthesize features, fit the selection pipeline, drop the rest.
 
         Args:
-            X: The target's primary-key column.
+            X: The target's primary key.
             y: Training targets, passed to the selector.
             database: The database, routed as metadata.
 
@@ -289,11 +284,11 @@ class DFSSelectorTransformer(DFSTransformer):
             SchemaError: If selection eliminated every feature.
             LineageError: If a kept column vanished from the refitted encoder,
                 meaning lineage missed a source and a feature was wrongly
-                pruned.
+                dropped.
 
         Warns:
             LineageWarning: If any kept column's provenance was unrecoverable,
-                in which case nothing is pruned.
+                in which case nothing is dropped.
             UnencodedFeatureWarning: If a feature fed no encoded column at
                 all, so the encoder never gave the selector a chance to keep
                 it.
@@ -307,6 +302,10 @@ class DFSSelectorTransformer(DFSTransformer):
         renamed = matrix.rename(sentinels.mapping)
         probe = renamed.to_native()
 
+        # The selector is fitted once and then frozen; only the encoder is
+        # refitted on the kept columns. Refitting the selector would let it
+        # reach a different verdict -- SelectKBest(k=50) choosing 50 out of 60
+        # need not choose the 50 it chose out of 500.
         selection_pipeline = clone(self.selection_pipeline)
         with backend_hint(probe):
             selection_pipeline.fit(probe, y)
@@ -327,13 +326,13 @@ class DFSSelectorTransformer(DFSTransformer):
         mask = get_last_step(selection_pipeline).get_support()
         kept = [name for name, keep in zip(encoded, mask, strict=True) if keep]
 
-        self.features_ = self._prune(kept, encoded, sentinels)
+        self.features_ = self._find_kept_features(kept, encoded, sentinels)
         if not self.features_:
             raise SchemaError("feature selection eliminated every feature")
 
-        surviving_columns = [n for f in self.features_ for n in f.output_names]
-        narrowed = matrix.select(surviving_columns).rename(
-            {c: sentinels.mapping[c] for c in surviving_columns},
+        kept_columns = [n for f in self.features_ for n in f.output_names]
+        narrowed = matrix.select(kept_columns).rename(
+            {c: sentinels.mapping[c] for c in kept_columns},
         )
         self.encoder_ = get_encoder_prefix(clone(self.selection_pipeline))
         with backend_hint(narrowed.to_native()):
@@ -344,19 +343,19 @@ class DFSSelectorTransformer(DFSTransformer):
         if missing:
             raise LineageError(
                 f"{len(missing)} selected columns vanished when the encoder was "
-                f"refit on the surviving features, e.g. "
+                f"refit on the kept features, e.g. "
                 f"{[sentinels.restore(n) for n in missing[:3]]}. Lineage missed "
-                "a source and pruned a feature that was still needed.",
+                "a source and dropped a feature that was still needed.",
             )
         self.sentinels_ = sentinels
         self.kept_names_ = [n for n in refit if n in set(kept)]
         return self
 
     def transform(self, X: Any, database: Database | None = None) -> Any:
-        """Compute the surviving features, encode them, apply the frozen mask.
+        """Compute the kept features, encode them, apply the frozen mask.
 
         Args:
-            X: The target's primary-key column.
+            X: The target's primary key.
             database: The database, routed as metadata.
 
         Returns:
@@ -365,9 +364,9 @@ class DFSSelectorTransformer(DFSTransformer):
         check_is_fitted(self, "kept_names_")
         db = self.database_ if database is None else database
         matrix = nw.from_native(super().transform(X, database=db), eager_only=True)
-        surviving_columns = [n for f in self.features_ for n in f.output_names]
-        probe = matrix.select(surviving_columns).rename(
-            {c: self.sentinels_.mapping[c] for c in surviving_columns},
+        kept_columns = [n for f in self.features_ for n in f.output_names]
+        probe = matrix.select(kept_columns).rename(
+            {c: self.sentinels_.mapping[c] for c in kept_columns},
         )
         with backend_hint(probe.to_native()):
             encoded = self.encoder_.transform(probe.to_native())
@@ -386,7 +385,7 @@ class DFSSelectorTransformer(DFSTransformer):
         names = [self.sentinels_.restore(n) for n in self.kept_names_]
         return np.asarray(names, dtype=object)
 
-    def _prune(
+    def _find_kept_features(
         self,
         kept: list[str],
         encoded: list[str],
@@ -403,13 +402,13 @@ class DFSSelectorTransformer(DFSTransformer):
             sentinels: The renaming used to read provenance.
 
         Returns:
-            The surviving features, in their original order.
+            The kept features, in their original order.
 
         Warns:
             LineageWarning: If any kept name mentions no sentinel, in which
                 case every feature is kept.
             UnencodedFeatureWarning: If a matrix column fed no encoded column
-                at all, so its feature is pruned for a reason the user may not
+                at all, so its feature is dropped for a reason the user may not
                 have intended.
         """
         sources = {name: sentinels.sources(name) for name in kept}
@@ -418,7 +417,7 @@ class DFSSelectorTransformer(DFSTransformer):
             warnings.warn(
                 f"{len(opaque)} selected columns do not name their inputs "
                 f"(e.g. {opaque[:3]}), so tusk cannot tell which features they "
-                "came from and has pruned nothing. Selection still applies; "
+                "came from and has dropped nothing. Selection still applies; "
                 "only the inference-time saving is lost.",
                 LineageWarning,
                 stacklevel=3,
@@ -431,7 +430,7 @@ class DFSSelectorTransformer(DFSTransformer):
         if unencoded:
             warnings.warn(
                 f"{len(unencoded)} features fed no encoded column (e.g. "
-                f"{unencoded[:3]}) and have been pruned. The encoder never "
+                f"{unencoded[:3]}) and have been dropped. The encoder never "
                 'looked at them -- a ColumnTransformer with remainder="drop" '
                 "covering only some dtypes is the usual cause.",
                 UnencodedFeatureWarning,
