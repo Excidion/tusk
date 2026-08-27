@@ -38,7 +38,7 @@ from tusk.sklearn._encoders import (
     get_last_step,
     validate_selection_pipeline,
 )
-from tusk.sklearn._frames import as_keys, backend_hint, collect_matrix
+from tusk.sklearn._frames import backend_hint, collect_keys, collect_matrix
 from tusk.sklearn._lineage import Sentinels, make_sentinels
 from tusk.synthesis import synthesize
 
@@ -146,7 +146,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         return collect_matrix(
             apply_features(self.features_, db, self.cutoff_time),
             self._require_primary_key(db),
-            as_keys(X),
+            collect_keys(X),
             self.output_backend,
         )
 

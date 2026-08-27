@@ -1,6 +1,6 @@
 """Materializes a lazy feature matrix for scikit-learn.
 
-:func:`as_keys` normalizes the key column ``X`` to a list.
+:func:`collect_keys` materializes the key column ``X`` as a list.
 :func:`collect_matrix` filters the matrix to those keys, collects it, and
 returns the rows in key order. :func:`backend_hint` annotates exceptions from
 a user's pipeline with the frame backend in play.
@@ -15,26 +15,18 @@ import contextlib
 import sys
 import warnings
 from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, Union, cast
+from typing import Any, cast
 
 import narwhals as nw
+from narwhals.typing import IntoFrame, IntoLazyFrame
 
 from tusk.exceptions import SchemaError
 
 _POSITION = "__tusk_position"
 
-Keys = Union[Iterable[Any], "nw.DataFrame[Any]", "nw.LazyFrame[Any]"]
-"""What ``X`` may be: key values, or a one-column frame of them."""
 
-# Left as Any: this is whatever lazy type the caller's backend uses -- a
-# polars.LazyFrame, a duckdb relation -- which narwhals unifies at runtime but
-# Python's type system does not.
-LazyNative = Any
-"""A native lazy frame, as ``apply_features`` returns."""
-
-
-def as_keys(X: Keys) -> list[Any]:
-    """Return the primary-key values in ``X``, in the order given.
+def collect_keys(X: Iterable[Any] | IntoFrame) -> list[Any]:
+    """Materialize the primary-key values in ``X``, in the order given.
 
     A one-column frame is read through narwhals; anything else is passed to
     ``list``. The order given becomes the feature matrix's row order.
@@ -80,7 +72,7 @@ def as_keys(X: Keys) -> list[Any]:
 
 
 def collect_matrix(
-    matrix: LazyNative,
+    matrix: IntoLazyFrame,
     primary_key: str,
     keys: Sequence[Any],
     output_backend: str | None,
