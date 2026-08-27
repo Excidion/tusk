@@ -1,8 +1,12 @@
-"""The collect boundary.
+"""Materializes a lazy feature matrix for scikit-learn.
 
-tusk never collects; this is the one module that does, because scikit-learn
-cannot consume a query plan. Everything here is about crossing that line
-exactly once, in a way that cannot silently misalign rows against ``y``.
+:func:`as_keys` normalizes the key column ``X`` to a list.
+:func:`collect_matrix` filters the matrix to those keys, collects it, and
+returns the rows in key order. :func:`backend_hint` annotates exceptions from
+a user's pipeline with the frame backend in play.
+
+This is the only module in tusk that collects: scikit-learn cannot consume a
+query plan.
 """
 
 from __future__ import annotations
@@ -22,21 +26,18 @@ _POSITION = "__tusk_position"
 Keys = Union[Iterable[Any], "nw.DataFrame[Any]", "nw.LazyFrame[Any]"]
 """What ``X`` may be: key values, or a one-column frame of them."""
 
+# Left as Any: this is whatever lazy type the caller's backend uses -- a
+# polars.LazyFrame, a duckdb relation -- which narwhals unifies at runtime but
+# Python's type system does not.
 LazyNative = Any
-"""A native lazy frame, as ``apply_features`` returns.
-
-Untyped because it is whatever lazy type the caller's backend uses -- a
-``polars.LazyFrame``, a ``duckdb`` relation -- which narwhals unifies but
-Python's type system does not.
-"""
+"""A native lazy frame, as ``apply_features`` returns."""
 
 
 def as_keys(X: Keys) -> list[Any]:
     """Return the primary-key values in ``X``, in the order given.
 
     A one-column frame is read through narwhals; anything else is passed to
-    ``list``. That order becomes the feature matrix's row order, which is what
-    keeps ``X`` aligned with ``y``.
+    ``list``. The order given becomes the feature matrix's row order.
 
     Args:
         X: An iterable of key values, or a one-column narwhals-compatible

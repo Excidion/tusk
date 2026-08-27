@@ -1,14 +1,10 @@
-"""Reconnecting encoded columns to the tusk features they came from.
+"""Maps encoded column names back to the matrix columns they came from.
 
-featuretools can prune feature definitions because ``encode_features`` returns
-definitions for the one-hot columns, keeping the selector's mask and the
-feature list 1:1. Handing encoding to scikit-learn severs that link: a support
-mask indexes *encoded* columns and says nothing about which feature produced
-them.
-
-This module rebuilds the link by exploiting scikit-learn's own convention that
-output names derive from input names. Rename the matrix columns to opaque
-tokens, and every downstream name carries its provenance in plain sight.
+:func:`make_sentinels` renames a matrix's columns to opaque tokens.
+:class:`Sentinels` then reads those tokens back out of an encoder's
+``get_feature_names_out()``: :meth:`Sentinels.sources` reports which matrix
+columns an encoded name derives from, and :meth:`Sentinels.restore`
+substitutes the real names back for display.
 """
 
 from __future__ import annotations

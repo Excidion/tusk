@@ -1,9 +1,10 @@
-"""What the user's ``inner`` pipeline must look like, and why.
+"""Inspects and validates a selection pipeline.
 
-Pruning narrows the matrix, so the encoder is refit on fewer columns than it
-first saw. That makes indifference to which columns are present a hard
-requirement rather than a nicety, and it is the reason a whole shape of
-``ColumnTransformer`` is refused here.
+:func:`get_last_step` and :func:`get_encoder_prefix` split a pipeline into the
+part that encodes and the selector that ends it.
+:func:`validate_selection_pipeline` rejects pipelines this module cannot
+support. :class:`dtype_selector` picks columns by dtype for a
+``ColumnTransformer``.
 """
 
 from __future__ import annotations
@@ -23,20 +24,16 @@ from tusk.exceptions import EncoderError
 class dtype_selector:  # noqa: N801
     """Select columns by :class:`~tusk.dtypes.DtypeFamily`, on any backend.
 
-    scikit-learn's ``make_column_selector`` is the right shape but rejects
-    anything that is not pandas, which collides with collecting natively. skrub
-    and scikit-lego were surveyed too: skrub's selectors are not callable and
-    ``ColumnTransformer`` rejects them, and scikit-lego's ``TypeSelector`` is a
-    transformer with no ``get_feature_names_out``, which lineage depends on.
-    So this is the same idea through narwhals.
+    Serves the same role as scikit-learn's ``make_column_selector``, but reads
+    the schema through narwhals, so it works on every backend a tusk database
+    can use rather than pandas alone.
 
-    The families are tusk's own rather than a new set, so ``"string"`` means
-    here exactly what it means to a primitive: ``String`` and not
-    ``Categorical`` or ``Enum``.
+    Families are :class:`~tusk.dtypes.DtypeFamily` values, so ``"string"``
+    means here what it means to a primitive: ``String``, not ``Categorical``
+    or ``Enum``.
 
-    Being a callable rather than a fixed list is what makes the refit work: it
-    re-evaluates against whatever frame it is handed, so narrowing the matrix
-    narrows the selection instead of breaking it.
+    Being a callable, it re-evaluates against whatever frame it is given, so a
+    narrowed matrix narrows the selection.
 
     Attributes:
         family: The :class:`~tusk.dtypes.DtypeFamily` to select.
@@ -45,16 +42,12 @@ class dtype_selector:  # noqa: N801
     family: DtypeFamily
 
     def __init__(self, family: DtypeFamily | str) -> None:
-        """Create a selector.
-
-        Coercing through ``DtypeFamily`` here, rather than storing the raw
-        argument, is what rejects an unknown family name eagerly -- with the
-        enum's own ``ValueError`` and its list of valid values -- instead of
-        failing later and further from the mistake.
+        """Create a selector for one dtype family.
 
         Args:
             family: A ``DtypeFamily`` or its string value, such as
-                ``"numeric"`` or ``"string"``.
+                ``"numeric"`` or ``"string"``. An unrecognized string raises
+                ``ValueError`` listing the valid values.
         """
         self.family = DtypeFamily(family)
 
@@ -75,64 +68,65 @@ class dtype_selector:  # noqa: N801
         return f"dtype_selector({self.family.value!r})"
 
 
-def selector_of(inner: Any) -> Any:
-    """The selector at the end of ``inner``.
+def get_last_step(selection_pipeline: Any) -> Any:
+    """Return the final step of ``selection_pipeline``.
 
     Args:
-        inner: The user's encode-and-select estimator.
+        selection_pipeline: The user's encode-and-select estimator.
 
     Returns:
-        Its last step if it is a pipeline, else ``inner`` itself.
+        Its last step if it is a pipeline, else ``selection_pipeline`` itself.
+        After :func:`validate_selection_pipeline` this is the selector, but
+        this function does not check that.
     """
-    return inner[-1] if isinstance(inner, Pipeline) else inner
+    return (
+        selection_pipeline[-1]
+        if isinstance(selection_pipeline, Pipeline)
+        else selection_pipeline
+    )
 
 
-def encoder_prefix(inner: Any) -> Any:
-    """Everything in ``inner`` before the selector.
+def get_encoder_prefix(selection_pipeline: Any) -> Any:
+    """Return everything in ``selection_pipeline`` before its final step.
 
     A bare selector, or a one-step pipeline wrapping one, has no encoder; an
-    identity transformer stands in so callers need no special case. Slicing a
-    one-step pipeline would give an empty one, which cannot be fitted.
+    identity transformer stands in for it.
 
     Args:
-        inner: The user's encode-and-select estimator.
+        selection_pipeline: The user's encode-and-select estimator.
 
     Returns:
         An unfitted estimator producing encoded space from tusk space.
     """
-    if isinstance(inner, Pipeline) and len(inner.steps) > 1:
-        return inner[:-1]
+    # Slicing a one-step pipeline yields an empty one, which cannot be fitted,
+    # hence the length check rather than an unconditional [:-1].
+    if isinstance(selection_pipeline, Pipeline) and len(selection_pipeline.steps) > 1:
+        return selection_pipeline[:-1]
     return FunctionTransformer(feature_names_out="one-to-one")
 
 
-def validate_inner(inner: Any) -> None:
-    """Check ``inner`` against the contract, before anything is fitted.
+def validate_selection_pipeline(selection_pipeline: Any) -> None:
+    """Raise unless ``selection_pipeline`` can be used for selection.
 
     Args:
-        inner: The user's encode-and-select estimator.
+        selection_pipeline: The user's encode-and-select estimator.
 
     Raises:
         EncoderError: If it does not end in a ``SelectorMixin``, or if any
             ``ColumnTransformer`` within it names its columns explicitly.
     """
-    if not isinstance(selector_of(inner), SelectorMixin):
+    if not isinstance(get_last_step(selection_pipeline), SelectorMixin):
         raise EncoderError(
-            "inner must end in a scikit-learn SelectorMixin -- its get_support() "
-            "mask is what tells tusk which features to keep; got "
-            f"{type(selector_of(inner)).__name__}",
+            "selection_pipeline must end in a scikit-learn SelectorMixin; its "
+            "get_support() mask is what tells tusk which features to keep. Got "
+            f"{type(get_last_step(selection_pipeline)).__name__}",
         )
-    _reject_explicit_columns(inner)
-    _require_feature_names(encoder_prefix(inner))
+    _reject_explicit_columns(selection_pipeline)
+    _require_feature_names(get_encoder_prefix(selection_pipeline))
 
 
 def _require_feature_names(estimator: Any) -> None:
-    """Refuse an encoder step that cannot report its output names.
-
-    Lineage reads ``get_feature_names_out`` and nothing else, so a transformer
-    without it is wholly opaque. Checking each step rather than the pipeline is
-    the point: ``Pipeline`` always *has* the attribute and only fails when it
-    reaches the step that does not, deep inside the fit and far from the cause.
-    scikit-lego's ``TypeSelector`` is a real example.
+    """Raise unless every step can report its output names.
 
     Args:
         estimator: An estimator to inspect, recursively.
@@ -140,6 +134,9 @@ def _require_feature_names(estimator: Any) -> None:
     Raises:
         EncoderError: If any step cannot report output names.
     """
+    # Each step is checked rather than the pipeline as a whole: Pipeline always
+    # has get_feature_names_out and only fails on reaching the step that does
+    # not, deep inside the fit and far from the cause.
     if isinstance(estimator, Pipeline):
         for _, step in estimator.steps:
             _require_feature_names(step)
@@ -158,13 +155,7 @@ def _require_feature_names(estimator: Any) -> None:
 
 
 def _reject_explicit_columns(estimator: Any) -> None:
-    """Refuse a ``ColumnTransformer`` that names DFS-generated columns.
-
-    Such an encoder is wrong here for three independent reasons: the names do
-    not exist until DFS has run, so they must be hardcoded and go stale
-    silently; ``remainder="drop"`` discards every generated feature the user
-    did not name; and it is the one shape that cannot be refit on the pruned
-    matrix.
+    """Raise if a ``ColumnTransformer`` names its columns explicitly.
 
     Args:
         estimator: An estimator to inspect, recursively.
@@ -172,6 +163,9 @@ def _reject_explicit_columns(estimator: Any) -> None:
     Raises:
         EncoderError: If an explicit column list is found.
     """
+    # An explicit list cannot be refit once selection narrows the matrix, and
+    # DFS generates its column names, so they cannot be written down in advance
+    # without going stale.
     if isinstance(estimator, Pipeline):
         for _, step in estimator.steps:
             _reject_explicit_columns(step)

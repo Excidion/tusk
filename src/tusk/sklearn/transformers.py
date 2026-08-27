@@ -1,11 +1,14 @@
 """Deep feature synthesis as scikit-learn estimators.
 
-``X`` is the target table's primary-key column, not the database. That
-inversion is what makes ``X`` array-like, so scikit-learn can split it: the
-keys *are* the rows, which makes misalignment against ``y`` impossible rather
-than merely discouraged, and lets ``cross_val_score`` and ``GridSearchCV``
-work at all. The database travels as routed metadata, because ``clone``
-deep-copies constructor parameters and a duckdb relation cannot be pickled.
+Both estimators take ``X`` as the target table's primary-key column and
+receive the database as routed metadata, so scikit-learn must be configured
+with ``sklearn.set_config(enable_metadata_routing=True)`` to use them inside
+a ``Pipeline``.
+
+:class:`DFSTransformer` synthesizes features and computes them for the keys
+in ``X``. :class:`DFSSelectorTransformer` additionally fits a supplied
+encode-and-select pipeline, drops the features whose columns the selector did
+not keep, and computes only the survivors thereafter.
 """
 
 from __future__ import annotations
@@ -30,7 +33,11 @@ from tusk.exceptions import (
 )
 from tusk.features import Feature
 from tusk.primitives.base import Primitive
-from tusk.sklearn._encoders import encoder_prefix, selector_of, validate_inner
+from tusk.sklearn._encoders import (
+    get_encoder_prefix,
+    get_last_step,
+    validate_selection_pipeline,
+)
 from tusk.sklearn._frames import as_keys, backend_hint, collect_matrix
 from tusk.sklearn._lineage import Sentinels, make_sentinels
 from tusk.synthesis import synthesize
@@ -39,11 +46,9 @@ from tusk.synthesis import synthesize
 class DFSTransformer(TransformerMixin, BaseEstimator):
     """Deep feature synthesis as a pipeline step.
 
-    Fitting sets ``features_``, the synthesized feature definitions, and
-    ``database_``, the database seen at fit -- used as :meth:`transform`'s
-    fallback when none is routed there directly. Neither is declared as a
-    class-level attribute: both depend on ``target_table`` and are only known
-    once :meth:`fit` has run.
+    :meth:`fit` sets ``features_``, the synthesized feature definitions, and
+    ``database_``, the database it was given. :meth:`transform` computes those
+    features for the keys in ``X``, returning one row per key in key order.
     """
 
     __metadata_request__fit = {"database": True}
@@ -61,22 +66,19 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
     ) -> None:
         """Configure synthesis.
 
-        Every argument is stored unmodified under its own name: scikit-learn
-        requires ``__init__`` to only assign, or ``get_params`` and ``clone``
-        cannot round-trip the estimator.
-
         Args:
             target_table: Table to build features for.
             agg_primitives: Aggregation primitives; None selects the defaults.
             trans_primitives: Transform primitives; None selects the defaults.
             groupby_trans_primitives: Transforms within foreign-key groups.
             max_depth: Maximum stacked primitive applications.
-            cutoff_time: Only rows at or before this are visible. Clone-safe,
-                unlike the database, so it lives here and can be searched.
-            output_backend: Backend to collect to. None collects natively,
-                which keeps narwhals-native transformers on their own frame
-                type.
+            cutoff_time: Only rows at or before this are visible.
+            output_backend: Backend to collect the matrix to. None collects to
+                the database's own backend.
         """
+        # Every argument is stored unmodified under its own name: scikit-learn
+        # requires __init__ to only assign, or get_params and clone cannot
+        # round-trip the estimator.
         self.target_table = target_table
         self.agg_primitives = agg_primitives
         self.trans_primitives = trans_primitives
@@ -91,14 +93,12 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         y: Any = None,
         database: Database | None = None,
     ) -> DFSTransformer:
-        """Synthesize feature definitions.
+        """Synthesize feature definitions from the database's schema.
 
-        Reads the schema and no rows, so this is cheap; the expensive pass is
-        in :meth:`transform`.
+        Reads no rows; :meth:`transform` does the computation.
 
         Args:
-            X: The target's primary-key column. Unused here beyond validation,
-                since synthesis depends only on the schema.
+            X: Ignored. Synthesis depends only on the schema.
             y: Ignored; present for the scikit-learn signature.
             database: The database, routed as metadata.
 
@@ -134,18 +134,18 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             X: The target's primary-key column. Its order becomes the matrix's
                 row order.
             database: The database, routed as metadata. When absent, the one
-                seen at fit is used -- scikit-learn's scorers call ``predict``
-                with no metadata, so without this fallback every
-                cross-validated score would be ``nan``.
+                seen at fit is used.
 
         Returns:
             An eager native frame, one row per key, in key order.
         """
         check_is_fitted(self, "features_")
+        # scikit-learn's scorers call predict() with no metadata, so without
+        # this fallback every cross-validated score would come back nan.
         db = self.database_ if database is None else database
         return collect_matrix(
             apply_features(self.features_, db, self.cutoff_time),
-            self._primary_key(db),
+            self._require_primary_key(db),
             as_keys(X),
             self.output_backend,
         )
@@ -157,11 +157,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         database: Database | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Fit, then transform, forwarding the database to both.
-
-        ``TransformerMixin.fit_transform`` drops metadata on the way to
-        ``transform``; scikit-learn warns about exactly this. Overriding is the
-        prescribed fix.
+        """Fit, then transform, passing ``database`` to both.
 
         Args:
             X: The target's primary-key column.
@@ -190,8 +186,8 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         names = [n for f in self.features_ for n in f.output_names]
         return np.asarray(names, dtype=object)
 
-    def _primary_key(self, database: Database) -> str:
-        """The target table's key column.
+    def _require_primary_key(self, database: Database) -> str:
+        """Return the target table's key column.
 
         Args:
             database: The database to read the schema from.
@@ -234,7 +230,7 @@ class DFSSelectorTransformer(DFSTransformer):
     def __init__(
         self,
         target_table: str,
-        inner: Any = None,
+        selection_pipeline: Any = None,
         agg_primitives: Iterable[str | Primitive] | None = None,
         trans_primitives: Iterable[str | Primitive] | None = None,
         groupby_trans_primitives: Iterable[str | Primitive] | None = None,
@@ -244,14 +240,10 @@ class DFSSelectorTransformer(DFSTransformer):
     ) -> None:
         """Configure synthesis and selection.
 
-        The parent's parameters are repeated rather than absorbed into
-        ``**kwargs``, because scikit-learn discovers them by introspecting this
-        signature.
-
         Args:
             target_table: Table to build features for.
-            inner: An estimator ending in a ``SelectorMixin``; everything
-                before it encodes.
+            selection_pipeline: An estimator ending in a ``SelectorMixin``;
+                everything before it encodes.
             agg_primitives: Aggregation primitives; None selects the defaults.
             trans_primitives: Transform primitives; None selects the defaults.
             groupby_trans_primitives: Transforms within foreign-key groups.
@@ -259,6 +251,8 @@ class DFSSelectorTransformer(DFSTransformer):
             cutoff_time: Only rows at or before this are visible.
             output_backend: Backend to collect to; None collects natively.
         """
+        # The parent's parameters are repeated rather than absorbed into
+        # **kwargs: scikit-learn discovers them by introspecting this signature.
         super().__init__(
             target_table=target_table,
             agg_primitives=agg_primitives,
@@ -268,7 +262,7 @@ class DFSSelectorTransformer(DFSTransformer):
             cutoff_time=cutoff_time,
             output_backend=output_backend,
         )
-        self.inner = inner
+        self.selection_pipeline = selection_pipeline
 
     def fit(
         self,
@@ -304,7 +298,7 @@ class DFSSelectorTransformer(DFSTransformer):
                 all, so the encoder never gave the selector a chance to keep
                 it.
         """
-        validate_inner(self.inner)
+        validate_selection_pipeline(self.selection_pipeline)
         super().fit(X, y, database=database)
         db = self.database_ if database is None else database
 
@@ -313,23 +307,24 @@ class DFSSelectorTransformer(DFSTransformer):
         renamed = matrix.rename(sentinels.mapping)
         probe = renamed.to_native()
 
-        inner = clone(self.inner)
+        selection_pipeline = clone(self.selection_pipeline)
         with backend_hint(probe):
-            inner.fit(probe, y)
-        # These are the *pre*-selection names: slicing the pipeline is what
-        # gets them, since ``inner.get_feature_names_out()`` on a pipeline
-        # ending in a selector reports what survived, which cannot be zipped
-        # against the mask. The inputs are named explicitly because an inner
-        # that is a bare selector has no encoder to have been fitted, and the
-        # identity standing in for one can only report names if it is told
-        # them.
+            selection_pipeline.fit(probe, y)
+        # Slicing gets the *pre*-selection names: calling
+        # get_feature_names_out() on the whole pipeline reports what survived
+        # selection, which cannot be zipped against the mask. The input names
+        # are passed explicitly because a bare selector has no encoder to have
+        # been fitted, and the identity standing in for one can only report
+        # names if it is given them.
         encoded = list(
-            encoder_prefix(inner).get_feature_names_out(list(renamed.columns)),
+            get_encoder_prefix(selection_pipeline).get_feature_names_out(
+                list(renamed.columns)
+            ),
         )
         # strict=True: a mask that does not line up with the names is a broken
         # encoder contract, and zipping it short would silently mis-attribute
         # every column after the mismatch.
-        mask = selector_of(inner).get_support()
+        mask = get_last_step(selection_pipeline).get_support()
         kept = [name for name, keep in zip(encoded, mask, strict=True) if keep]
 
         self.features_ = self._prune(kept, encoded, sentinels)
@@ -340,7 +335,7 @@ class DFSSelectorTransformer(DFSTransformer):
         narrowed = matrix.select(surviving_columns).rename(
             {c: sentinels.mapping[c] for c in surviving_columns},
         )
-        self.encoder_ = encoder_prefix(clone(self.inner))
+        self.encoder_ = get_encoder_prefix(clone(self.selection_pipeline))
         with backend_hint(narrowed.to_native()):
             self.encoder_.fit(narrowed.to_native())
 
@@ -358,11 +353,7 @@ class DFSSelectorTransformer(DFSTransformer):
         return self
 
     def transform(self, X: Any, database: Database | None = None) -> Any:
-        """Compute the surviving features, encode, and apply the frozen mask.
-
-        Nothing is fitted here. Both fits happen in :meth:`fit`; a Pipeline
-        calls ``fit_transform`` on intermediate steps during ``fit`` and
-        ``transform`` during ``predict``.
+        """Compute the surviving features, encode them, apply the frozen mask.
 
         Args:
             X: The target's primary-key column.
@@ -401,16 +392,14 @@ class DFSSelectorTransformer(DFSTransformer):
         encoded: list[str],
         sentinels: Sentinels,
     ) -> list[Feature]:
-        """Features with at least one column feeding a kept encoded column.
+        """Return the features with a column feeding a kept encoded column.
 
-        A multi-output feature is all-or-nothing: one output cannot be computed
-        without the others, so any live column keeps the whole feature.
+        A feature survives if any of its output columns is a source of a kept
+        encoded column, and then contributes all of them.
 
         Args:
             kept: Encoded-space names the selector chose.
-            encoded: Every encoded-space name, kept or not. Needed to tell a
-                feature the selector *rejected* from one the encoder never
-                looked at, which are worth reporting differently.
+            encoded: Every encoded-space name, kept or not.
             sentinels: The renaming used to read provenance.
 
         Returns:
@@ -451,19 +440,18 @@ class DFSSelectorTransformer(DFSTransformer):
         return [f for f in self.features_ if any(n in live for n in f.output_names)]
 
     def _select(self, encoded: Any) -> Any:
-        """Apply the frozen mask to the encoder's output.
-
-        Resolved by name against the fitted encoder's own ordering rather than
-        by stored position: with ``output_backend=None`` the output may be a
-        frame or a bare array, and a stored index would silently mis-slice if
-        that changed between fit and transform.
+        """Return only the selected columns of the encoder's output.
 
         Args:
-            encoded: Whatever the encoder returned.
+            encoded: Whatever the encoder returned -- a frame or an array.
 
         Returns:
             Only the selected columns, in encoder order.
         """
+        # Resolved by name rather than by stored position: with
+        # output_backend=None the output may be a frame or a bare array, and a
+        # stored index would mis-slice if that changed between fit and
+        # transform.
         order = list(self.encoder_.get_feature_names_out())
         indices = [order.index(n) for n in self.kept_names_]
         frame = nw.from_native(encoded, eager_only=True, pass_through=True)

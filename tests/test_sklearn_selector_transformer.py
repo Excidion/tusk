@@ -129,7 +129,7 @@ def _inner(k=2):
 def _transformer(k=2, **kwargs):
     return DFSSelectorTransformer(
         target_table="customers",
-        inner=_inner(k),
+        selection_pipeline=_inner(k),
         max_depth=2,
         **kwargs,
     )
@@ -242,7 +242,9 @@ def test_the_survivors_are_exactly_the_features_feeding_kept_columns(shop):
     ]
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=Pipeline([("enc", _encoder()), ("sel", KeepPositions(positions))]),
+        selection_pipeline=Pipeline(
+            [("enc", _encoder()), ("sel", KeepPositions(positions))]
+        ),
         max_depth=2,
     )
     fitted = transformer.fit(KEYS, Y, database=shop)
@@ -259,7 +261,9 @@ def test_a_multi_output_feature_survives_whole(shop):
     position = _encoded_position(matrix, "num__QUANTILES__transactions__amount__1")
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=Pipeline([("enc", _encoder()), ("sel", KeepPositions([position]))]),
+        selection_pipeline=Pipeline(
+            [("enc", _encoder()), ("sel", KeepPositions([position]))]
+        ),
         agg_primitives=["quantiles"],
         trans_primitives=[],
     )
@@ -299,7 +303,7 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
     # PCA sees only the numeric columns: it cannot be fitted on a string one
     # at all, and what is under test is its opaque output names, not its dtype
     # handling.
-    inner = Pipeline(
+    selection_pipeline = Pipeline(
         [
             (
                 "enc",
@@ -312,7 +316,7 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
     )
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=inner,
+        selection_pipeline=selection_pipeline,
         agg_primitives=["count", "mean"],
         trans_primitives=[],
     )
@@ -335,7 +339,7 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
 def test_a_partial_encoder_warns_about_features_it_never_saw(shop):
     # Only string columns are encoded, and remainder defaults to "drop", so
     # every numeric feature silently feeds nothing and gets pruned.
-    inner = Pipeline(
+    selection_pipeline = Pipeline(
         [
             (
                 "enc",
@@ -352,7 +356,9 @@ def test_a_partial_encoder_warns_about_features_it_never_saw(shop):
             ("sel", SelectKBest(f_classif, k=1)),
         ],
     )
-    transformer = DFSSelectorTransformer(target_table="customers", inner=inner)
+    transformer = DFSSelectorTransformer(
+        target_table="customers", selection_pipeline=selection_pipeline
+    )
     with pytest.warns(UnencodedFeatureWarning, match="fed no encoded column"):
         fitted = transformer.fit(KEYS, Y, database=shop)
     assert [f.name for f in fitted.features_] == ["region"]
@@ -362,7 +368,7 @@ def test_a_partial_encoder_warns_about_features_it_never_saw(shop):
 def test_selecting_nothing_raises_rather_than_producing_an_empty_matrix(shop):
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=Pipeline([("enc", _encoder()), ("sel", KeepPositions([]))]),
+        selection_pipeline=Pipeline([("enc", _encoder()), ("sel", KeepPositions([]))]),
         max_depth=2,
     )
     with pytest.raises(SchemaError, match="eliminated every feature"):
@@ -373,7 +379,9 @@ def test_selecting_nothing_raises_rather_than_producing_an_empty_matrix(shop):
 def test_a_kept_column_missing_after_the_refit_raises(shop):
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=Pipeline([("stamp", WidthStamped()), ("sel", KeepPositions([0, 1]))]),
+        selection_pipeline=Pipeline(
+            [("stamp", WidthStamped()), ("sel", KeepPositions([0, 1]))]
+        ),
         max_depth=2,
     )
     with pytest.raises(LineageError, match="vanished"):
@@ -388,7 +396,7 @@ def test_an_inner_without_an_encoder_selects_the_matrix_itself(shop):
     position = list(matrix.columns).index("COUNT__transactions")
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=KeepPositions([position]),
+        selection_pipeline=KeepPositions([position]),
         agg_primitives=["count"],
         trans_primitives=[],
     )
@@ -399,10 +407,10 @@ def test_an_inner_without_an_encoder_selects_the_matrix_itself(shop):
     assert out.shape == (12, 1)
 
 
-def test_inner_is_validated_at_fit_not_construction(shop):
+def test_the_selection_pipeline_is_validated_at_fit_not_construction(shop):
     transformer = DFSSelectorTransformer(
         target_table="customers",
-        inner=StandardScaler(),
+        selection_pipeline=StandardScaler(),
     )
     with pytest.raises(EncoderError, match="SelectorMixin"):
         transformer.fit(KEYS, Y, database=shop)

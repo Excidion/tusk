@@ -1,13 +1,17 @@
-"""scikit-learn estimators wrapping deep feature synthesis.
+"""scikit-learn estimators for deep feature synthesis.
 
-Deliberately not imported by :mod:`tusk`: importing scikit-learn eagerly would
-break every install without the ``sklearn`` extra. Reach these through
-``from tusk.sklearn import DFSTransformer``, as with ``xgboost.sklearn``.
+:class:`DFSTransformer` runs synthesis as a pipeline step.
+:class:`DFSSelectorTransformer` additionally drops the features a selector
+did not use, so later calls compute only the survivors.
+:class:`dtype_selector` picks columns by dtype for a ``ColumnTransformer``.
+
+Requires the ``sklearn`` extra: ``pip install "tusk[sklearn]"``. :mod:`tusk`
+does not import this package, so it must be imported by name.
 """
 
 from __future__ import annotations
 
 from tusk.sklearn._encoders import dtype_selector
-from tusk.sklearn._transformers import DFSSelectorTransformer, DFSTransformer
+from tusk.sklearn.transformers import DFSSelectorTransformer, DFSTransformer
 
 __all__ = ["DFSSelectorTransformer", "DFSTransformer", "dtype_selector"]

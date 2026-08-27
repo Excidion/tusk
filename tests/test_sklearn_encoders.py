@@ -11,7 +11,11 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from tusk.dtypes import DtypeFamily
 from tusk.exceptions import EncoderError
 from tusk.sklearn import dtype_selector
-from tusk.sklearn._encoders import encoder_prefix, selector_of, validate_inner
+from tusk.sklearn._encoders import (
+    get_encoder_prefix,
+    get_last_step,
+    validate_selection_pipeline,
+)
 
 FRAME = pl.DataFrame(
     {"age": [20.0, 30.0], "cat": ["a", "b"], "cnt": [1.0, 2.0]},
@@ -86,41 +90,42 @@ def test_dtype_selector_works_inside_a_column_transformer_on_polars():
     ]
 
 
-def test_selector_of_finds_the_last_step():
+def test_get_last_step_returns_the_final_step():
     selector = SelectKBest(f_classif, k=1)
     assert (
-        selector_of(Pipeline([("s", StandardScaler()), ("sel", selector)])) is selector
+        get_last_step(Pipeline([("s", StandardScaler()), ("sel", selector)]))
+        is selector
     )
-    assert selector_of(selector) is selector
+    assert get_last_step(selector) is selector
 
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
-def test_encoder_prefix_is_identity_when_there_is_no_encoder():
-    prefix = encoder_prefix(SelectKBest(f_classif, k=1))
+def test_get_encoder_prefix_is_identity_when_there_is_no_encoder():
+    prefix = get_encoder_prefix(SelectKBest(f_classif, k=1))
     fitted = prefix.fit(FRAME)
     assert list(fitted.get_feature_names_out()) == ["age", "cat", "cnt"]
 
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
-def test_encoder_prefix_of_a_single_step_pipeline_is_identity():
-    prefix = encoder_prefix(Pipeline([("sel", SelectKBest(f_classif, k=1))]))
+def test_get_encoder_prefix_of_a_single_step_pipeline_is_identity():
+    prefix = get_encoder_prefix(Pipeline([("sel", SelectKBest(f_classif, k=1))]))
     assert list(prefix.fit(FRAME).get_feature_names_out()) == ["age", "cat", "cnt"]
 
 
-def test_inner_must_end_in_a_selector():
+def test_the_selection_pipeline_must_end_in_a_selector():
     with pytest.raises(EncoderError, match="SelectorMixin"):
-        validate_inner(Pipeline([("s", StandardScaler())]))
+        validate_selection_pipeline(Pipeline([("s", StandardScaler())]))
 
 
 def test_explicit_column_lists_are_refused():
-    inner = Pipeline(
+    selection_pipeline = Pipeline(
         [
             ("enc", ColumnTransformer([("num", StandardScaler(), ["age", "cnt"])])),
             ("sel", SelectKBest(f_classif, k=1)),
         ],
     )
     with pytest.raises(EncoderError, match="dtype_selector"):
-        validate_inner(inner)
+        validate_selection_pipeline(selection_pipeline)
 
 
 class _Opaque(BaseEstimator, TransformerMixin):
@@ -139,15 +144,15 @@ class _Opaque(BaseEstimator, TransformerMixin):
 
 
 def test_a_step_without_feature_names_is_refused():
-    inner = Pipeline(
+    selection_pipeline = Pipeline(
         [("opaque", _Opaque()), ("sel", SelectKBest(f_classif, k=1))],
     )
     with pytest.raises(EncoderError, match="get_feature_names_out"):
-        validate_inner(inner)
+        validate_selection_pipeline(selection_pipeline)
 
 
 def test_a_callable_column_list_is_accepted():
-    inner = Pipeline(
+    selection_pipeline = Pipeline(
         [
             (
                 "enc",
@@ -158,4 +163,4 @@ def test_a_callable_column_list_is_accepted():
             ("sel", SelectKBest(f_classif, k=1)),
         ],
     )
-    validate_inner(inner)
+    validate_selection_pipeline(selection_pipeline)
