@@ -307,6 +307,9 @@ class DFSSelectorTransformer(DFSTransformer):
         Warns:
             LineageWarning: If any kept column's provenance was unrecoverable,
                 in which case nothing is pruned.
+            UnencodedFeatureWarning: If a feature fed no encoded column at
+                all, so the encoder never gave the selector a chance to keep
+                it.
         """
         validate_inner(self.inner)
         super().fit(X, y, database=database)
