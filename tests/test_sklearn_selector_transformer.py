@@ -412,8 +412,8 @@ def test_inner_is_validated_at_fit_not_construction(shop):
 def test_it_works_as_a_pipeline_step(shop):
     with sklearn.config_context(enable_metadata_routing=True):
         pipe = Pipeline([("dfs", _transformer()), ("clf", LogisticRegression())])
-        pipe.fit(np.array(KEYS).reshape(-1, 1), Y, database=shop)
-        assert len(pipe.predict(np.array([[1], [2]]), database=shop)) == 2
+        pipe.fit(KEYS, Y, database=shop)
+        assert len(pipe.predict([1, 2], database=shop)) == 2
 
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)

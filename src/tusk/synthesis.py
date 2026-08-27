@@ -28,27 +28,31 @@ from tusk.features import (
     IdentityFeature,
     TransformFeature,
 )
+from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import Primitive
 from tusk.primitives.registry import resolve_all
+from tusk.primitives.transform import TRANS_DEFAULTS
 
 
 def synthesize(
     database: Database,
     target_table: str,
-    agg_primitives: Iterable[str | Primitive],
-    trans_primitives: Iterable[str | Primitive],
-    groupby_trans_primitives: Iterable[str | Primitive],
-    max_depth: int,
+    agg_primitives: Iterable[str | Primitive] | None = None,
+    trans_primitives: Iterable[str | Primitive] | None = None,
+    groupby_trans_primitives: Iterable[str | Primitive] | None = None,
+    max_depth: int = 2,
 ) -> list[Feature]:
     """Generate feature definitions for a target table.
 
     Args:
         database: The schema to walk.
         target_table: Table to build features for.
-        agg_primitives: Aggregation primitives, as names or instances.
-        trans_primitives: Transform primitives, as names or instances.
+        agg_primitives: Aggregation primitives, as names or instances. None
+            selects ``AGG_DEFAULTS``.
+        trans_primitives: Transform primitives, as names or instances. None
+            selects ``TRANS_DEFAULTS``.
         groupby_trans_primitives: Transform primitives applied within
-            foreign-key groups.
+            foreign-key groups. None selects none.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
@@ -65,9 +69,11 @@ def synthesize(
     database.schema(target_table)
     context = _Context(
         database=database,
-        agg=resolve_all(agg_primitives),
-        trans=resolve_all(trans_primitives),
-        groupby=resolve_all(groupby_trans_primitives),
+        agg=resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives),
+        trans=resolve_all(
+            TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
+        ),
+        groupby=resolve_all(groupby_trans_primitives or ()),
     )
     features = context.build(target_table, max_depth, ())
     context.warn_unmatched()

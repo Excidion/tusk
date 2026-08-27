@@ -10,55 +10,76 @@ from __future__ import annotations
 import contextlib
 import sys
 import warnings
-from collections.abc import Iterator, Sequence
-from typing import Any
+from collections.abc import Iterable, Iterator, Sequence
+from typing import Any, Union, cast
 
 import narwhals as nw
-import numpy as np
 
 from tusk.exceptions import SchemaError
 
 _POSITION = "__tusk_position"
 
+Keys = Union[Iterable[Any], "nw.DataFrame[Any]", "nw.LazyFrame[Any]"]
+"""What ``X`` may be: key values, or a one-column frame of them."""
 
-def as_keys(X: Any) -> list[Any]:
-    """Normalize ``X`` to a flat list of primary-key values.
+LazyNative = Any
+"""A native lazy frame, as ``apply_features`` returns.
+
+Untyped because it is whatever lazy type the caller's backend uses -- a
+``polars.LazyFrame``, a ``duckdb`` relation -- which narwhals unifies but
+Python's type system does not.
+"""
+
+
+def as_keys(X: Keys) -> list[Any]:
+    """Return the primary-key values in ``X``, in the order given.
+
+    A one-column frame is read through narwhals; anything else is passed to
+    ``list``. That order becomes the feature matrix's row order, which is what
+    keeps ``X`` aligned with ``y``.
 
     Args:
-        X: A 1-D sequence, an ``(n, 1)`` array, or a one-column frame.
+        X: An iterable of key values, or a one-column narwhals-compatible
+            frame, eager or lazy.
 
     Returns:
-        The key values, in the order given. That order is the contract: it
-        becomes the row order of the feature matrix, which is what keeps ``X``
-        aligned with ``y``.
+        The key values.
 
     Raises:
-        SchemaError: If ``X`` has more than one column, or more than two
-            dimensions.
+        SchemaError: If a frame does not have exactly one column.
+        TypeError: If ``X`` is neither a frame nor iterable.
     """
-    frame = nw.from_native(X, eager_only=True, pass_through=True)
-    if isinstance(frame, nw.DataFrame):
-        if len(frame.columns) != 1:
+    frame = nw.from_native(X, pass_through=True)
+    if isinstance(frame, (nw.DataFrame, nw.LazyFrame)):
+        columns = frame.collect_schema().names()
+        if len(columns) != 1:
             raise SchemaError(
                 f"X must have exactly one column, the target's primary key; "
-                f"got {len(frame.columns)}",
+                f"got {len(columns)}: {columns}",
             )
-        return frame[frame.columns[0]].to_list()
-    array = np.asarray(X)
-    if array.ndim == 2:
-        if array.shape[1] != 1:
-            raise SchemaError(
-                f"X must have exactly one column, the target's primary key; "
-                f"got {array.shape[1]}",
-            )
-        array = array[:, 0]
-    elif array.ndim != 1:
-        raise SchemaError(f"X must be 1- or 2-dimensional; got {array.ndim}")
-    return array.tolist()
+        eager = frame.collect() if isinstance(frame, nw.LazyFrame) else frame
+        return eager[columns[0]].to_list()
+    try:
+        # Reaching here proves X is not a frame, so it is the iterable arm of
+        # Keys; ty cannot see that, because the isinstance check above narrows
+        # `frame` rather than `X`.
+        keys = list(cast("Iterable[Any]", X))
+    except TypeError:
+        raise TypeError(
+            f"X must be an iterable of key values or a one-column frame; "
+            f"got {type(X).__name__}",
+        ) from None
+    if keys and hasattr(keys[0], "__len__") and not isinstance(keys[0], str):
+        raise TypeError(
+            f"X must be one-dimensional -- each element is one key -- but its "
+            f"elements are {type(keys[0]).__name__}. A column vector of shape "
+            f"(n, 1) is the usual cause; pass the keys themselves.",
+        )
+    return keys
 
 
 def collect_matrix(
-    lazy_native: Any,
+    matrix: LazyNative,
     primary_key: str,
     keys: Sequence[Any],
     output_backend: str | None,
@@ -66,7 +87,7 @@ def collect_matrix(
     """Materialize the feature matrix for ``keys``, in ``keys`` order.
 
     Args:
-        lazy_native: The uncomputed matrix from ``apply_features``.
+        matrix: The uncomputed feature matrix from ``apply_features``.
         primary_key: The target table's key column.
         keys: Key values selecting and ordering the rows.
         output_backend: Backend to collect to, or None to collect natively.
@@ -86,7 +107,7 @@ def collect_matrix(
             "target's primary key, so each row must be requested at most once",
         )
 
-    frame = nw.from_native(lazy_native).lazy()
+    frame = nw.from_native(matrix)
     filtered = frame.filter(nw.col(primary_key).is_in(keys))
     collected = _collect(filtered, output_backend)
 

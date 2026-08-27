@@ -84,8 +84,8 @@ def test_it_routes_the_database_through_a_pipeline(db):
                 ("clf", LogisticRegression()),
             ],
         )
-        pipe.fit(np.array(KEYS).reshape(-1, 1), Y, database=db)
-        assert len(pipe.predict(np.array([[1], [2]]), database=db)) == 2
+        pipe.fit(KEYS, Y, database=db)
+        assert len(pipe.predict([1, 2], database=db)) == 2
 
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
@@ -102,7 +102,7 @@ def test_cross_val_score_produces_finite_scores(db):
         pipe = Pipeline([("dfs", _transformer()), ("clf", DummyClassifier())])
         scores = cross_val_score(
             pipe,
-            np.array(KEYS).reshape(-1, 1),
+            KEYS,
             Y,
             cv=KFold(n_splits=3),
             params={"database": db},
@@ -126,7 +126,7 @@ def test_grid_search_can_tune_a_dfs_parameter(db):
             cv=KFold(n_splits=3),
         )
         with pytest.warns(UnmatchedPrimitiveWarning, match="'sessions'"):
-            search.fit(np.array(KEYS).reshape(-1, 1), Y, database=db)
+            search.fit(KEYS, Y, database=db)
     assert search.best_params_["dfs__max_depth"] in (1, 2)
 
 

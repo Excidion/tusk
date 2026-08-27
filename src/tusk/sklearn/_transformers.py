@@ -29,9 +29,7 @@ from tusk.exceptions import (
     UnencodedFeatureWarning,
 )
 from tusk.features import Feature
-from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import Primitive
-from tusk.primitives.transform import TRANS_DEFAULTS
 from tusk.sklearn._encoders import encoder_prefix, selector_of, validate_inner
 from tusk.sklearn._frames import as_keys, backend_hint, collect_matrix
 from tusk.sklearn._lineage import Sentinels, make_sentinels
@@ -116,19 +114,14 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
                 "sklearn.set_config(enable_metadata_routing=True) when fitting "
                 "inside a Pipeline",
             )
-        as_keys(X)
         self.database_ = database
         self.features_ = list(
             synthesize(
                 database=database,
                 target_table=self.target_table,
-                agg_primitives=AGG_DEFAULTS
-                if self.agg_primitives is None
-                else self.agg_primitives,
-                trans_primitives=TRANS_DEFAULTS
-                if self.trans_primitives is None
-                else self.trans_primitives,
-                groupby_trans_primitives=self.groupby_trans_primitives or (),
+                agg_primitives=self.agg_primitives,
+                trans_primitives=self.trans_primitives,
+                groupby_trans_primitives=self.groupby_trans_primitives,
                 max_depth=self.max_depth,
             ),
         )

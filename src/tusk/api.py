@@ -13,9 +13,7 @@ from typing import Any
 from tusk.compiler import compile_features
 from tusk.database import Database
 from tusk.features import Feature
-from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import Primitive
-from tusk.primitives.transform import TRANS_DEFAULTS
 from tusk.synthesis import synthesize
 from tusk.validation import check_cutoff_time_zone
 
@@ -76,11 +74,9 @@ def deep_feature_synthesis(
     features = synthesize(
         database=database,
         target_table=target_table,
-        agg_primitives=AGG_DEFAULTS if agg_primitives is None else agg_primitives,
-        trans_primitives=TRANS_DEFAULTS
-        if trans_primitives is None
-        else trans_primitives,
-        groupby_trans_primitives=groupby_trans_primitives or (),
+        agg_primitives=agg_primitives,
+        trans_primitives=trans_primitives,
+        groupby_trans_primitives=groupby_trans_primitives,
         max_depth=max_depth,
     )
     if features_only:

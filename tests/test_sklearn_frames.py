@@ -13,8 +13,8 @@ from tusk.sklearn._frames import as_keys, collect_matrix
         ("list", [1, 2, 3]),
         ("range", range(1, 4)),
         ("1d array", np.array([1, 2, 3])),
-        ("column array", np.array([[1], [2], [3]])),
-        ("one column frame", pl.DataFrame({"id": [1, 2, 3]})),
+        ("eager frame", pl.DataFrame({"id": [1, 2, 3]})),
+        ("lazy frame", pl.LazyFrame({"id": [1, 2, 3]})),
     ],
 )
 def test_as_keys_accepts_every_documented_shape(label, value):
@@ -23,11 +23,25 @@ def test_as_keys_accepts_every_documented_shape(label, value):
 
 @pytest.mark.parametrize(
     "value",
-    [np.array([[1, 2], [3, 4]]), pl.DataFrame({"a": [1], "b": [2]})],
+    [pl.DataFrame({"a": [1], "b": [2]}), pl.LazyFrame({"a": [1], "b": [2]})],
 )
-def test_as_keys_rejects_more_than_one_column(value):
+def test_as_keys_rejects_a_frame_with_more_than_one_column(value):
     with pytest.raises(SchemaError, match="exactly one column"):
         as_keys(value)
+
+
+def test_as_keys_rejects_a_column_vector_by_naming_the_cause():
+    # (n, 1) is the conventional sklearn X shape, so this is the mistake users
+    # will actually make; without this check it dies later as "unhashable type".
+    with pytest.raises(TypeError, match=r"one-dimensional.*\(n, 1\)"):
+        as_keys(np.array([[1], [2], [3]]))
+
+
+def test_as_keys_rejects_something_that_is_not_iterable():
+    with pytest.raises(TypeError, match="iterable of key values"):
+        # Deliberately outside the declared type: the point is that callers
+        # who ignore the annotation still get a clear error at runtime.
+        as_keys(object())  # ty: ignore[invalid-argument-type]
 
 
 def test_collect_matrix_returns_rows_in_key_order():
