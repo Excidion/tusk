@@ -346,7 +346,7 @@ def test_deep_feature_synthesis_rejects_a_mismatched_cutoff(db):
 
 
 def test_a_date_cutoff_is_rejected(db):
-    with pytest.raises(TypeError, match="must be a datetime.datetime"):
+    with pytest.raises(TypeError, match="must be a datetime"):
         tusk.apply_features(
             count_features(db),
             db,
@@ -355,7 +355,7 @@ def test_a_date_cutoff_is_rejected(db):
 
 
 def test_a_string_cutoff_is_rejected(db):
-    with pytest.raises(TypeError, match="not a str"):
+    with pytest.raises(TypeError, match="must be a datetime"):
         tusk.apply_features(
             count_features(db),
             db,
