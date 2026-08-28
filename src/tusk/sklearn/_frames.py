@@ -1,6 +1,6 @@
 """Materializes a lazy feature matrix for scikit-learn.
 
-:func:`collect_keys` materializes the primary key ``X`` as a list.
+:func:`read_keys` normalizes the primary key ``X`` to a list.
 :func:`collect_matrix` filters the matrix to those keys, collects it, and
 returns the rows in key order. :func:`backend_hint` annotates exceptions from
 a user's pipeline with the frame backend in play.
@@ -14,53 +14,37 @@ from __future__ import annotations
 import contextlib
 import sys
 import warnings
-from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, cast
+from collections.abc import Iterable, Iterator
+from typing import Any
 
 import narwhals as nw
-from narwhals.typing import IntoFrame, IntoLazyFrame
+from narwhals.typing import IntoLazyFrame
 
 from tusk.exceptions import SchemaError
 
 _POSITION = "__tusk_position"
 
 
-def collect_keys(X: Iterable[Any] | IntoFrame) -> list[Any]:
-    """Materialize the primary-key values in ``X``, in the order given.
+def read_keys(X: Iterable[Any]) -> list[Any]:
+    """Return the primary-key values in ``X`` as a list, in the order given.
 
-    A one-column frame is read through narwhals; anything else is passed to
-    ``list``. The order given becomes the feature matrix's row order.
+    The order given becomes the feature matrix's row order.
 
     Args:
-        X: An iterable of key values, or a one-column narwhals-compatible
-            frame, eager or lazy.
+        X: An iterable of key values -- a list, a 1-D array, a Series.
 
     Returns:
         The key values.
 
     Raises:
-        SchemaError: If a frame does not have exactly one column.
-        TypeError: If ``X`` is neither a frame nor iterable.
+        TypeError: If ``X`` is not iterable, or its elements are not single
+            values.
     """
-    frame = nw.from_native(X, pass_through=True)
-    if isinstance(frame, (nw.DataFrame, nw.LazyFrame)):
-        columns = frame.collect_schema().names()
-        if len(columns) != 1:
-            raise SchemaError(
-                f"X must have exactly one column, the target's primary key; "
-                f"got {len(columns)}: {columns}",
-            )
-        eager = frame.collect() if isinstance(frame, nw.LazyFrame) else frame
-        return eager[columns[0]].to_list()
     try:
-        # Reaching here proves X is not a frame, so it is the iterable arm of
-        # Keys; ty cannot see that, because the isinstance check above narrows
-        # `frame` rather than `X`.
-        keys = list(cast("Iterable[Any]", X))
+        keys = list(X)
     except TypeError:
         raise TypeError(
-            f"X must be an iterable of key values or a one-column frame; "
-            f"got {type(X).__name__}",
+            f"X must be an iterable of key values; got {type(X).__name__}",
         ) from None
     if keys and hasattr(keys[0], "__len__") and not isinstance(keys[0], str):
         raise TypeError(
@@ -74,7 +58,7 @@ def collect_keys(X: Iterable[Any] | IntoFrame) -> list[Any]:
 def collect_matrix(
     matrix: IntoLazyFrame,
     primary_key: str,
-    keys: Sequence[Any],
+    keys: list[Any],
     output_backend: str | None,
 ) -> Any:
     """Materialize the feature matrix for ``keys``, in ``keys`` order.
@@ -93,7 +77,6 @@ def collect_matrix(
         SchemaError: If ``keys`` repeats a value, or names a key that produced
             no row.
     """
-    keys = list(keys)
     if len(set(keys)) != len(keys):
         raise SchemaError(
             "X contains duplicate keys; the feature matrix is keyed by the "

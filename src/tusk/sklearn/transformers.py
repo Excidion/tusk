@@ -38,7 +38,7 @@ from tusk.sklearn._encoders import (
     get_last_step,
     validate_selection_pipeline,
 )
-from tusk.sklearn._frames import backend_hint, collect_keys, collect_matrix
+from tusk.sklearn._frames import backend_hint, collect_matrix, read_keys
 from tusk.sklearn._lineage import Sentinels, make_sentinels
 from tusk.synthesis import synthesize
 
@@ -76,9 +76,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             output_backend: Backend to collect the matrix to. None collects to
                 the database's own backend.
         """
-        # Every argument is stored unmodified under its own name: scikit-learn
-        # requires __init__ to only assign, or get_params and clone cannot
-        # round-trip the estimator.
         self.target_table = target_table
         self.agg_primitives = agg_primitives
         self.trans_primitives = trans_primitives
@@ -144,10 +141,10 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         # this fallback every cross-validated score would come back nan.
         db = self.database_ if database is None else database
         return collect_matrix(
-            apply_features(self.features_, db, self.cutoff_time),
-            self._require_primary_key(db),
-            collect_keys(X),
-            self.output_backend,
+            matrix=apply_features(self.features_, db, self.cutoff_time),
+            primary_key=self._require_primary_key(db),
+            keys=read_keys(X),
+            output_backend=self.output_backend,
         )
 
     def fit_transform(
@@ -251,8 +248,6 @@ class DFSSelectorTransformer(DFSTransformer):
             cutoff_time: Only rows at or before this are visible.
             output_backend: Backend to collect to; None collects natively.
         """
-        # The parent's parameters are repeated rather than absorbed into
-        # **kwargs: scikit-learn discovers them by introspecting this signature.
         super().__init__(
             target_table=target_table,
             agg_primitives=agg_primitives,

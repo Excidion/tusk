@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from tusk.exceptions import SchemaError
-from tusk.sklearn._frames import collect_keys, collect_matrix
+from tusk.sklearn._frames import collect_matrix, read_keys
 
 
 @pytest.mark.parametrize(
@@ -13,35 +13,32 @@ from tusk.sklearn._frames import collect_keys, collect_matrix
         ("list", [1, 2, 3]),
         ("range", range(1, 4)),
         ("1d array", np.array([1, 2, 3])),
-        ("eager frame", pl.DataFrame({"id": [1, 2, 3]})),
-        ("lazy frame", pl.LazyFrame({"id": [1, 2, 3]})),
+        ("series", pl.Series("id", [1, 2, 3])),
     ],
 )
-def test_collect_keys_accepts_every_documented_shape(label, value):
-    assert collect_keys(value) == [1, 2, 3]
+def test_read_keys_accepts_every_documented_shape(label, value):
+    assert read_keys(value) == [1, 2, 3]
 
 
-@pytest.mark.parametrize(
-    "value",
-    [pl.DataFrame({"a": [1], "b": [2]}), pl.LazyFrame({"a": [1], "b": [2]})],
-)
-def test_collect_keys_rejects_a_frame_with_more_than_one_column(value):
-    with pytest.raises(SchemaError, match="exactly one column"):
-        collect_keys(value)
+def test_read_keys_rejects_a_frame():
+    # A frame's row order is not guaranteed on every backend, and key order is
+    # what aligns the matrix against y.
+    with pytest.raises(TypeError, match="one-dimensional"):
+        read_keys(pl.DataFrame({"id": [1, 2, 3]}))
 
 
-def test_collect_keys_rejects_a_column_vector_by_naming_the_cause():
+def test_read_keys_rejects_a_column_vector_by_naming_the_cause():
     # (n, 1) is the conventional sklearn X shape, so this is the mistake users
     # will actually make; without this check it dies later as "unhashable type".
     with pytest.raises(TypeError, match=r"one-dimensional.*\(n, 1\)"):
-        collect_keys(np.array([[1], [2], [3]]))
+        read_keys(np.array([[1], [2], [3]]))
 
 
-def test_collect_keys_rejects_something_that_is_not_iterable():
+def test_read_keys_rejects_something_that_is_not_iterable():
     with pytest.raises(TypeError, match="iterable of key values"):
         # Deliberately outside the declared type: the point is that callers
         # who ignore the annotation still get a clear error at runtime.
-        collect_keys(object())  # ty: ignore[invalid-argument-type]
+        read_keys(object())  # ty: ignore[invalid-argument-type]
 
 
 def test_collect_matrix_returns_rows_in_key_order():
