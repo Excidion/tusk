@@ -24,4 +24,5 @@ ask for it.
 - [Running DFS](deep-feature-synthesis.md)
 - [Primitives](primitives.md)
 - [Custom primitives](custom-primitives.md)
+- [scikit-learn pipelines](sklearn.md)
 - [Differences from featuretools](featuretools.md)

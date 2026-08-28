@@ -64,6 +64,8 @@ Full documentation lives in [`docs/`](docs/index.md):
 - [Running DFS](docs/guide/deep-feature-synthesis.md) — depth, cutoff times, and the column naming scheme.
 - [Primitives](docs/guide/primitives.md) — what ships with tusk and how it behaves.
 - [Custom primitives](docs/guide/custom-primitives.md) — the extension point.
+- [scikit-learn pipelines](docs/guide/sklearn.md) — DFS as a pipeline step, and
+  computing only the features you keep.
 - [Differences from featuretools](docs/guide/featuretools.md) — if you are porting.
 - [API reference](docs/api/index.md) — every public symbol.
 

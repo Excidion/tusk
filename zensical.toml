@@ -16,6 +16,7 @@ nav = [
         "guide/deep-feature-synthesis.md",
         "guide/primitives.md",
         "guide/custom-primitives.md",
+        "guide/sklearn.md",
         "guide/featuretools.md",
     ] },
     { "API reference" = [
@@ -23,6 +24,7 @@ nav = [
         "api/tusk.md",
         "api/database.md",
         "api/validation.md",
+        "api/sklearn.md",
         "api/primitives.md",
         "api/features.md",
         "api/dtypes.md",

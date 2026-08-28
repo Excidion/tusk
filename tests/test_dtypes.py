@@ -32,3 +32,41 @@ def test_matches_unknown_family():
     """Test that ValueError is raised for an unrecognized family."""
     with pytest.raises(ValueError, match="Unrecognized DtypeFamily"):
         matches(nw.Int64(), object())  # type: ignore
+
+
+def test_categorical_family_matches_categorical_and_enum():
+    import polars as pl
+
+    frame = nw.from_native(
+        pl.DataFrame(
+            {
+                "s": ["t"],
+                "c": pl.Series(["x"]).cast(pl.Categorical),
+                "e": pl.Series(["a"]).cast(pl.Enum(["a", "b"])),
+            },
+        ),
+        eager_only=True,
+    )
+    schema = frame.schema
+    assert matches(schema["c"], DtypeFamily.CATEGORICAL)
+    assert matches(schema["e"], DtypeFamily.CATEGORICAL)
+    assert not matches(schema["s"], DtypeFamily.CATEGORICAL)
+
+
+def test_string_family_still_excludes_categorical_and_enum():
+    import polars as pl
+
+    frame = nw.from_native(
+        pl.DataFrame(
+            {
+                "s": ["t"],
+                "c": pl.Series(["x"]).cast(pl.Categorical),
+                "e": pl.Series(["a"]).cast(pl.Enum(["a", "b"])),
+            },
+        ),
+        eager_only=True,
+    )
+    schema = frame.schema
+    assert matches(schema["s"], DtypeFamily.STRING)
+    assert not matches(schema["c"], DtypeFamily.STRING)
+    assert not matches(schema["e"], DtypeFamily.STRING)
