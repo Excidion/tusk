@@ -26,6 +26,9 @@ class Range(AggregationPrimitive):
 Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
 ordinary dataclass fields.
 
+`@dataclass(frozen=True)` is required: features deduplicate by value. A
+primitive without it is rejected with `PrimitiveError`.
+
 There is no second, shorter way to declare one. Every built-in primitive is a
 frozen dataclass written out like this, so `Year` and `Count` are the same kind
 of object as `Range` — nothing in tusk can reach a definition path your own

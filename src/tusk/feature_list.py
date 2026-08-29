@@ -1,12 +1,4 @@
-"""The collection type synthesis hands back.
-
-A :class:`FeatureList` is what makes "a feature set" a thing you can hold
-rather than a list you have to keep facts about: it knows the one table its
-features belong to, it can name every column they materialize, and it can
-compute itself against a database. Its invariants -- non-empty, one table --
-are the compiler's preconditions, checked here so a mistake surfaces where it
-was made rather than one phase later.
-"""
+"""The collection of feature definitions that synthesis returns."""
 
 from __future__ import annotations
 
@@ -22,11 +14,10 @@ from tusk.validation import check_cutoff_time_zone
 
 
 class FeatureList(Sequence[Feature]):
-    """An immutable, single-table collection of feature definitions.
+    """An immutable, non-empty, single-table collection of feature definitions.
 
-    Behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`, so
-    indexing, iteration, ``len`` and comprehensions all work as they would on
-    a list. Slicing returns another ``FeatureList``.
+    Behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`.
+    Slicing returns another ``FeatureList``.
     """
 
     def __init__(self, features: Iterable[Feature]) -> None:
@@ -52,22 +43,12 @@ class FeatureList(Sequence[Feature]):
         return self._target_table
 
     @property
-    def max_depth(self) -> int:
-        """The deepest feature's number of stacked primitive applications."""
-        return max(f.depth for f in self._features)
-
-    @property
     def output_names(self) -> tuple[str, ...]:
         """Every column name the feature matrix will carry, in column order.
 
         Wider than ``len(self)`` when any feature is multi-output.
         """
         return tuple(n for f in self._features for n in f.output_names)
-
-    @property
-    def display_output_names(self) -> tuple[str, ...]:
-        """The readable names, parallel to :attr:`output_names`."""
-        return tuple(n for f in self._features for n in f.display_output_names)
 
     def apply(
         self,
@@ -76,14 +57,10 @@ class FeatureList(Sequence[Feature]):
     ) -> Any:
         """Compute these features against a database.
 
-        Equivalent to :func:`tusk.apply_features`, which is the same call
-        spelled as a free function for callers holding a plain sequence.
-
-        Compilation raises :class:`~tusk.exceptions.SchemaError` if the target
-        table has no ``primary_key``, or if two features compile to the same
-        column name, and :class:`~tusk.exceptions.PrimitiveError` if an
-        order-dependent primitive lands on a table with no
-        ``row_creation_time``. ``check_cutoff_time_zone`` raises
+        Raises :class:`~tusk.exceptions.SchemaError` if the target table has
+        no ``primary_key`` or two features compile to the same column name,
+        :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
+        primitive lands on a table with no ``row_creation_time``, and
         :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` disagrees
         with the database's row creation times in tz awareness.
 
@@ -117,9 +94,8 @@ class FeatureList(Sequence[Feature]):
     def __getitem__(self, index: int | slice) -> Feature | FeatureList:
         """Index to a feature; slice to a narrower ``FeatureList``.
 
-        A slice that selects nothing hits the empty-set invariant and raises
-        :class:`~tusk.exceptions.SchemaError`, since there is no such thing as
-        an empty feature set to hand back.
+        A slice selecting nothing raises
+        :class:`~tusk.exceptions.SchemaError`.
 
         Args:
             index: Position or slice.
@@ -132,7 +108,7 @@ class FeatureList(Sequence[Feature]):
         return self._features[index]
 
     def __len__(self) -> int:
-        """Count the definitions, not the columns they materialize."""
+        """Count the feature definitions."""
         return len(self._features)
 
     def __iter__(self) -> Iterator[Feature]:
@@ -140,22 +116,15 @@ class FeatureList(Sequence[Feature]):
         return iter(self._features)
 
     def __eq__(self, other: object) -> bool:
-        """Compare structurally against another ``FeatureList``.
-
-        A plain list of the same features is deliberately unequal, the way a
-        tuple is: the type carries the single-table guarantee.
-        """
+        """Compare structurally against another ``FeatureList``."""
         if not isinstance(other, FeatureList):
             return NotImplemented
         return self._features == other._features
 
     def __hash__(self) -> int:
-        """Hash the frozen features, so feature sets can key a cache."""
+        """Hash the feature definitions."""
         return hash(self._features)
 
     def __repr__(self) -> str:
-        """Summarize, since a run of eight hundred features has to print."""
-        return (
-            f"FeatureList({len(self._features)} features "
-            f"on {self._target_table!r}, max_depth={self.max_depth})"
-        )
+        """Summarize the feature count and target table."""
+        return f"FeatureList({len(self._features)} features on {self._target_table!r})"

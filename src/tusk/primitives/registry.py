@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable
 from typing import TypeVar
 
@@ -42,16 +43,45 @@ def resolve(spec: str | Primitive) -> Primitive:
         A primitive instance.
 
     Raises:
-        PrimitiveError: If the name is not registered.
+        PrimitiveError: If the name is not registered, or the primitive is not
+            a frozen dataclass with equality enabled.
     """
     if isinstance(spec, Primitive):
-        return spec
-    try:
-        return _REGISTRY[spec]()
-    except KeyError:
-        known = ", ".join(sorted(_REGISTRY))
-        msg = f"unknown primitive {spec!r}; available: {known}"
-        raise PrimitiveError(msg) from None
+        primitive = spec
+    else:
+        try:
+            primitive = _REGISTRY[spec]()
+        except KeyError:
+            known = ", ".join(sorted(_REGISTRY))
+            msg = f"unknown primitive {spec!r}; available: {known}"
+            raise PrimitiveError(msg) from None
+    _require_frozen_dataclass(primitive)
+    return primitive
+
+
+def _require_frozen_dataclass(primitive: Primitive) -> None:
+    """Check that a primitive is a frozen dataclass with equality enabled.
+
+    Args:
+        primitive: The resolved primitive to check.
+
+    Raises:
+        PrimitiveError: If it is not.
+    """
+    cls = type(primitive)
+    params = getattr(cls, "__dataclass_params__", None)
+    is_value_semantic = (
+        dataclasses.is_dataclass(cls)
+        and params is not None
+        and params.frozen
+        and params.eq
+    )
+    if is_value_semantic:
+        return
+    raise PrimitiveError(
+        f"primitive {cls.__name__!r} needs @dataclass(frozen=True): "
+        "features deduplicate by value.",
+    )
 
 
 def resolve_all(specs: Iterable[str | Primitive]) -> tuple[Primitive, ...]:
