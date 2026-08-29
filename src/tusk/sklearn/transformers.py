@@ -23,7 +23,6 @@ import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.utils.validation import check_is_fitted
 
-from tusk.api import apply_features
 from tusk.database import Database
 from tusk.exceptions import (
     LineageError,
@@ -31,6 +30,7 @@ from tusk.exceptions import (
     SchemaError,
     UnencodedFeatureWarning,
 )
+from tusk.feature_list import FeatureList
 from tusk.features import Feature
 from tusk.primitives.base import Primitive
 from tusk.sklearn._encoders import (
@@ -46,9 +46,10 @@ from tusk.synthesis import synthesize
 class DFSTransformer(TransformerMixin, BaseEstimator):
     """Deep feature synthesis as a pipeline step.
 
-    :meth:`fit` sets ``features_``, the synthesized feature definitions, and
-    ``database_``, the database it was given. :meth:`transform` computes those
-    features for the keys in ``X``, returning one row per key in key order.
+    :meth:`fit` sets ``features_``, the synthesized definitions as a
+    :class:`~tusk.FeatureList`, and ``database_``, the database it was given.
+    :meth:`transform` computes those features for the keys in ``X``, returning
+    one row per key in key order.
     """
 
     __metadata_request__fit = {"database": True}
@@ -112,15 +113,13 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
                 "inside a Pipeline",
             )
         self.database_ = database
-        self.features_ = list(
-            synthesize(
-                database=database,
-                target_table=self.target_table,
-                agg_primitives=self.agg_primitives,
-                trans_primitives=self.trans_primitives,
-                groupby_trans_primitives=self.groupby_trans_primitives,
-                max_depth=self.max_depth,
-            ),
+        self.features_ = synthesize(
+            database=database,
+            target_table=self.target_table,
+            agg_primitives=self.agg_primitives,
+            trans_primitives=self.trans_primitives,
+            groupby_trans_primitives=self.groupby_trans_primitives,
+            max_depth=self.max_depth,
         )
         return self
 
@@ -141,7 +140,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         # this fallback every cross-validated score would come back nan.
         db = self.database_ if database is None else database
         return collect_matrix(
-            matrix=apply_features(self.features_, db, self.cutoff_time),
+            matrix=self.features_.apply(db, self.cutoff_time),
             primary_key=self._require_primary_key(db),
             keys=read_keys(X),
             output_backend=self.output_backend,
@@ -180,8 +179,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             The names, as an object array.
         """
         check_is_fitted(self, "features_")
-        names = [n for f in self.features_ for n in f.output_names]
-        return np.asarray(names, dtype=object)
+        return np.asarray(self.features_.output_names, dtype=object)
 
     def _require_primary_key(self, database: Database) -> str:
         """Return the target table's primary key.
@@ -321,11 +319,12 @@ class DFSSelectorTransformer(DFSTransformer):
         mask = get_last_step(selection_pipeline).get_support()
         kept = [name for name, keep in zip(encoded, mask, strict=True) if keep]
 
-        self.features_ = self._find_kept_features(kept, encoded, sentinels)
-        if not self.features_:
+        survivors = self._find_kept_features(kept, encoded, sentinels)
+        if not survivors:
             raise SchemaError("feature selection eliminated every feature")
+        self.features_ = FeatureList(survivors)
 
-        kept_columns = [n for f in self.features_ for n in f.output_names]
+        kept_columns = list(self.features_.output_names)
         narrowed = matrix.select(kept_columns).rename(
             {c: sentinels.mapping[c] for c in kept_columns},
         )
@@ -359,7 +358,7 @@ class DFSSelectorTransformer(DFSTransformer):
         check_is_fitted(self, "kept_names_")
         db = self.database_ if database is None else database
         matrix = nw.from_native(super().transform(X, database=db), eager_only=True)
-        kept_columns = [n for f in self.features_ for n in f.output_names]
+        kept_columns = list(self.features_.output_names)
         probe = matrix.select(kept_columns).rename(
             {c: self.sentinels_.mapping[c] for c in kept_columns},
         )

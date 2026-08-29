@@ -1,8 +1,12 @@
 """Phase 1: build the feature graph from schemas alone.
 
-Nothing here touches a dataframe, and this module must never import
-:mod:`tusk.compiler`. That separation is what makes the algorithm testable
-without any backend at all.
+Nothing here touches a dataframe. The walk reads schemas and primitive
+metadata only, which is what makes it testable without computing anything.
+
+Features flow one way, phase 1 to phase 2, and that direction is the rule:
+this module returns a :class:`~tusk.FeatureList`, which knows how to compile
+itself, but never asks the compiler anything. Whether a feature *can* be
+computed is not an input to deciding whether to generate it.
 """
 
 from __future__ import annotations
@@ -18,8 +22,10 @@ from tusk.dtypes import DtypeFamily, matches
 from tusk.exceptions import (
     CategoricalDtypeWarning,
     PrimitiveError,
+    SchemaError,
     UnmatchedPrimitiveWarning,
 )
+from tusk.feature_list import FeatureList
 from tusk.features import (
     AggregationFeature,
     DirectFeature,
@@ -41,7 +47,7 @@ def synthesize(
     trans_primitives: Iterable[str | Primitive] | None = None,
     groupby_trans_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
-) -> list[Feature]:
+) -> FeatureList:
     """Generate feature definitions for a target table.
 
     ``database.schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
@@ -61,6 +67,11 @@ def synthesize(
     Returns:
         features: Feature definitions on the target table, deduplicated and
             excluding the target's own key columns.
+
+    Raises:
+        SchemaError: If the walk generated no features at all, which is a
+            dead end rather than an empty result: nothing downstream can be
+            computed from it.
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
@@ -83,7 +94,19 @@ def synthesize(
     kept = [
         f for f in features if not (isinstance(f, IdentityFeature) and f.column in keys)
     ]
-    return list(dict.fromkeys(kept))
+    if not kept:
+        # FeatureList would reject this too, but only it knows the levers:
+        # which primitives were asked for, and how far the walk was allowed
+        # to go. Any UnmatchedPrimitiveWarning has already named the misses.
+        raise SchemaError(
+            f"no features generated for {target_table!r}. Every column of "
+            f"{target_table!r} is a key or row_creation_time, so nothing "
+            "passes through, and no requested primitive matched a column "
+            f"within max_depth={max_depth}. Request primitives whose input "
+            "dtypes match the columns you have, raise max_depth to reach "
+            f"further tables, or add relationships from {target_table!r}.",
+        )
+    return FeatureList(dict.fromkeys(kept))
 
 
 class _Context:

@@ -2,6 +2,7 @@ import narwhals as nw
 
 from tusk.compiler import compile_features
 from tusk.database import Relationship
+from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
 
@@ -12,7 +13,7 @@ AMOUNT = IdentityFeature("transactions", "amount", nw.Float64())
 
 
 def collect(features, db):
-    return compile_features(features, db).collect().to_native().sort("id")
+    return compile_features(FeatureList(features), db).collect().to_native().sort("id")
 
 
 def test_count_of_children(db):
@@ -61,7 +62,7 @@ def test_n_unique_does_not_count_null_as_a_distinct_value(db):
 
 def test_multi_output_aggregation_produces_one_column_per_output(db):
     feature = AggregationFeature(Quantiles(qs=(0.0, 1.0)), (AMOUNT,), SESSION_TX)
-    got = compile_features([feature], db).collect().to_native().sort("id")
+    got = compile_features(FeatureList([feature]), db).collect().to_native().sort("id")
     assert got[feature.output_names[0]].to_list() == [1.0, 10.0, None]
     assert got[feature.output_names[1]].to_list() == [3.0, 20.0, None]
 
@@ -72,6 +73,6 @@ def test_many_aggregations_from_one_child_produce_one_join(db):
         AggregationFeature(Mean(), (AMOUNT,), SESSION_TX),
         AggregationFeature(Sum(), (AMOUNT,), SESSION_TX),
     ]
-    plan = compile_features(features, db).to_native().explain()
+    plan = compile_features(FeatureList(features), db).to_native().explain()
     assert plan.count("LEFT JOIN:") == 1
     assert plan.count("AGGREGATE") == 1

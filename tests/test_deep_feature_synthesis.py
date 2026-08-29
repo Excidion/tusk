@@ -51,7 +51,7 @@ def test_features_only_returns_definitions_alone(db):
         max_depth=1,
         features_only=True,
     )
-    assert isinstance(features, list)
+    assert isinstance(features, tusk.FeatureList)
     assert {f.name for f in features} == {"age", "COUNT__sessions"}
 
 

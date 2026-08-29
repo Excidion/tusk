@@ -455,4 +455,4 @@ def test_predicting_against_another_database_uses_the_pruned_features(shop):
     fitted = _transformer().fit(KEYS, Y, database=shop)
     before = list(fitted.features_)
     fitted.transform([1, 2], database=shop)
-    assert fitted.features_ == before
+    assert list(fitted.features_) == before
