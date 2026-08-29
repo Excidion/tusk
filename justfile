@@ -5,8 +5,10 @@ default:
     @just --list
 
 # Run every pre-commit hook across the whole repository.
+# The file list is passed explicitly because pre-commit's own --all-files
+# needs git 2.31 for `git ls-files --deduplicate`.
 lint:
-    uv run pre-commit run --all-files
+    git ls-files -z | xargs -0 uv run pre-commit run --files
 
 # Run the default test suite.
 test:
