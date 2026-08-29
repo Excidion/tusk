@@ -108,3 +108,82 @@ def test_every_registered_primitive_round_trips_through_pickle():
     for name in _REGISTRY:
         primitive = resolve(name)
         assert pickle.loads(pickle.dumps(primitive)) == primitive
+
+
+@pytest.fixture
+def restore_registry():
+    """Undo any registration a test performs.
+
+    test_every_registered_primitive_is_a_frozen_dataclass asserts that every
+    entry in _REGISTRY complies, so a deliberately-bad primitive must not
+    outlive the test that needs it.
+    """
+    before = dict(_REGISTRY)
+    yield
+    _REGISTRY.clear()
+    _REGISTRY.update(before)
+
+
+class PlainClassPrimitive(TransformPrimitive):
+    """A primitive written the ordinary way: no dataclass, identity equality."""
+
+    name = "plain_class_primitive"
+    input_dtypes = (F.NUMERIC,)
+
+    def __init__(self, k=2.0):
+        self.k = k
+
+    def build(self, expr):
+        return expr * self.k
+
+
+@dataclass
+class UnfrozenPrimitive(TransformPrimitive):
+    """A dataclass that forgot frozen=True, so it is unhashable."""
+
+    name = "unfrozen_primitive"
+    input_dtypes = (F.NUMERIC,)
+    k: float = 2.0
+
+    def build(self, expr):
+        return expr * self.k
+
+
+def test_a_plain_class_primitive_instance_is_rejected():
+    with pytest.raises(PrimitiveError, match="PlainClassPrimitive"):
+        resolve(PlainClassPrimitive(3.0))
+
+
+def test_a_plain_class_primitive_is_rejected_by_registered_name(restore_registry):
+    register(PlainClassPrimitive)
+    with pytest.raises(PrimitiveError, match="PlainClassPrimitive"):
+        resolve("plain_class_primitive")
+
+
+def test_an_unfrozen_dataclass_primitive_is_rejected():
+    # Without the check this reaches synthesis and dies with an unhelpful
+    # "unhashable type" much further downstream.
+    with pytest.raises(PrimitiveError, match="UnfrozenPrimitive"):
+        resolve(UnfrozenPrimitive(3.0))
+
+
+def test_the_rejection_names_the_fix():
+    with pytest.raises(PrimitiveError, match="frozen dataclass"):
+        resolve(PlainClassPrimitive(3.0))
+
+
+def test_a_compliant_primitive_still_resolves_unchanged():
+    instance = Pair(scale=3.0)
+    assert resolve(instance) is instance
+    assert resolve("doubled") == Doubled()
+
+
+def test_the_rejection_reaches_a_user_through_the_public_entry_point(db):
+    with pytest.raises(PrimitiveError, match="PlainClassPrimitive"):
+        tusk.deep_feature_synthesis(
+            database=db,
+            target_table="customers",
+            agg_primitives=[],
+            trans_primitives=[PlainClassPrimitive(3.0)],
+            features_only=True,
+        )

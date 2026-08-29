@@ -26,6 +26,14 @@ class Range(AggregationPrimitive):
 Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
 ordinary dataclass fields.
 
+`@dataclass(frozen=True)` is required, not a style preference. tusk compares
+primitives by value — to drop duplicate features during synthesis, and to
+match a feature set loaded from disk against a freshly synthesized one. A
+plain class compares by object identity, so two identically configured
+instances would look different and both would survive. A primitive that is
+not a frozen dataclass is rejected with `PrimitiveError` as soon as it reaches
+`deep_feature_synthesis()`.
+
 There is no second, shorter way to declare one. Every built-in primitive is a
 frozen dataclass written out like this, so `Year` and `Count` are the same kind
 of object as `Range` — nothing in tusk can reach a definition path your own

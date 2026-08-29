@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable
 from typing import TypeVar
 
@@ -42,16 +43,47 @@ def resolve(spec: str | Primitive) -> Primitive:
         A primitive instance.
 
     Raises:
-        PrimitiveError: If the name is not registered.
+        PrimitiveError: If the name is not registered, or the primitive is not
+            a frozen dataclass.
     """
     if isinstance(spec, Primitive):
-        return spec
-    try:
-        return _REGISTRY[spec]()
-    except KeyError:
-        known = ", ".join(sorted(_REGISTRY))
-        msg = f"unknown primitive {spec!r}; available: {known}"
-        raise PrimitiveError(msg) from None
+        primitive = spec
+    else:
+        try:
+            primitive = _REGISTRY[spec]()
+        except KeyError:
+            known = ", ".join(sorted(_REGISTRY))
+            msg = f"unknown primitive {spec!r}; available: {known}"
+            raise PrimitiveError(msg) from None
+    _require_value_semantics(primitive)
+    return primitive
+
+
+def _require_value_semantics(primitive: Primitive) -> None:
+    """Reject a primitive that compares by identity rather than by value.
+
+    Features are frozen dataclasses holding a primitive, so a feature's
+    equality and hash are only as good as its primitive's. Deduplication
+    during synthesis and matching a saved feature set against a fresh one both
+    depend on that.
+
+    Args:
+        primitive: The resolved primitive to check.
+
+    Raises:
+        PrimitiveError: If it is not a frozen dataclass.
+    """
+    cls = type(primitive)
+    params = getattr(cls, "__dataclass_params__", None)
+    if dataclasses.is_dataclass(cls) and params is not None and params.frozen:
+        return
+    raise PrimitiveError(
+        f"primitive {cls.__name__!r} must be a frozen dataclass. tusk compares "
+        "primitives by value to deduplicate features and to match a saved "
+        "feature set against a fresh one; a primitive that compares by "
+        "identity silently produces duplicate features. Decorate it with "
+        "@dataclass(frozen=True) -- see docs/guide/custom-primitives.md.",
+    )
 
 
 def resolve_all(specs: Iterable[str | Primitive]) -> tuple[Primitive, ...]:
