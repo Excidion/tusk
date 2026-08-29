@@ -122,7 +122,8 @@ selector.fit(keys, y_train, database=db)
 `selection_pipeline` must end in a scikit-learn selector — one with a
 `get_support()` mask. Everything before it encodes.
 
-After fitting, `features_` holds the feature definitions that were kept, and
+After fitting, `features_` holds the kept feature definitions as a
+[`FeatureList`][tusk.FeatureList], and
 `get_feature_names_out()` gives the encoded column names with tusk's names
 substituted back, such as `categories__MODE__transactions__category_a`.
 

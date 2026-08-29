@@ -2,7 +2,8 @@
 
 Everything importable from `tusk` and its submodules.
 
-- [Top level](tusk.md) — `deep_feature_synthesis()` and `apply_features()`.
+- [Top level](tusk.md) — `deep_feature_synthesis()`, `apply_features()` and
+  `FeatureList`.
 - [Databases](database.md) — `Database`, `Relationship`, `TableSchema`.
 - [Validation](validation.md) — the checks and the registries they live in.
 - [Primitives](primitives.md) — base classes, the built-ins, and the registry.

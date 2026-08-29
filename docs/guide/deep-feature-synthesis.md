@@ -36,17 +36,17 @@ for a check by name.
 
 ## Definitions without computation
 
-`features_only=True` returns just the list of [`Feature`][tusk.features.Feature]
-definitions, skipping compilation entirely. Feed them back later:
+`features_only=True` returns just the [`FeatureList`][tusk.FeatureList] of
+[`Feature`][tusk.features.Feature] definitions, skipping compilation entirely.
+Feed them back later:
 
 ```python
 features = tusk.deep_feature_synthesis(db, "customers", features_only=True)
-matrix = tusk.apply_features(features, db_new)
+matrix = features.apply(db_new)
 ```
 
-This is how you apply a feature set fitted on training data to new data. All
-features passed to [`apply_features()`][tusk.apply_features] must share one
-target table.
+This is how you apply a feature set fitted on training data to new data.
+
 
 ## Cutoff times
 

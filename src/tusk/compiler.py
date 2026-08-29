@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import narwhals as nw
 
@@ -23,16 +24,22 @@ from tusk.features import (
     TransformFeature,
 )
 
+if TYPE_CHECKING:
+    from tusk.feature_list import FeatureList
+
 
 def compile_features(
-    features: Sequence[Feature],
+    features: FeatureList,
     database: Database,
     cutoff_time: datetime | None = None,
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
 
+    Non-empty and single-table are :class:`~tusk.FeatureList` invariants, so
+    they are the parameter's type rather than checks repeated here.
+
     Args:
-        features: Features to compute. All must be on the same table.
+        features: Features to compute.
         database: The database holding the frames.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible. None disables filtering.
@@ -44,15 +51,9 @@ def compile_features(
             holds, since the target is filtered like any other table.
 
     Raises:
-        SchemaError: If the features span tables, the list is empty, or the
-            target table has no primary key.
+        SchemaError: If the target table has no primary key.
     """
-    if not features:
-        raise SchemaError("no features to compile")
-    tables = {f.table for f in features}
-    if len(tables) > 1:
-        raise SchemaError(f"features span multiple tables: {sorted(tables)}")
-    target = tables.pop()
+    target = features.target_table
     primary_key = database.schema(target).primary_key
     if primary_key is None:
         raise SchemaError(
@@ -63,9 +64,7 @@ def compile_features(
     _reject_colliding_names(features)
 
     frame = _table_frame(database, target, _closure(features), cutoff_time)
-    columns = [primary_key]
-    for feature in features:
-        columns.extend(feature.output_names)
+    columns = [primary_key, *features.output_names]
     return frame.select(*dict.fromkeys(columns))
 
 

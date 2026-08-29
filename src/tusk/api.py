@@ -10,12 +10,11 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
-from tusk.compiler import compile_features
 from tusk.database import Database
+from tusk.feature_list import FeatureList
 from tusk.features import Feature
 from tusk.primitives.base import Primitive
 from tusk.synthesis import synthesize
-from tusk.validation import check_cutoff_time_zone
 
 
 def deep_feature_synthesis(
@@ -65,8 +64,8 @@ def deep_feature_synthesis(
             type. On a backend with a lazy frame type you get one back, so call
             ``.collect()`` to compute it. Not returned when ``features_only``
             is true.
-        features (Sequence[Feature]): The feature definitions, reusable with
-            :func:`apply_features`.
+        features (FeatureList): The feature definitions, reusable with
+            :meth:`~tusk.FeatureList.apply` or :func:`apply_features`.
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
@@ -84,7 +83,7 @@ def deep_feature_synthesis(
     )
     if features_only:
         return features
-    return apply_features(features, database, cutoff_time), features
+    return features.apply(database, cutoff_time), features
 
 
 def apply_features(
@@ -94,16 +93,18 @@ def apply_features(
 ) -> Any:
     """Apply existing feature definitions to a database.
 
-    Use this to apply a feature set fitted on training data to new data.
+    Use this to apply a feature set fitted on training data to new data. It
+    accepts any sequence of features; a :class:`~tusk.FeatureList` can compute
+    itself with :meth:`~tusk.FeatureList.apply` instead.
 
-    ``compile_features`` raises :class:`~tusk.exceptions.SchemaError` if
-    ``features`` is empty, spans more than one table, or targets a table with
-    no ``primary_key``, and :class:`~tusk.exceptions.PrimitiveError` if an
-    order-dependent primitive lands on a table with no ``row_creation_time``.
-    ``check_cutoff_time_zone`` raises
-    :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` differs from
-    the database's row creation times in tz awareness, or if those disagree
-    among themselves.
+    Raises :class:`~tusk.exceptions.SchemaError` if ``features`` is empty,
+    spans more than one table, or targets a table with no ``primary_key``, and
+    :class:`~tusk.exceptions.PrimitiveError` if an order-dependent primitive
+    lands on a table with no ``row_creation_time``.
+    :class:`~tusk.exceptions.ValidationError` is raised if ``cutoff_time``
+    differs from the database's row creation times in tz awareness, or if
+    those disagree among themselves, and ``TypeError`` if ``cutoff_time`` is
+    not a ``datetime``.
 
     Args:
         features: Feature definitions, all on the same target table.
@@ -120,12 +121,5 @@ def apply_features(
         feature_matrix: An uncomputed query plan in the caller's native frame
             type, with one row per visible target row. tusk never collects, so
             on a backend with a lazy frame type you decide when to compute.
-
-    Raises:
-        TypeError: If ``cutoff_time`` is not a ``datetime``.
     """
-    if cutoff_time is not None:
-        if not isinstance(cutoff_time, datetime):
-            raise TypeError("'cutoff_time' must be a datetime.")
-        check_cutoff_time_zone(database, cutoff_time)
-    return compile_features(features, database, cutoff_time).to_native()
+    return FeatureList(features).apply(database, cutoff_time)

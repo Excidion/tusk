@@ -49,10 +49,11 @@ compute:
 matrix = feature_matrix.collect()
 ```
 
-`features` is a list of inspectable definitions you can re-apply to new data:
+`features` is a `FeatureList` — a sequence of inspectable definitions that
+knows its target table and can re-apply itself to new data:
 
 ```python
-matrix = tusk.apply_features(features, db_new)
+matrix = features.apply(db_new)
 ```
 
 ## Documentation
