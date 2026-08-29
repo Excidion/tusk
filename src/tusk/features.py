@@ -7,6 +7,7 @@ dtype here is derived from primitive metadata, never from data.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,10 +16,11 @@ from tusk.primitives.base import Primitive
 
 
 @dataclass(frozen=True)
-class Feature:
+class Feature(ABC):
     """Base class for every feature definition."""
 
     @property
+    @abstractmethod
     def name(self) -> str:
         """The column name in the feature matrix.
 
@@ -28,9 +30,9 @@ class Feature:
         function calls rather than as part of an identifier. See
         :attr:`display_name` for the readable form.
         """
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def display_name(self) -> str:
         """The readable name, e.g. ``MEAN(transactions.amount)``.
 
@@ -38,27 +40,26 @@ class Feature:
         notation. Used for documentation, logging and error messages; never
         as a column name.
         """
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def dtype(self) -> Any:
         """Output dtype, computed statically."""
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def depth(self) -> int:
         """Number of stacked primitive applications."""
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def table(self) -> str:
         """Table this feature is a column of."""
-        raise NotImplementedError
 
     @property
+    @abstractmethod
     def base_features(self) -> tuple[Feature, ...]:
         """Features this one is computed from."""
-        raise NotImplementedError
 
     @property
     def output_names(self) -> tuple[str, ...]:
