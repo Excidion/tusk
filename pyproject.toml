@@ -1,5 +1,5 @@
 [project]
-name = "tusk"
+name = "tusk-ml"
 version = "0.1.0"
 description = "Deep feature synthesis for narwhals dataframes"
 readme = "README.md"
@@ -12,6 +12,11 @@ sklearn = ["scikit-learn>=1.4"]
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The distribution is named tusk-ml because tusk is taken on PyPI; the
+# import name stays tusk.
+module-name = "tusk"
 
 
 [dependency-groups]

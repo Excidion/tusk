@@ -61,12 +61,12 @@ argument; tusk is not changed to match.
 """
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import pytest
 
 import tusk
 
+pd = pytest.importorskip("pandas")
 featuretools = pytest.importorskip("featuretools")
 
 pytestmark = pytest.mark.differential

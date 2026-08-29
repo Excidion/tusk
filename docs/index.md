@@ -13,7 +13,7 @@ with the power of your favorite dataframe library. Powered by
 ## Install
 
 ```bash
-uv add tusk
+uv add tusk-ml
 ```
 
 ## Quickstart

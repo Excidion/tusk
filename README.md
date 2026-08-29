@@ -10,7 +10,7 @@ Powered by [narwhals](https://narwhals-dev.github.io/narwhals/), inspired by [fe
 ## Install
 
 ```bash
-uv add tusk
+uv add tusk-ml
 ```
 
 ## Usage

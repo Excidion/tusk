@@ -4,7 +4,7 @@
 pipeline. Install the extra:
 
 ```bash
-uv add "tusk[sklearn]"
+uv add "tusk-ml[sklearn]"
 ```
 
 `X` is the target table's primary key — one value per row, in the order you
