@@ -1,5 +1,6 @@
 """FeatureList: the validated, self-applying collection synthesis hands back."""
 
+import pickle
 from collections.abc import Sequence
 from datetime import date, datetime
 
@@ -188,3 +189,29 @@ def test_it_is_not_equal_to_a_plain_list(features):
 
 def test_it_is_exported_from_the_package(features):
     assert isinstance(features, tusk.FeatureList)
+
+
+def test_a_feature_list_survives_pickle_equal_and_hash_stable(features):
+    """The property the frozen-dataclass rule on primitives exists to protect.
+
+    A loaded feature set has to equal the one it was saved from, or it will
+    not deduplicate against a freshly synthesized set and the combination
+    produces duplicate columns.
+    """
+    restored = pickle.loads(pickle.dumps(features))
+    assert restored == features
+    assert hash(restored) == hash(features)
+    assert restored.target_table == features.target_table
+    assert restored.output_names == features.output_names
+
+
+def test_a_restored_feature_list_still_computes(features, db):
+    restored = pickle.loads(pickle.dumps(features))
+    assert restored.apply(db).collect().equals(features.apply(db).collect())
+
+
+def test_restored_features_deduplicate_against_a_fresh_run(features, db):
+    """A loaded set combined with a fresh one must collapse, not double."""
+    restored = pickle.loads(pickle.dumps(features))
+    combined = tusk.FeatureList(dict.fromkeys([*restored, *features]))
+    assert len(combined) == len(features)
