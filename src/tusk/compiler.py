@@ -35,9 +35,6 @@ def compile_features(
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
 
-    Non-empty and single-table are :class:`~tusk.FeatureList` invariants, so
-    they are the parameter's type rather than checks repeated here.
-
     Args:
         features: Features to compute.
         database: The database holding the frames.

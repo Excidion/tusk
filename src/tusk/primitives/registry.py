@@ -55,23 +55,18 @@ def resolve(spec: str | Primitive) -> Primitive:
             known = ", ".join(sorted(_REGISTRY))
             msg = f"unknown primitive {spec!r}; available: {known}"
             raise PrimitiveError(msg) from None
-    _require_value_semantics(primitive)
+    _require_frozen_dataclass(primitive)
     return primitive
 
 
-def _require_value_semantics(primitive: Primitive) -> None:
-    """Reject a primitive that compares by identity rather than by value.
-
-    Features are frozen dataclasses holding a primitive, so a feature's
-    equality and hash are only as good as its primitive's. Deduplication
-    during synthesis and matching a saved feature set against a fresh one both
-    depend on that.
+def _require_frozen_dataclass(primitive: Primitive) -> None:
+    """Check that a primitive is a frozen dataclass with equality enabled.
 
     Args:
         primitive: The resolved primitive to check.
 
     Raises:
-        PrimitiveError: If it is not a frozen dataclass with equality enabled.
+        PrimitiveError: If it is not.
     """
     cls = type(primitive)
     params = getattr(cls, "__dataclass_params__", None)
@@ -84,12 +79,8 @@ def _require_value_semantics(primitive: Primitive) -> None:
     if is_value_semantic:
         return
     raise PrimitiveError(
-        f"primitive {cls.__name__!r} must be a frozen dataclass with equality "
-        "enabled (eq=True, the default). tusk compares primitives by value to "
-        "deduplicate features and to match a saved feature set against a "
-        "fresh one; a primitive that compares by identity silently produces "
-        "duplicate features. Decorate it with @dataclass(frozen=True) -- see "
-        "docs/guide/custom-primitives.md.",
+        f"primitive {cls.__name__!r} needs @dataclass(frozen=True): "
+        "features deduplicate by value.",
     )
 
 

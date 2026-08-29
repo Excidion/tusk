@@ -188,7 +188,7 @@ def test_a_frozen_dataclass_with_eq_false_is_rejected():
 
 
 def test_the_rejection_names_the_fix():
-    with pytest.raises(PrimitiveError, match="frozen dataclass"):
+    with pytest.raises(PrimitiveError, match=r"@dataclass\(frozen=True\)"):
         resolve(PlainClassPrimitive(3.0))
 
 
