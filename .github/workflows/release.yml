@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Check the tag against the project version
+        run: |
+          tagged_version="${GITHUB_REF_NAME#v}"
+          project_version="$(uv version --short)"
+          if [ "$tagged_version" != "$project_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the project version $project_version. Delete the tag and retag the release commit." >&2
+            exit 1
+          fi
+
+  lint:
+    needs: verify-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install just
+        run: uv tool install rust-just
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+      - name: Run pre-commit
+        run: just lint
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - name: Install just
+        run: uv tool install rust-just
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run tests
+        run: just test
+
+  differential:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install just
+        run: uv tool install rust-just
+      - name: Install dependencies
+        run: uv sync --locked --group validation
+      - name: Cross-check against featuretools
+        run: just test-differential
+
+  build-pages:
+    needs: differential
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/configure-pages@v6
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install just
+        run: uv tool install rust-just
+      - name: Install dependencies
+        run: uv sync --locked --group docs
+      - name: Build pages
+        run: just docs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  publish-package:
+    needs: build-pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install just
+        run: uv tool install rust-just
+      - name: Build package
+        run: just build
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+  deploy-pages:
+    needs: publish-package
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v5
+        id: deployment
