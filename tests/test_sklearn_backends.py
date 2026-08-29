@@ -49,7 +49,7 @@ def test_a_duckdb_database_returns_rows_in_key_order(duckdb_db):
     # built with the collected frame's own dtype.
     fitted = DFSTransformer(target_table="customers").fit(KEYS, database=duckdb_db)
     matrix = nw.from_native(fitted.transform([3, 1], database=duckdb_db))
-    assert matrix.shape[0] == 2
+    assert matrix["age"].to_list() == [50, 30]
 
 
 def test_collecting_natively_from_duckdb_gives_pyarrow(duckdb_db):

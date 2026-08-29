@@ -37,9 +37,11 @@ def test_fit_reads_no_rows_and_produces_feature_definitions(db):
 
 
 def test_transform_returns_one_row_per_key_in_key_order(db):
+    # age identifies the customer (1->30, 2->40, 3->50), so asserting it pins
+    # the row order rather than merely the row count.
     fitted = _transformer().fit(KEYS, database=db)
     out = nw.from_native(fitted.transform([3, 1], database=db))
-    assert out.shape[0] == 2
+    assert out["age"].to_list() == [50, 30]
 
 
 def test_the_primary_key_is_not_a_feature(db):
