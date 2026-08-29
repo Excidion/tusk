@@ -167,6 +167,26 @@ def test_an_unfrozen_dataclass_primitive_is_rejected():
         resolve(UnfrozenPrimitive(3.0))
 
 
+@dataclass(frozen=True, eq=False)
+class NoEqPrimitive(TransformPrimitive):
+    """A frozen dataclass that opted out of value equality."""
+
+    name = "no_eq_primitive"
+    input_dtypes = (F.NUMERIC,)
+    k: float = 2.0
+
+    def build(self, expr):
+        return expr * self.k
+
+
+def test_a_frozen_dataclass_with_eq_false_is_rejected():
+    # frozen=True alone is not enough: eq=False keeps object.__eq__ /
+    # object.__hash__, i.e. identity semantics, which is exactly what this
+    # guard exists to reject.
+    with pytest.raises(PrimitiveError, match="NoEqPrimitive"):
+        resolve(NoEqPrimitive(3.0))
+
+
 def test_the_rejection_names_the_fix():
     with pytest.raises(PrimitiveError, match="frozen dataclass"):
         resolve(PlainClassPrimitive(3.0))

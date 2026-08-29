@@ -30,12 +30,12 @@ def deep_feature_synthesis(
     """Run deep feature synthesis over a database.
 
     Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target table
-    is unknown, and :class:`~tusk.exceptions.PrimitiveError` for an unknown
-    primitive name or an order-dependent primitive on a table with no
-    ``row_creation_time``. Compilation raises
-    :class:`~tusk.exceptions.SchemaError` if the target table has no
-    ``primary_key``, and whatever :func:`apply_features` documents for
-    ``cutoff_time``.
+    is unknown or the walk generates no features at all, and
+    :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive name or
+    an order-dependent primitive on a table with no ``row_creation_time``.
+    Compilation raises :class:`~tusk.exceptions.SchemaError` if the target
+    table has no ``primary_key``, and whatever :func:`apply_features`
+    documents for ``cutoff_time``.
 
     Args:
         database: The tables and relationships to synthesize over.

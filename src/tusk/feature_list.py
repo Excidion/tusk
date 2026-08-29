@@ -26,7 +26,8 @@ class FeatureList(Sequence[Feature]):
 
     Behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`, so
     indexing, iteration, ``len`` and comprehensions all work as they would on
-    a list. Slicing returns another ``FeatureList``.
+    a list. Slicing returns a plain ``tuple[Feature, ...]``, the way slicing
+    a list returns a plain list rather than another instance of a subclass.
     """
 
     def __init__(self, features: Iterable[Feature]) -> None:
@@ -36,9 +37,16 @@ class FeatureList(Sequence[Feature]):
             features: The definitions to hold. All must be on one table.
 
         Raises:
+            TypeError: If any element of ``features`` is not a ``Feature``.
             SchemaError: If ``features`` is empty or spans more than one table.
         """
         self._features = tuple(features)
+        for i, f in enumerate(self._features):
+            if not isinstance(f, Feature):
+                raise TypeError(
+                    f"FeatureList elements must be Feature instances; "
+                    f"element {i} is {type(f).__name__!r}."
+                )
         if not self._features:
             raise SchemaError("a feature set cannot be empty")
         tables = {f.table for f in self._features}
@@ -112,23 +120,20 @@ class FeatureList(Sequence[Feature]):
     def __getitem__(self, index: int) -> Feature: ...
 
     @overload
-    def __getitem__(self, index: slice) -> FeatureList: ...
+    def __getitem__(self, index: slice) -> tuple[Feature, ...]: ...
 
-    def __getitem__(self, index: int | slice) -> Feature | FeatureList:
-        """Index to a feature; slice to a narrower ``FeatureList``.
-
-        A slice that selects nothing hits the empty-set invariant and raises
-        :class:`~tusk.exceptions.SchemaError`, since there is no such thing as
-        an empty feature set to hand back.
+    def __getitem__(self, index: int | slice) -> Feature | tuple[Feature, ...]:
+        """Index to a feature; slice to a plain tuple of features.
 
         Args:
             index: Position or slice.
 
         Returns:
-            The feature at ``index``, or the sliced list.
+            The feature at ``index``, or a tuple of the sliced features. The
+            tuple may be empty, the same as slicing a list can be -- wrap it
+            in :class:`FeatureList` if the non-empty, single-table invariant
+            is wanted for the result.
         """
-        if isinstance(index, slice):
-            return FeatureList(self._features[index])
         return self._features[index]
 
     def __len__(self) -> int:

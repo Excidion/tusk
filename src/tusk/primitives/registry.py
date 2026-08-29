@@ -44,7 +44,7 @@ def resolve(spec: str | Primitive) -> Primitive:
 
     Raises:
         PrimitiveError: If the name is not registered, or the primitive is not
-            a frozen dataclass.
+            a frozen dataclass with equality enabled.
     """
     if isinstance(spec, Primitive):
         primitive = spec
@@ -71,18 +71,25 @@ def _require_value_semantics(primitive: Primitive) -> None:
         primitive: The resolved primitive to check.
 
     Raises:
-        PrimitiveError: If it is not a frozen dataclass.
+        PrimitiveError: If it is not a frozen dataclass with equality enabled.
     """
     cls = type(primitive)
     params = getattr(cls, "__dataclass_params__", None)
-    if dataclasses.is_dataclass(cls) and params is not None and params.frozen:
+    is_value_semantic = (
+        dataclasses.is_dataclass(cls)
+        and params is not None
+        and params.frozen
+        and params.eq
+    )
+    if is_value_semantic:
         return
     raise PrimitiveError(
-        f"primitive {cls.__name__!r} must be a frozen dataclass. tusk compares "
-        "primitives by value to deduplicate features and to match a saved "
-        "feature set against a fresh one; a primitive that compares by "
-        "identity silently produces duplicate features. Decorate it with "
-        "@dataclass(frozen=True) -- see docs/guide/custom-primitives.md.",
+        f"primitive {cls.__name__!r} must be a frozen dataclass with equality "
+        "enabled (eq=True, the default). tusk compares primitives by value to "
+        "deduplicate features and to match a saved feature set against a "
+        "fresh one; a primitive that compares by identity silently produces "
+        "duplicate features. Decorate it with @dataclass(frozen=True) -- see "
+        "docs/guide/custom-primitives.md.",
     )
 
 

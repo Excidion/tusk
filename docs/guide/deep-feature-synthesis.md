@@ -38,15 +38,17 @@ for a check by name.
 
 `features_only=True` returns just the [`FeatureList`][tusk.FeatureList] of
 [`Feature`][tusk.features.Feature] definitions, skipping compilation entirely.
-Feed them back later:
+Synthesis raises [`SchemaError`][tusk.exceptions.SchemaError] instead if the
+walk generates no features at all. Feed the definitions back later:
 
 ```python
 features = tusk.deep_feature_synthesis(db, "customers", features_only=True)
 matrix = features.apply(db_new)
 ```
 
-This is how you apply a feature set fitted on training data to new data.
-
+This is how you apply a feature set fitted on training data to new data. All
+features in a `FeatureList` — and so all features passed to
+[`apply_features()`][tusk.apply_features] — must share one target table.
 
 ## Cutoff times
 

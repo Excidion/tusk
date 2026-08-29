@@ -56,19 +56,38 @@ def test_it_supports_the_comprehensions_a_list_would(features):
     assert [f.name for f in features if f.depth == 0]
 
 
-def test_slicing_keeps_the_class(features):
-    assert isinstance(features[:2], FeatureList)
-    assert list(features[:2]) == list(features)[:2]
+def test_slicing_returns_a_plain_tuple(features):
+    sliced = features[:2]
+    assert isinstance(sliced, tuple)
+    assert not isinstance(sliced, FeatureList)
+    assert sliced == tuple(features)[:2]
 
 
-def test_an_empty_slice_is_rejected_like_an_empty_list(features):
-    with pytest.raises(SchemaError, match="cannot be empty"):
-        features[:0]
+def test_an_empty_slice_returns_an_empty_tuple(features):
+    assert features[:0] == ()
+
+
+def test_an_out_of_range_slice_returns_an_empty_tuple(features):
+    assert features[len(features) + 5 :] == ()
+
+
+def test_a_slice_can_be_wrapped_back_into_a_feature_list(features):
+    assert FeatureList(features[:1]) == FeatureList([features[0]])
 
 
 def test_it_rejects_an_empty_collection():
     with pytest.raises(SchemaError, match="cannot be empty"):
         FeatureList([])
+
+
+def test_it_rejects_elements_that_are_not_features():
+    with pytest.raises(TypeError, match="element 0 is 'str'"):
+        FeatureList(["a", "b"])  # type: ignore
+
+
+def test_it_names_the_position_of_the_offending_element(features):
+    with pytest.raises(TypeError, match="element 1 is 'str'"):
+        FeatureList([features[0], "b"])  # type: ignore
 
 
 def test_synthesis_that_generates_nothing_raises_rather_than_returning_empty(db):
