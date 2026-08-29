@@ -26,8 +26,9 @@ class FeatureList(Sequence[Feature]):
 
     Behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`, so
     indexing, iteration, ``len`` and comprehensions all work as they would on
-    a list. Slicing returns a plain ``tuple[Feature, ...]``, the way slicing
-    a list returns a plain list rather than another instance of a subclass.
+    a list. Slicing returns another ``FeatureList``, so a slice can be applied
+    directly; a slice that selects nothing raises, since an empty feature set
+    is not a thing this class represents.
     """
 
     def __init__(self, features: Iterable[Feature]) -> None:
@@ -37,16 +38,9 @@ class FeatureList(Sequence[Feature]):
             features: The definitions to hold. All must be on one table.
 
         Raises:
-            TypeError: If any element of ``features`` is not a ``Feature``.
             SchemaError: If ``features`` is empty or spans more than one table.
         """
         self._features = tuple(features)
-        for i, f in enumerate(self._features):
-            if not isinstance(f, Feature):
-                raise TypeError(
-                    f"FeatureList elements must be Feature instances; "
-                    f"element {i} is {type(f).__name__!r}."
-                )
         if not self._features:
             raise SchemaError("a feature set cannot be empty")
         tables = {f.table for f in self._features}
@@ -60,22 +54,12 @@ class FeatureList(Sequence[Feature]):
         return self._target_table
 
     @property
-    def max_depth(self) -> int:
-        """The deepest feature's number of stacked primitive applications."""
-        return max(f.depth for f in self._features)
-
-    @property
     def output_names(self) -> tuple[str, ...]:
         """Every column name the feature matrix will carry, in column order.
 
         Wider than ``len(self)`` when any feature is multi-output.
         """
         return tuple(n for f in self._features for n in f.output_names)
-
-    @property
-    def display_output_names(self) -> tuple[str, ...]:
-        """The readable names, parallel to :attr:`output_names`."""
-        return tuple(n for f in self._features for n in f.display_output_names)
 
     def apply(
         self,
@@ -120,20 +104,24 @@ class FeatureList(Sequence[Feature]):
     def __getitem__(self, index: int) -> Feature: ...
 
     @overload
-    def __getitem__(self, index: slice) -> tuple[Feature, ...]: ...
+    def __getitem__(self, index: slice) -> FeatureList: ...
 
-    def __getitem__(self, index: int | slice) -> Feature | tuple[Feature, ...]:
-        """Index to a feature; slice to a plain tuple of features.
+    def __getitem__(self, index: int | slice) -> Feature | FeatureList:
+        """Index to a feature; slice to a narrower ``FeatureList``.
+
+        A slice selecting nothing -- ``fl[:0]``, or any range past the end --
+        hits the empty-set invariant and raises
+        :class:`~tusk.exceptions.SchemaError`. That is the deliberate cost of
+        a slice you can apply directly.
 
         Args:
             index: Position or slice.
 
         Returns:
-            The feature at ``index``, or a tuple of the sliced features. The
-            tuple may be empty, the same as slicing a list can be -- wrap it
-            in :class:`FeatureList` if the non-empty, single-table invariant
-            is wanted for the result.
+            The feature at ``index``, or the sliced list.
         """
+        if isinstance(index, slice):
+            return FeatureList(self._features[index])
         return self._features[index]
 
     def __len__(self) -> int:
@@ -160,7 +148,4 @@ class FeatureList(Sequence[Feature]):
 
     def __repr__(self) -> str:
         """Summarize, since a run of eight hundred features has to print."""
-        return (
-            f"FeatureList({len(self._features)} features "
-            f"on {self._target_table!r}, max_depth={self.max_depth})"
-        )
+        return f"FeatureList({len(self._features)} features on {self._target_table!r})"

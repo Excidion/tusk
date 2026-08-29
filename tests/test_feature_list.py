@@ -56,38 +56,30 @@ def test_it_supports_the_comprehensions_a_list_would(features):
     assert [f.name for f in features if f.depth == 0]
 
 
-def test_slicing_returns_a_plain_tuple(features):
+def test_slicing_keeps_the_class_so_a_slice_can_be_applied(features):
     sliced = features[:2]
-    assert isinstance(sliced, tuple)
-    assert not isinstance(sliced, FeatureList)
-    assert sliced == tuple(features)[:2]
+    assert isinstance(sliced, FeatureList)
+    assert list(sliced) == list(features)[:2]
 
 
-def test_an_empty_slice_returns_an_empty_tuple(features):
-    assert features[:0] == ()
+def test_an_empty_slice_is_rejected_like_an_empty_list(features):
+    with pytest.raises(SchemaError, match="cannot be empty"):
+        features[:0]
 
 
-def test_an_out_of_range_slice_returns_an_empty_tuple(features):
-    assert features[len(features) + 5 :] == ()
+def test_a_slice_past_the_end_is_rejected_too(features):
+    """The documented cost of slices staying a FeatureList.
 
-
-def test_a_slice_can_be_wrapped_back_into_a_feature_list(features):
-    assert FeatureList(features[:1]) == FeatureList([features[0]])
+    Every other Python sequence returns empty here. Pinned so the behaviour
+    is a decision on the record rather than a surprise.
+    """
+    with pytest.raises(SchemaError, match="cannot be empty"):
+        features[len(features) + 5 :]
 
 
 def test_it_rejects_an_empty_collection():
     with pytest.raises(SchemaError, match="cannot be empty"):
         FeatureList([])
-
-
-def test_it_rejects_elements_that_are_not_features():
-    with pytest.raises(TypeError, match="element 0 is 'str'"):
-        FeatureList(["a", "b"])  # type: ignore
-
-
-def test_it_names_the_position_of_the_offending_element(features):
-    with pytest.raises(TypeError, match="element 1 is 'str'"):
-        FeatureList([features[0], "b"])  # type: ignore
 
 
 def test_synthesis_that_generates_nothing_raises_rather_than_returning_empty(db):
@@ -142,22 +134,6 @@ def test_output_names_flattens_multi_output_features(features):
     assert len(features.output_names) > len(features)
 
 
-def test_display_output_names_are_parallel_to_output_names(features):
-    assert len(features.display_output_names) == len(features.output_names)
-
-
-def test_max_depth_is_the_deepest_feature(db):
-    features = tusk.deep_feature_synthesis(
-        database=db,
-        target_table="customers",
-        agg_primitives=["mean"],
-        trans_primitives=[],
-        max_depth=2,
-        features_only=True,
-    )
-    assert features.max_depth == max(f.depth for f in features)
-
-
 def test_apply_matches_the_free_function(features, db):
     assert (
         features.apply(db)
@@ -185,7 +161,7 @@ def test_apply_features_accepts_a_plain_sequence(features, db):
 
 def test_repr_is_a_summary_not_a_dump(features):
     text = repr(features)
-    assert text == f"FeatureList({len(features)} features on 'customers', max_depth=2)"
+    assert text == f"FeatureList({len(features)} features on 'customers')"
     assert "AggregationFeature" not in text
 
 

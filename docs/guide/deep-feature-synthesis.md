@@ -50,6 +50,11 @@ This is how you apply a feature set fitted on training data to new data. All
 features in a `FeatureList` — and so all features passed to
 [`apply_features()`][tusk.apply_features] — must share one target table.
 
+A `FeatureList` indexes, iterates and slices like a list, and a slice is
+itself a `FeatureList`, so `features[:10].apply(db)` works. It cannot be
+empty: `features[:0]`, or any slice past the end, raises
+[`SchemaError`][tusk.exceptions.SchemaError] rather than returning nothing.
+
 ## Cutoff times
 
 `cutoff_time` is **one global value**, not a per-row frame. Only rows whose
