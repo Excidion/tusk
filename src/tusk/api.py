@@ -30,6 +30,14 @@ def deep_feature_synthesis(
 ) -> Any:
     """Run deep feature synthesis over a database.
 
+    Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target table
+    is unknown, and :class:`~tusk.exceptions.PrimitiveError` for an unknown
+    primitive name or an order-dependent primitive on a table with no
+    ``row_creation_time``. Compilation raises
+    :class:`~tusk.exceptions.SchemaError` if the target table has no
+    ``primary_key``, and whatever :func:`apply_features` documents for
+    ``cutoff_time``.
+
     Args:
         database: The tables and relationships to synthesize over.
         target_table: Table to build features for. The result has one
@@ -53,17 +61,12 @@ def deep_feature_synthesis(
         features_only: Return the feature definitions without computing them.
 
     Returns:
-        A ``(feature_matrix, features)`` tuple, where the matrix is an
-        uncomputed query plan in the caller's native frame type -- a lazy
-        frame on a backend that has one, so call ``.collect()`` to compute it;
-        or just the feature list when ``features_only`` is true. Synthesis raises
-        :class:`~tusk.exceptions.SchemaError` if the target table is unknown
-        and :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive
-        name or an order-dependent primitive on a table with no
-        ``row_creation_time``; compilation raises
-        :class:`~tusk.exceptions.SchemaError` if the target table has no
-        ``primary_key``. Computing also raises what :func:`apply_features`
-        documents for ``cutoff_time``.
+        feature_matrix: An uncomputed query plan in the caller's native frame
+            type. On a backend with a lazy frame type you get one back, so call
+            ``.collect()`` to compute it. Not returned when ``features_only``
+            is true.
+        features (Sequence[Feature]): The feature definitions, reusable with
+            :func:`apply_features`.
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
@@ -93,6 +96,15 @@ def apply_features(
 
     Use this to apply a feature set fitted on training data to new data.
 
+    ``compile_features`` raises :class:`~tusk.exceptions.SchemaError` if
+    ``features`` is empty, spans more than one table, or targets a table with
+    no ``primary_key``, and :class:`~tusk.exceptions.PrimitiveError` if an
+    order-dependent primitive lands on a table with no ``row_creation_time``.
+    ``check_cutoff_time_zone`` raises
+    :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` differs from
+    the database's row creation times in tz awareness, or if those disagree
+    among themselves.
+
     Args:
         features: Feature definitions, all on the same target table.
         database: The database to compute over.
@@ -105,18 +117,9 @@ def apply_features(
             None disables filtering.
 
     Returns:
-        The feature matrix as an uncomputed query plan in the caller's native
-        frame type, with one row per visible target row. tusk never collects,
-        so on a backend with a lazy frame type you get one back and decide
-        when to compute. ``compile_features`` raises
-        :class:`~tusk.exceptions.SchemaError` if ``features`` is empty, spans
-        more than one table, or targets a table with no ``primary_key``, and
-        :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
-        primitive lands on a table with no ``row_creation_time``.
-        ``check_cutoff_time_zone`` raises
-        :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` differs
-        from the database's row creation times in tz awareness, or if those
-        disagree among themselves.
+        feature_matrix: An uncomputed query plan in the caller's native frame
+            type, with one row per visible target row. tusk never collects, so
+            on a backend with a lazy frame type you decide when to compute.
 
     Raises:
         TypeError: If ``cutoff_time`` is not a ``datetime``.

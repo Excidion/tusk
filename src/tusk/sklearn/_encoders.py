@@ -75,9 +75,9 @@ def get_last_step(selection_pipeline: Any) -> Any:
         selection_pipeline: The user's encode-and-select estimator.
 
     Returns:
-        Its last step if it is a pipeline, else ``selection_pipeline`` itself.
-        After :func:`validate_selection_pipeline` this is the selector, but
-        this function does not check that.
+        step: Its last step if it is a pipeline, else ``selection_pipeline``
+            itself. After :func:`validate_selection_pipeline` this is the
+            selector, but this function does not check that.
     """
     return (
         selection_pipeline[-1]

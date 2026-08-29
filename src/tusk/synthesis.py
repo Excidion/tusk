@@ -44,6 +44,9 @@ def synthesize(
 ) -> list[Feature]:
     """Generate feature definitions for a target table.
 
+    ``database.schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
+    target table is unknown.
+
     Args:
         database: The schema to walk.
         target_table: Table to build features for.
@@ -56,9 +59,8 @@ def synthesize(
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
-        Feature definitions on the target table, deduplicated and excluding the
-        target's own key columns; ``database.schema()`` raises
-        :class:`~tusk.exceptions.SchemaError` if the target table is unknown.
+        features: Feature definitions on the target table, deduplicated and
+            excluding the target's own key columns.
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
@@ -231,9 +233,10 @@ class _Context:
             depth_limit: Maximum depth of returned features.
 
         Returns:
-            Transform features on the table; ``_check_ordering`` raises
-            :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
-            primitive is requested for a table with no ``row_creation_time``.
+            features: Transform features on the table. ``_check_ordering``
+                raises :class:`~tusk.exceptions.PrimitiveError` if an
+                order-dependent primitive is requested for a table with no
+                ``row_creation_time``.
         """
         usable = self._usable(table, existing)
         out: list[Feature] = []
@@ -261,10 +264,11 @@ class _Context:
             path: Relationships already traversed.
 
         Returns:
-            Groupby-transform features on the table; ``_check_ordering``
-            raises :class:`~tusk.exceptions.PrimitiveError` if an
-            order-dependent primitive is requested for a table with no
-            ``row_creation_time``.
+            features: Groupby-transform features on the table.
+                ``_check_ordering`` raises
+                :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
+                primitive is requested for a table with no
+                ``row_creation_time``.
         """
         if not self.groupby:
             return []

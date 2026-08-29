@@ -70,8 +70,8 @@ def collect_matrix(
         output_backend: Backend to collect to, or None to collect natively.
 
     Returns:
-        An eager native frame with one row per key, in key order, without the
-        primary primary key -- it is a join key, not a feature.
+        matrix: An eager native frame with one row per key, in key order,
+            without the primary key -- it is a join key, not a feature.
 
     Raises:
         SchemaError: If ``keys`` repeats a value, or names a key that produced

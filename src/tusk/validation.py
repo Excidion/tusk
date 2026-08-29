@@ -146,8 +146,9 @@ def check_row_creation_time_awareness(database: Database) -> bool | None:
         database: The database to check.
 
     Returns:
-        ``True`` if every declared ``row_creation_time`` is tz-aware,
-        ``False`` if every one is naive, ``None`` if no table declares one.
+        awareness: ``True`` if every declared ``row_creation_time`` is
+            tz-aware, ``False`` if every one is naive, ``None`` if no table
+            declares one.
 
     Raises:
         ValidationError: If some row creation times are tz-aware and others
@@ -316,8 +317,8 @@ def _select_checks(checks: bool | str | Iterable[str], registry: dict) -> list[s
         registry: The registry to select from.
 
     Returns:
-        Selected names, in registry order for ``True`` and in the given order
-        otherwise.
+        names: Selected names, in registry order for ``True`` and in the given
+            order otherwise.
 
     Raises:
         ValueError: If ``checks`` is not one of those forms, or names a check

@@ -38,14 +38,10 @@ def compile_features(
             value are visible. None disables filtering.
 
     Returns:
-        A lazy frame with the target's primary key plus one column per feature
-        output, and one row per target row visible at ``cutoff_time`` -- which
-        may be fewer rows than the target table holds, since the target is
-        filtered like any other table. Building it calls ``_apply``, whose
-        ``_order_by`` helper raises
-        :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
-        primitive among ``features`` is applied to a table with no
-        ``row_creation_time``.
+        feature_matrix: A lazy frame with the target's primary key plus one
+            column per feature output, and one row per target row visible at
+            ``cutoff_time`` -- which may be fewer rows than the target table
+            holds, since the target is filtered like any other table.
 
     Raises:
         SchemaError: If the features span tables, the list is empty, or the
@@ -175,11 +171,8 @@ def _table_frame(
         cutoff_time: The cutoff, or None.
 
     Returns:
-        A lazy frame with the table's own columns plus the needed features.
-        ``_apply``'s ``_order_by`` helper raises
-        :class:`~tusk.exceptions.PrimitiveError` if ``needed`` contains an
-        order-dependent primitive applied to a table with no
-        ``row_creation_time``.
+        frame: A lazy frame with the table's own columns plus the needed
+            features.
 
     Raises:
         SchemaError: If ``needed`` contains a feature type this compiler does

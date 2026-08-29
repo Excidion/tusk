@@ -128,18 +128,18 @@ substituted back, such as `categories__MODE__transactions__category_a`.
 
 Two cases change what you get:
 
-- If an encoder names its outputs without reference to its inputs — `PCA`
-  gives `pca0`, `pca1` — tusk cannot tell which feature an output came from.
-  It keeps every feature and warns with `LineageWarning`. Selection still
-  applies to the model; only the saving at inference time is lost.
+- If an encoder names its outputs without reference to its inputs tusk cannot tell which feature an output came from - e. g. `PCA` produces `pca0`, `pca1`.
+  It keeps every feature and warns with `LineageWarning`.
+  Selection still applies to the model; only the saving at inference time is lost.
+  Consider placing the `PCA` further downstream in the main `Pipeline` and not in the `selection_pipeline`.
 - If a feature reaches no encoder, it is dropped and tusk warns with
   `UnencodedFeatureWarning` naming how many. Cover every dtype in your
   matrix, or set `remainder="passthrough"`.
 
 ## Choosing columns with `dtype_selector`
 
-Synthesis generates the matrix's column names, so you cannot write them down
-in advance: which features exist depends on your schema, your primitives and
+Synthesis generates the matrix's column names, so you cannot know them all in advance.
+Which features exist depends on your schema, your primitives and
 `max_depth`. A `ColumnTransformer` given an explicit list of names is
 therefore rejected with `EncoderError`.
 

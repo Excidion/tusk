@@ -48,9 +48,9 @@ class Sentinels:
             name: One name from the encoder's ``get_feature_names_out()``.
 
         Returns:
-            The tusk-space columns it mentions, in column order. Empty means
-            lineage is unrecoverable for this name -- the caller must then keep
-            every feature rather than guess.
+            columns: The tusk-space columns it mentions, in column order. Empty
+                means lineage is unrecoverable for this name -- the caller must
+                then keep every feature rather than guess.
         """
         found = {int(m) for m in self._pattern.findall(name)}
         return [self.columns[i] for i in sorted(found) if i < len(self.columns)]
@@ -62,9 +62,9 @@ class Sentinels:
             name: One name from the encoder's ``get_feature_names_out()``.
 
         Returns:
-            The same name with every sentinel replaced, so users read
-            ``oh__MODE__transactions__category_a`` rather than
-            ``oh___t9f3a_0001_a``.
+            name: The same name with every sentinel replaced, so users read
+                ``oh__N_UNIQUE__transactions__category`` rather than
+                ``oh___t9f3a_0001``.
         """
 
         def replace(match: re.Match[str]) -> str:
@@ -74,8 +74,8 @@ class Sentinels:
                 match: A single regex match of ``_pattern`` against ``name``.
 
             Returns:
-                The source column for the matched index, or the original
-                matched text if the index is out of range.
+                column: The source column for the matched index, or the
+                    original matched text if the index is out of range.
             """
             index = int(match.group(1))
             return self.columns[index] if index < len(self.columns) else match.group(0)
