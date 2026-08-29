@@ -331,7 +331,7 @@ class DFSSelectorTransformer(DFSTransformer):
         )
         self.encoder_ = get_encoder_prefix(clone(self.selection_pipeline))
         with backend_hint(narrowed.to_native()):
-            self.encoder_.fit(narrowed.to_native())
+            self.encoder_.fit(narrowed.to_native(), y)
 
         refit = list(self.encoder_.get_feature_names_out())
         missing = [n for n in kept if n not in set(refit)]

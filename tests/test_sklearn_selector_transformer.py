@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 from sklearn.feature_selection import SelectKBest, SelectorMixin, f_classif
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, TargetEncoder
 
 import tusk
 from tusk.exceptions import (
@@ -414,6 +414,32 @@ def test_the_selection_pipeline_is_validated_at_fit_not_construction(shop):
     )
     with pytest.raises(EncoderError, match="SelectorMixin"):
         transformer.fit(KEYS, Y, database=shop)
+
+
+@pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
+def test_a_supervised_encoder_is_refitted_with_y(shop):
+    # The encoder is fitted twice: once inside the selection pipeline, then
+    # again on the kept columns. TargetEncoder needs y for both, and without it
+    # the second fit raises.
+    transformer = DFSSelectorTransformer(
+        target_table="customers",
+        selection_pipeline=Pipeline(
+            [
+                (
+                    "encode",
+                    ColumnTransformer(
+                        [
+                            ("target", TargetEncoder(), dtype_selector("string")),
+                            ("numbers", StandardScaler(), dtype_selector("numeric")),
+                        ],
+                    ),
+                ),
+                ("select", KeepPositions(positions=(0,))),
+            ],
+        ),
+    )
+    fitted = transformer.fit(KEYS, Y, database=shop)
+    assert np.asarray(fitted.transform(KEYS, database=shop)).shape == (len(KEYS), 1)
 
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
