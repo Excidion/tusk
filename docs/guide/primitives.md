@@ -16,6 +16,9 @@ everything pushed down to the backend.
 **Order-dependent** (require a `row_creation_time` on the table) — `cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`.
 
+See [primitive coverage](primitive-coverage.md) for how these line up against
+featuretools.
+
 Every name above is also an importable class — `from tusk.primitives import
 Year, CumSum` — and takes the same form as a user-defined one, so `Year` and
 `Count` are the same kind of object as anything you write yourself. See

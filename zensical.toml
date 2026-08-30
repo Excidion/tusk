@@ -22,6 +22,7 @@ nav = [
         "guide/custom-primitives.md",
         "guide/sklearn.md",
         "guide/featuretools.md",
+        "guide/primitive-coverage.md",
     ] },
     { "API reference" = [
         "api/index.md",
