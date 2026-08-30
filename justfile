@@ -30,8 +30,9 @@ docs:
 build:
     uv build
 
-# Everything a pull request has to pass.
-check: lint test
+# Everything a release has to pass. CI gates pull requests on a subset,
+# leaving the featuretools cross-check to its nightly run.
+check: lint test test-differential
 
 # Bump the version, tag it, and push, which starts the release pipeline.
 release bump="patch":
