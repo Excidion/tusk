@@ -21,10 +21,19 @@ class DtypeFamily(Enum):
     values. That distinction is deliberate -- it is what
     :class:`~tusk.exceptions.CategoricalDtypeWarning` reports -- and it is why
     both families exist rather than one wider one.
+
+    ``TEMPORAL``, ``DATETIME``, and ``DURATION`` exist as three separate
+    families for the same kind of reason: ``TEMPORAL`` is the union kept for
+    ``dtype_selector``, while a primitive declares the narrower ``DATETIME``
+    or ``DURATION`` family it can actually compute over -- a calendar
+    primitive like ``year`` cannot operate on a ``Duration`` column even
+    though ``Duration`` is temporal.
     """
 
     NUMERIC = "numeric"
     TEMPORAL = "temporal"
+    DATETIME = "datetime"
+    DURATION = "duration"
     STRING = "string"
     CATEGORICAL = "categorical"
     BOOLEAN = "boolean"
@@ -50,6 +59,10 @@ def matches(dtype: nw.dtypes.DType, family: DtypeFamily) -> bool:
         return bool(dtype.is_numeric())
     if family is DtypeFamily.TEMPORAL:
         return bool(dtype.is_temporal())
+    if family is DtypeFamily.DATETIME:
+        return dtype == nw.Datetime or dtype == nw.Date
+    if family is DtypeFamily.DURATION:
+        return dtype == nw.Duration
     if family is DtypeFamily.STRING:
         return dtype == nw.String
     if family is DtypeFamily.CATEGORICAL:

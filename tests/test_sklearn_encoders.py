@@ -59,6 +59,20 @@ def test_dtype_selector_rejects_an_unknown_family():
         dtype_selector("texty")
 
 
+def test_dtype_selector_separates_datetime_from_duration():
+    """The narrow families are the supported way to route a duration column."""
+    frame = pl.DataFrame(
+        {
+            "when": [dt.datetime(2024, 1, 1)],
+            "elapsed": [dt.timedelta(hours=3)],
+            "n": [1],
+        },
+    )
+    assert dtype_selector("datetime")(frame) == ["when"]
+    assert dtype_selector("duration")(frame) == ["elapsed"]
+    assert dtype_selector("temporal")(frame) == ["when", "elapsed"]
+
+
 def test_dtype_selector_reevaluates_on_a_subset():
     assert dtype_selector("numeric")(FRAME.select(["age"])) == ["age"]
 
