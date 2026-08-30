@@ -1,6 +1,6 @@
 # Datetime transform parity: elapsed time as a first-class dtype
 
-Design for the `time_since` family and the duration dtype it needs.
+Design for `time_since` and the duration dtype it needs.
 
 ## Problem
 
@@ -37,9 +37,11 @@ These were settled with the maintainer before this document was written.
    Composition through DFS replaces featuretools' `unit=` parameter.
 3. **`TEMPORAL` splits** into `DATETIME` and `DURATION` so that stacking lands
    on the right primitives.
-4. **`age` and `total_years` are mathematically honest**, not
-   featuretools-identical. Both are ⚠️ divergences.
-5. **One word per concept:** `cutoff_time` everywhere — the parameter, the
+4. **The extractors use narwhals' own conversions**, which floor to whole
+   units. tusk does not mirror featuretools' fractional units.
+5. **No years anywhere.** A year is not a well-defined duration, so `age` and
+   `total_years` are both out of scope. `age` keeps its ❌ row.
+6. **One word per concept:** `cutoff_time` everywhere — the parameter, the
    field, and the prose.
 
 ## Architecture
@@ -70,8 +72,9 @@ left to chance.
 ### Reaching the cutoff time
 
 `Primitive.build` takes expressions only. Threading a context parameter through
-every primitive to serve seven of them is the wrong trade, so the cutoff time
-travels as state on the primitive instance.
+every primitive to serve one of them today — and seven once the cutoff-sensitive
+aggregations land — is the wrong trade, so the cutoff time travels as state on
+the primitive instance.
 
 ```py
 @dataclass(frozen=True)
@@ -108,84 +111,60 @@ time_since needs a cutoff_time; pass one to deep_feature_synthesis
 `dataclasses.replace(primitive, cutoff_time=cutoff_time)` at apply time.
 `build()` stays pure and every other primitive is untouched.
 
-### Why `total_microseconds` and not `total_seconds`
-
-narwhals' `total_seconds()` truncates to whole seconds and returns `Int64`, and
-`total_minutes()` floors to whole minutes:
-
-```py
-timedelta(seconds=90, microseconds=500000)
-  .dt.total_seconds() -> 90      # 0.5s lost
-  .dt.total_minutes() -> 1       # a floor, not a fraction
-```
-
-Deriving the extractors from those would silently lose sub-second precision and
-make `TOTAL_MINUTES` a floor where featuretools gives a fraction. Every
-extractor therefore derives from `total_microseconds()`, which is exact at
-polars' resolution, and divides in floating point.
-
-A backend storing durations at nanosecond resolution loses sub-microsecond
-precision here. That is accepted: it is below any plausible feature-engineering
-signal, and it is three orders of magnitude better than the alternative.
-
-`Int64` microseconds overflow after roughly 292 000 years, so the range is not
-a practical concern.
-
 ## Primitives
 
 | Registry name | Input | Output | Expression |
 | --- | --- | --- | --- |
 | `time_since` | `DATETIME` | `Duration` | `lit(cutoff_time) - expr` |
-| `age` | `DATETIME` | `Float64` | years between `expr` and the cutoff time |
-| `total_seconds` | `DURATION` | `Float64` | `total_microseconds() / 1e6` |
-| `total_minutes` | `DURATION` | `Float64` | `total_microseconds() / 6e7` |
-| `total_hours` | `DURATION` | `Float64` | `total_microseconds() / 3.6e9` |
-| `total_days` | `DURATION` | `Float64` | `total_microseconds() / 8.64e10` |
-| `total_years` | `DURATION` | `Float64` | `total_microseconds() / (365.25 * 8.64e10)` |
+| `total_seconds` | `DURATION` | `Int64` | `total_seconds()` |
+| `total_minutes` | `DURATION` | `Int64` | `total_minutes()` |
+| `total_hours` | `DURATION` | `Int64` | `total_seconds() // 3600` |
+| `total_days` | `DURATION` | `Int64` | `total_seconds() // 86400` |
 
 `time_since` is `cutoff_time - value`, so a past timestamp yields a positive
 duration and a timestamp after the cutoff yields a negative one. This is
 featuretools' sign convention.
 
 `TimeSincePrevious` changes from `Float64` seconds to `Duration`, so that every
-elapsed-time primitive in tusk carries the same type. It also stops truncating,
-since it no longer routes through `total_seconds()`.
+elapsed-time primitive in tusk carries the same type.
 
-### The year constant
+### The extractors floor, deliberately
 
-`total_years` is the one approximate member of an otherwise exact set, and says
-so in its docstring. `age` uses the same constant, and is defined so that
+narwhals' duration conversions are integer floor conversions returning `Int64`,
+not unit conversions of a real number:
 
+```py
+timedelta(seconds=90, microseconds=500000)
+  .dt.total_seconds() -> 90    # not 90.5
+  .dt.total_minutes() -> 1     # not 1.5083
 ```
-AGE(x) == TOTAL_YEARS(TIME_SINCE(x))
-```
 
-holds exactly. That equality is asserted as a test; it is what stops the two
-code paths drifting apart.
+tusk uses them as they are. featuretools returns fractional units, so
+`TOTAL_MINUTES` of a 90.5-second duration is `1` here and `1.5083…` there.
+That difference is not a divergence in the coverage table's sense, because
+featuretools has no counterpart to these primitives at all — they exist only to
+turn tusk's `Duration` into a number, and each one answers "how many whole
+units have elapsed", the same question Python's `timedelta.days` answers.
 
-featuretools is internally inconsistent here, which is the argument for not
-copying it: `Age` divides whole days by **365**, while its own
-`convert_time_units` treats a year as **31 540 000 s ≈ 365.05 days**. featuretools
-also floors to whole days before dividing, so its value steps once per day
-rather than varying continuously. tusk uses exact elapsed time and 365.25 days.
+narwhals has no `total_hours` or `total_days` — the native set is
+`total_seconds`, `total_minutes`, `total_milliseconds`, `total_microseconds`,
+`total_nanoseconds`. Those two are therefore integer division of
+`total_seconds()`. Unlike a year, an hour and a day are exact for a duration
+— no calendar is involved — so this introduces no approximation, and it keeps
+one rule across all four extractors.
 
-### `age` applies to every datetime column
+The consequence to know: `TOTAL_DAYS` of a 23-hour duration is `0`. A caller
+wanting finer resolution asks for a finer unit.
 
-featuretools restricts `Age` to columns tagged `date_of_birth`. tusk matches on
-narwhals dtypes alone and has no semantic tags — a deliberate trade recorded in
-`tusk/dtypes.py` — so `age` applies to any `DATETIME` column, and DFS will
-generate `AGE(signed_up_at)` as readily as `AGE(date_of_birth)`.
-
-On a non-birthdate column `AGE(x)` is exactly `TOTAL_YEARS(TIME_SINCE(x))`,
-so the output is meaningful, merely redundantly named. Since `age` is opt-in
-rather than a default, the noise only appears for a user who asked for it.
+`time_since` itself is unaffected. It returns an exact `Duration`; the flooring
+lives entirely in the extractors.
 
 ### Defaults
 
-None of these primitives join `TRANS_DEFAULTS`. Adding `time_since` would make
-every default DFS call require a `cutoff_time`, breaking existing callers. The
-extractors stay out for symmetry and to keep the default matrix width stable.
-All are opt-in through `trans_primitives=[...]`.
+Neither `time_since` nor the extractors join `TRANS_DEFAULTS`. Adding
+`time_since` would make every default DFS call require a `cutoff_time`,
+breaking existing callers. The extractors stay out for symmetry and to keep the
+default matrix width stable. All are opt-in through `trans_primitives=[...]`.
 
 ### Depth
 
@@ -203,19 +182,19 @@ following the per-group harness established in
 
 **Parity**
 - `time_since`: tusk's `TOTAL_SECONDS(TIME_SINCE(x))` against featuretools'
-  `TIME_SINCE(x)` (float seconds), over a fixed cutoff, covering a null
-  datetime and a timestamp after the cutoff (negative duration).
+  `TIME_SINCE(x)`, over a fixed cutoff, on whole-second data so the extractor's
+  flooring is not in play. Covers a null datetime and a timestamp after the
+  cutoff (negative duration).
 
 **Divergence, pinned**
-- `age`: agreement with featuretools rounded to whole years, *and* the exact
-  ratio `tusk == featuretools * 365 / 365.25` on midnight-aligned data. The
-  rounding assertion alone would pass even if the constant changed, so both are
-  asserted.
 - `time_since_previous`: returns `Duration` where featuretools returns float
   seconds.
 
-**Invariant**
-- `AGE(x) == TOTAL_YEARS(TIME_SINCE(x))` on the same data.
+**Floor semantics**
+- `TOTAL_SECONDS` of a 90.5-second duration is `90`; `TOTAL_MINUTES` of it is
+  `1`; `TOTAL_DAYS` of a 23-hour duration is `0`. These pin the flooring as
+  intended behaviour rather than an accident, so a later change to fractional
+  units has to be deliberate.
 
 **Regression**
 - A `Duration` column no longer attracts `year`, `month`, `hour`, `weekday` or
@@ -224,11 +203,6 @@ following the per-group harness established in
 **Validation**
 - `time_since` without a `cutoff_time` raises `ValidationError`, from both
   `deep_feature_synthesis` and `calculate_feature_matrix`.
-
-**Precision**
-- `TOTAL_SECONDS` of a 90.5-second duration is `90.5`, not `90`, and
-  `TOTAL_MINUTES` of it is `1.5083...`, not `1`. These are the assertions that
-  would fail against a `total_seconds()`-based implementation.
 
 **Selectors**
 - `dtype_selector("temporal")` selects both `Datetime` and `Duration` columns;
@@ -244,9 +218,10 @@ following the per-group harness established in
 | Primitive | Before | After |
 | --- | --- | --- |
 | `time_since` | ❌ Needs a reference clock | ✅ |
-| `age` | ❌ Needs a reference clock | ⚠️ exact seconds and 365.25 days, against featuretools' floored days and 365 |
 | `time_since_previous` | ❓ | ⚠️ returns a `Duration`, not float seconds |
-| `total_seconds`, `total_minutes`, `total_hours`, `total_days`, `total_years` | — | ➕ five new rows |
+| `total_seconds`, `total_minutes`, `total_hours`, `total_days` | — | ➕ four new rows |
+
+`age` keeps its ❌ row and its "Needs a reference clock" comment.
 
 The six `time_since_*` aggregations keep their ❌ and their comment. They are
 out of scope here, but `NeedsCutoffTime` is the mechanism they will use, which
@@ -254,8 +229,12 @@ is why this work comes first.
 
 ## Out of scope
 
+- `age` and `total_years`. A year is not a well-defined duration: featuretools
+  is itself inconsistent about it, with `Age` dividing whole days by **365**
+  while its own `convert_time_units` treats a year as **31 540 000 s ≈ 365.05
+  days**. tusk ships no primitive whose answer depends on picking one.
+- `total_months`, for the same reason.
 - The six cutoff-sensitive aggregations.
-- `total_months`, and any other approximate unit beyond `total_years`.
 - The remaining datetime transforms (`minute`, `second`, `quarter`,
   `is_month_start`, `season`, and the rest). Each gets its own judgement call
   with the maintainer.
