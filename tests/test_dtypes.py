@@ -90,3 +90,15 @@ def test_datetime_and_date_are_datetime_but_not_duration():
         assert matches(dtype, DtypeFamily.TEMPORAL)
         assert matches(dtype, DtypeFamily.DATETIME)
         assert not matches(dtype, DtypeFamily.DURATION)
+
+
+def test_timestamp_matches_datetime_but_not_date_or_duration():
+    """A Date carries no time of day, so it must not match TIMESTAMP.
+
+    Hour declares TIMESTAMP. Before this family existed it declared
+    DATETIME, which a Date satisfies, so DFS generated HOUR(date) and polars
+    raised InvalidOperationError.
+    """
+    assert matches(nw.Datetime(), DtypeFamily.TIMESTAMP)
+    assert not matches(nw.Date(), DtypeFamily.TIMESTAMP)
+    assert not matches(nw.Duration(), DtypeFamily.TIMESTAMP)

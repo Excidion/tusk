@@ -87,7 +87,7 @@ class Hour(TransformPrimitive):
     """Hour of day, 0-23."""
 
     name = "hour"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.TIMESTAMP,)
     output_dtype = nw.Int8
 
     def build(self, expr: nw.Expr) -> nw.Expr:

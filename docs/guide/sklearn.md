@@ -151,7 +151,10 @@ primitives apply to which columns:
 | Family | Matches |
 | --- | --- |
 | `"numeric"` | integers and floats |
-| `"temporal"` | `Date`, `Datetime`, `Duration` |
+| `"temporal"` | `Date`, `Datetime`, `Duration` (the union of `"datetime"`, `"timestamp"`, and `"duration"`) |
+| `"datetime"` | `Date`, `Datetime` |
+| `"timestamp"` | `Datetime` |
+| `"duration"` | `Duration` |
 | `"string"` | `String` |
 | `"categorical"` | `Categorical`, `Enum` |
 | `"boolean"` | `Boolean` |

@@ -113,12 +113,81 @@ def test_transforms_respect_dtype_families():
             max_depth=1,
         ),
     )
-    # month requires TEMPORAL: it takes occurred_at and not amount.
+    # month requires DATETIME: it takes occurred_at and not amount.
     assert "MONTH__occurred_at" in got
     assert "MONTH__amount" not in got
     # absolute requires NUMERIC: it takes amount and not occurred_at.
     assert "ABSOLUTE__amount" in got
     assert "ABSOLUTE__occurred_at" not in got
+
+
+def test_calendar_primitives_skip_a_duration_column():
+    """The reported bug: DFS generated YEAR(duration) and polars crashed.
+
+    Regression coverage that only calls ``dtypes.matches`` directly would
+    stay green even if a calendar primitive's ``input_dtypes`` regressed
+    back to ``TEMPORAL``, since ``matches`` itself would not have changed.
+    Exercising synthesis end to end catches that class of regression.
+    """
+    db = tusk.Database("dtypes").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 4, 5)],
+                "elapsed": [dt.timedelta(hours=1), dt.timedelta(hours=2)],
+            },
+        ),
+        primary_key="id",
+    )
+    got = names(
+        synthesize(
+            db,
+            "events",
+            agg_primitives=[],
+            trans_primitives=["year", "month"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        ),
+    )
+    assert "YEAR__occurred_at" in got
+    assert "YEAR__elapsed" not in got
+    assert "MONTH__occurred_at" in got
+    assert "MONTH__elapsed" not in got
+
+
+def test_hour_skips_a_date_column_but_month_does_not():
+    """Date carries no time of day, so HOUR must not be generated for it.
+
+    Before TIMESTAMP existed, Hour declared DATETIME, which a Date
+    satisfies, so DFS generated HOUR(date) and polars raised
+    InvalidOperationError: 'hour' operation not supported for dtype 'date'.
+    """
+    db = tusk.Database("dtypes").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 4, 5)],
+                "occurred_on": [dt.date(2024, 3, 4), dt.date(2024, 4, 5)],
+            },
+        ),
+        primary_key="id",
+    )
+    got = names(
+        synthesize(
+            db,
+            "events",
+            agg_primitives=[],
+            trans_primitives=["hour", "month"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        ),
+    )
+    assert "HOUR__occurred_at" in got
+    assert "HOUR__occurred_on" not in got
+    assert "MONTH__occurred_at" in got
+    assert "MONTH__occurred_on" in got
 
 
 def test_row_creation_time_is_available_as_a_transform_input(db):
