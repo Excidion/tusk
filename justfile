@@ -59,6 +59,7 @@ release bump="patch":
     uv version --bump {{ bump }}
     version="$(uv version --short)"
     git commit --all --message "release: v$version"
-    git tag "v$version"
-    git push --follow-tags
+    git tag --annotate "v$version" --message "v$version"
+    git push
+    git push origin "v$version"
     echo "Pushed v$version. The release pipeline takes it from here."
