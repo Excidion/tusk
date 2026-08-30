@@ -229,8 +229,10 @@ class PercentTrue(AggregationPrimitive):
 
         Matches featuretools' ``PercentTrue``, which fills nulls with
         ``False`` before averaging, so a null lowers the fraction instead of
-        being skipped. ``fill_null`` is a reduction-preserving expression, so
-        this stays legal inside a lazy ``group_by().agg()``.
+        being skipped. ``fill_null`` is elementwise rather than
+        length-changing, so -- like ``cast`` -- it composes with the
+        trailing ``mean()`` reduction the way a filtration such as
+        ``drop_nulls`` could not.
 
         Args:
             expr: The boolean column.

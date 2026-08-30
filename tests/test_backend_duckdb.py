@@ -25,7 +25,9 @@ def duck_db():
 
     Mirrors the shape of the polars ``db`` fixture in ``conftest``: customer 1
     has two sessions, customer 2 has one session with no transactions, and
-    customer 3 has none at all.
+    customer 3 has none at all. ``transactions.is_completed`` is boolean with
+    nulls: session 10's two transactions are one true and one null, and
+    session 20's two are both null.
 
     Returns:
         A tuple of the Database and the duckdb connection backing it.
@@ -43,11 +45,11 @@ def duck_db():
     )
     con.execute(
         "CREATE TABLE transactions AS SELECT * FROM (VALUES "
-        "(100, 10, 1.0, TIMESTAMP '2024-03-04 01:00'), "
-        "(101, 10, 3.0, TIMESTAMP '2024-03-04 02:00'), "
-        "(102, 20, 10.0, TIMESTAMP '2024-03-05 01:00'), "
-        "(103, 20, 20.0, TIMESTAMP '2024-03-05 02:00')) "
-        "t(id, session_id, amount, occurred_at)",
+        "(100, 10, 1.0, TIMESTAMP '2024-03-04 01:00', TRUE), "
+        "(101, 10, 3.0, TIMESTAMP '2024-03-04 02:00', NULL), "
+        "(102, 20, 10.0, TIMESTAMP '2024-03-05 01:00', NULL), "
+        "(103, 20, 20.0, TIMESTAMP '2024-03-05 02:00', NULL)) "
+        "t(id, session_id, amount, occurred_at, is_completed)",
     )
     database = (
         tusk.Database("retail")
@@ -134,6 +136,35 @@ def test_depth_two_matrix_computes_on_duckdb(duck_db):
     assert row[1][stacked] == pytest.approx(8.5)
     assert row[2][stacked] is None
     assert row[3][stacked] is None
+
+
+def test_percent_true_holds_the_null_rule_on_duckdb(duck_db):
+    """PERCENT_TRUE's null-counts-as-false rule survives translation to SQL.
+
+    Session 10 has one true and one null transaction, so a null lowered its
+    fraction to 0.5 rather than being skipped. Session 20's transactions are
+    both null, so its fraction is 0.0, not null. Session 30 has no
+    transactions at all, so it is null.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    database, _ = duck_db
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="sessions",
+        max_depth=1,
+        agg_primitives=["percent_true"],
+        trans_primitives=[],
+        features_only=True,
+    )
+    matrix = tusk.apply_features(features, database).pl()
+    row = {r["id"]: r for r in matrix.to_dicts()}
+    column = "PERCENT_TRUE__transactions__is_completed"
+    assert column in matrix.columns
+    assert row[10][column] == pytest.approx(0.5)
+    assert row[20][column] == pytest.approx(0.0)
+    assert row[30][column] is None
 
 
 def test_direct_feature_crosses_a_join_on_duckdb(duck_db):

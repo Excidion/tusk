@@ -24,7 +24,14 @@ pytestmark = pytest.mark.differential
 
 @pytest.fixture
 def parent_and_child():
-    """A parent/child pair with an empty parent group and nulls in the child columns."""
+    """A parent/child pair covering the cases aggregations can diverge on.
+
+    Parent 9 and 10 are childless. The ``value`` column has nulls, including
+    at least one group holding both a null and a real value. The
+    ``is_active`` column has nulls too, including a group with both a null
+    and known true/false values; parent group 5 (``all_null_group_id``) is
+    forced entirely null so an all-null group is also covered.
+    """
     rng = np.random.default_rng(0)
     parents = pd.DataFrame({"id": np.arange(1, 11)})
     child_values = rng.normal(size=40)
@@ -42,8 +49,23 @@ def parent_and_child():
     all_null_group_id = 5
     children.loc[children["parent_id"] == all_null_group_id, "is_active"] = pd.NA
 
+    _assert_parent_and_child_invariants(parents, children)
+    return parents, children
+
+
+def _assert_parent_and_child_invariants(parents, children):
+    """Guard the cases ``parent_and_child`` is built to cover.
+
+    Without these, a change to the random draws could silently drop the one
+    case a differential test relies on to catch a divergence.
+
+    Args:
+        parents: The parent table built by ``parent_and_child``.
+        children: The child table built by ``parent_and_child``.
+    """
     childless_parents = set(parents["id"]) - set(children["parent_id"])
     assert childless_parents
+
     groups_with_a_null_and_a_real_value = children.groupby("parent_id")["value"].apply(
         lambda values: values.isna().any() and values.notna().any(),
     )
@@ -56,7 +78,6 @@ def parent_and_child():
     booleans_by_group = children.groupby("parent_id")["is_active"]
     assert booleans_by_group.apply(has_a_null_and_both_true_and_false).any()
     assert booleans_by_group.apply(lambda flags: flags.isna().all()).any()
-    return parents, children
 
 
 def test_median_matches_featuretools_on_every_parent_row(parent_and_child):
