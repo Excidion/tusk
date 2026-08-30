@@ -10,13 +10,13 @@ Run with: uv run --group validation pytest -m differential
 Verified against featuretools 1.31.0.
 """
 
-import polars as pl
 import pytest
 
 import tusk
 
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
+pl = pytest.importorskip("polars")
 featuretools = pytest.importorskip("featuretools")
 
 pytestmark = pytest.mark.differential
@@ -38,7 +38,6 @@ def parent_and_child():
     )
     childless_parents = set(parents["id"]) - set(children["parent_id"])
     assert childless_parents
-    assert children["value"].isna().any()
     groups_with_a_null_and_a_real_value = children.groupby("parent_id")["value"].apply(
         lambda values: values.isna().any() and values.notna().any(),
     )
