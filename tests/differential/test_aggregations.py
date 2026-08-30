@@ -2,20 +2,20 @@
 
 Each test builds one primitive on one side and the same primitive on the
 other, over a single parent/child pair, and compares the one resulting
-column. Model: ``tests/differential/test_vs_featuretools.py``. This file is
-self-contained (no imports from it) and grows by one primitive per commit.
+column. Model: ``tests/differential/test_vs_featuretools.py``; this file is
+self-contained and does not import from it.
 
 Run with: uv run --group validation pytest -m differential
 
 Verified against featuretools 1.31.0.
 """
 
-import numpy as np
 import polars as pl
 import pytest
 
 import tusk
 
+np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
 featuretools = pytest.importorskip("featuretools")
 
@@ -36,6 +36,13 @@ def parent_and_child():
             "value": child_values,
         },
     )
+    childless_parents = set(parents["id"]) - set(children["parent_id"])
+    assert childless_parents
+    assert children["value"].isna().any()
+    groups_with_a_null_and_a_real_value = children.groupby("parent_id")["value"].apply(
+        lambda values: values.isna().any() and values.notna().any(),
+    )
+    assert groups_with_a_null_and_a_real_value.any()
     return parents, children
 
 
