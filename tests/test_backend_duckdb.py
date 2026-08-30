@@ -167,6 +167,37 @@ def test_percent_true_holds_the_null_rule_on_duckdb(duck_db):
     assert row[30][column] is None
 
 
+def test_quantiles_interpolates_linearly_on_duckdb(duck_db):
+    """QUANTILES' linear interpolation survives translation to SQL.
+
+    Session 10's amounts are 1.0 and 3.0, so the default quartiles split that
+    gap into quarters: 1.5, 2.0, 2.5. Session 20's are 10.0 and 20.0, giving
+    12.5, 15.0, 17.5. Session 30 has no transactions, so all three outputs
+    are null.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    database, _ = duck_db
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="sessions",
+        max_depth=1,
+        agg_primitives=["quantiles"],
+        trans_primitives=[],
+        features_only=True,
+    )
+    matrix = tusk.apply_features(features, database).pl()
+    row = {r["id"]: r for r in matrix.to_dicts()}
+    columns = [f"QUANTILES__transactions__amount__{i}" for i in range(3)]
+    assert all(column in matrix.columns for column in columns)
+    assert [row[10][column] for column in columns] == pytest.approx([1.5, 2.0, 2.5])
+    assert [row[20][column] for column in columns] == pytest.approx(
+        [12.5, 15.0, 17.5],
+    )
+    assert [row[30][column] for column in columns] == [None, None, None]
+
+
 def test_direct_feature_crosses_a_join_on_duckdb(duck_db):
     """A parent column copied down keeps its value through a SQL join.
 

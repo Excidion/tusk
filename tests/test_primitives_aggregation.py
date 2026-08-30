@@ -94,16 +94,19 @@ def test_quantiles_is_multi_output(lf):
     assert [got["o0"][0], got["o1"][0], got["o2"][0]] == [1.0, 2.0, 6.0]
 
 
-def test_quantiles_default_values_are_hand_checkable():
-    # 10, 20, 30, 40, 50 are evenly spaced, so their 25th/50th/75th
-    # percentiles land exactly on the 2nd, 3rd, and 4th values.
+def test_quantiles_defaults_to_the_quartiles():
+    # Quantiles interpolates linearly between the two nearest sorted values.
+    # For four sorted values, quantile q sits at zero-indexed position 3*q,
+    # so the default quartiles (0.25, 0.5, 0.75) each land strictly between
+    # two of them: 10 + 0.75*(20-10) = 17.5, 20 + 0.5*(30-20) = 25.0, and
+    # 30 + 0.25*(40-30) = 32.5. "lower"/"higher"/"nearest" interpolation
+    # would instead return one of the surrounding data points, so these
+    # values pin the "linear" behaviour, not just the default qs.
     lf = nw.from_native(
-        pl.LazyFrame({"g": [1, 1, 1, 1, 1], "v": [10.0, 20.0, 30.0, 40.0, 50.0]}),
+        pl.LazyFrame({"g": [1, 1, 1, 1], "v": [10.0, 20.0, 30.0, 40.0]}),
     )
-    q = Quantiles()
-    assert q.qs == (0.25, 0.5, 0.75)
-    got = _agg(lf, q, "v")
-    assert [got["o0"][0], got["o1"][0], got["o2"][0]] == [20.0, 30.0, 40.0]
+    got = _agg(lf, Quantiles(), "v")
+    assert [got["o0"][0], got["o1"][0], got["o2"][0]] == [17.5, 25.0, 32.5]
 
 
 def test_defaults_are_the_documented_set():
