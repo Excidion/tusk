@@ -4,10 +4,14 @@
 default:
     @just --list
 
+# install all dependecies
+install:
+    uv sync --all-groups --all-extras
+
 # Run every pre-commit hook across the whole repository.
-# The file list is passed explicitly because pre-commit's own --all-files
-# needs git 2.31 for `git ls-files --deduplicate`.
 lint:
+    # The file list is passed explicitly because pre-commit's own --all-files
+    # needs git 2.31 for `git ls-files --deduplicate`.
     git ls-files -z | xargs -0 uv run pre-commit run --files
 
 # Run the default test suite.
@@ -53,7 +57,7 @@ release bump="patch":
         exit 1
     fi
     just check
-    uv version --bump {{bump}}
+    uv version --bump {{ bump }}
     version="$(uv version --short)"
     git commit --all --message "release: v$version"
     git tag "v$version"
