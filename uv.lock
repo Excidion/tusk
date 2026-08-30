@@ -2522,12 +2522,13 @@ sklearn = [
 
 [package.dev-dependencies]
 benchmark = [
-    { name = "duckdb" },
     { name = "relbench" },
 ]
 dev = [
     { name = "duckdb" },
     { name = "interrogate" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "polars" },
     { name = "pre-commit-uv" },
     { name = "pyarrow" },
@@ -2541,10 +2542,24 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "zensical" },
 ]
-validation = [
-    { name = "featuretools" },
+lint = [
+    { name = "interrogate" },
+    { name = "pre-commit-uv" },
+    { name = "pydoclint" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+test = [
+    { name = "duckdb" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "polars" },
+    { name = "pyarrow" },
+    { name = "pytest" },
+    { name = "scikit-learn" },
+]
+validation = [
+    { name = "featuretools" },
     { name = "setuptools" },
 ]
 
@@ -2556,13 +2571,11 @@ requires-dist = [
 provides-extras = ["sklearn"]
 
 [package.metadata.requires-dev]
-benchmark = [
-    { name = "duckdb", specifier = ">=1.0" },
-    { name = "relbench", specifier = ">=2.1" },
-]
+benchmark = [{ name = "relbench", specifier = ">=2.1" }]
 dev = [
     { name = "duckdb", specifier = ">=1.0" },
     { name = "interrogate", specifier = ">=1.7.0" },
+    { name = "pandas", specifier = ">=2.0" },
     { name = "polars", specifier = ">=1.43" },
     { name = "pre-commit-uv", specifier = ">=4.3.0" },
     { name = "pyarrow", specifier = ">=17" },
@@ -2576,9 +2589,23 @@ docs = [
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.6" },
     { name = "zensical", specifier = ">=0.0.56" },
 ]
+lint = [
+    { name = "interrogate", specifier = ">=1.7.0" },
+    { name = "pre-commit-uv", specifier = ">=4.3.0" },
+    { name = "pydoclint", specifier = ">=0.9.1" },
+    { name = "ruff", specifier = ">=0.16.3" },
+    { name = "ty", specifier = ">=0.0.72" },
+]
+test = [
+    { name = "duckdb", specifier = ">=1.0" },
+    { name = "pandas", specifier = ">=2.0" },
+    { name = "polars", specifier = ">=1.43" },
+    { name = "pyarrow", specifier = ">=17" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "scikit-learn", specifier = ">=1.4" },
+]
 validation = [
     { name = "featuretools", specifier = ">=1.31" },
-    { name = "pandas", specifier = ">=2.0" },
     { name = "setuptools", specifier = "<81" },
 ]
 

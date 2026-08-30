@@ -20,26 +20,32 @@ module-name = "tusk"
 
 
 [dependency-groups]
-dev = [
-    "duckdb>=1.0",
+lint = [
     "interrogate>=1.7.0",
     "pre-commit-uv>=4.3.0",
     "pydoclint>=0.9.1",
-    "pytest>=8.0",
+    "ruff>=0.16.3",
+    "ty>=0.0.72",
+]
+test = [
+    "duckdb>=1.0",
+    "pandas>=2.0",
     "polars>=1.43",
     "pyarrow>=17",
-    "ruff>=0.16.3",
+    "pytest>=8.0",
     "scikit-learn>=1.4",
-    "ty>=0.0.72",
+]
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
 ]
 validation = [
     "featuretools>=1.31",
-    "pandas>=2.0",
+    # featuretools imports pkg_resources, which setuptools 81 removed.
     "setuptools<81",
 ]
 benchmark = [
     "relbench>=2.1",
-    "duckdb>=1.0",
 ]
 docs = [
     "mkdocstrings[python]>=1.0.6",
