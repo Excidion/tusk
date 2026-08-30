@@ -4,9 +4,12 @@ import narwhals as nw
 import polars as pl
 import pytest
 
-from tusk.primitives.base import TransformPrimitive
+import tusk
+from tusk.dtypes import DtypeFamily
+from tusk.exceptions import ValidationError
+from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import resolve
-from tusk.primitives.transform import TRANS_DEFAULTS
+from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince
 
 
 @pytest.fixture
@@ -105,3 +108,50 @@ def test_arithmetic_commutativity_flags():
 
 def test_defaults_exclude_arithmetic():
     assert TRANS_DEFAULTS == ("year", "month", "weekday")
+
+
+def test_time_since_measures_from_the_cutoff_time():
+    """A past timestamp gives a positive duration, a future one negative."""
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 6, 1), None]},
+        ),
+    )
+    primitive = TimeSince(cutoff_time=dt.datetime(2024, 3, 1))
+    got = frame.select(primitive.outputs(nw.col("t"))[0].alias("o")).collect()
+    assert got.to_native()["o"].to_list() == [
+        dt.timedelta(days=60),
+        dt.timedelta(days=-92),
+        None,
+    ]
+
+
+def test_time_since_needs_a_datetime_input():
+    assert TimeSince().input_dtypes == (DtypeFamily.DATETIME,)
+    assert isinstance(TimeSince(), NeedsCutoffTime)
+
+
+def test_deep_feature_synthesis_rejects_time_since_without_a_cutoff_time(db):
+    """The clock is the cutoff time, so there is no answer without one."""
+    with pytest.raises(ValidationError, match="time_since needs a cutoff_time"):
+        tusk.deep_feature_synthesis(
+            database=db,
+            target_table="customers",
+            agg_primitives=[],
+            trans_primitives=["time_since"],
+            max_depth=1,
+        )
+
+
+def test_deep_feature_synthesis_computes_time_since_with_a_cutoff_time(db):
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="customers",
+        agg_primitives=[],
+        trans_primitives=["time_since"],
+        max_depth=1,
+        cutoff_time=dt.datetime(2024, 3, 1),
+    )
+    got = matrix.collect().sort("id")
+    # customers.signed_up_at is 2024-01-01 for all three rows (tests/conftest.py)
+    assert got["TIME_SINCE__signed_up_at"].to_list() == [dt.timedelta(days=60)] * 3

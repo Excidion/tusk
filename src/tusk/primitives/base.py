@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, ClassVar
 
 import narwhals as nw
@@ -159,3 +161,15 @@ class TransformPrimitive(Primitive):
     """
 
     order_dependent: ClassVar[bool] = False
+
+
+@dataclass(frozen=True)
+class NeedsCutoffTime:
+    """A primitive whose value is measured against the cutoff time.
+
+    Attributes:
+        cutoff_time: The moment values are measured against. The compiler
+            fills this in; a primitive built by hand carries None until then.
+    """
+
+    cutoff_time: datetime | None = None

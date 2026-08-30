@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import TransformPrimitive
+from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import register
 
 TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "weekday")
@@ -398,3 +398,24 @@ class TimeSincePrevious(TransformPrimitive):
             A narwhals expression of time elapsed in seconds.
         """
         return expr.diff().dt.total_seconds().cast(nw.Float64)
+
+
+@register
+@dataclass(frozen=True)
+class TimeSince(NeedsCutoffTime, TransformPrimitive):
+    """Time elapsed from a datetime to the cutoff time."""
+
+    name = "time_since"
+    input_dtypes = (F.DATETIME,)
+    output_dtype = nw.Duration
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the elapsed-time expression.
+
+        Args:
+            expr: A datetime expression.
+
+        Returns:
+            A narwhals expression of the duration since each value.
+        """
+        return nw.lit(self.cutoff_time) - expr
