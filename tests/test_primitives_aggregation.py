@@ -94,5 +94,17 @@ def test_quantiles_is_multi_output(lf):
     assert [got["o0"][0], got["o1"][0], got["o2"][0]] == [1.0, 2.0, 6.0]
 
 
+def test_quantiles_default_values_are_hand_checkable():
+    # 10, 20, 30, 40, 50 are evenly spaced, so their 25th/50th/75th
+    # percentiles land exactly on the 2nd, 3rd, and 4th values.
+    lf = nw.from_native(
+        pl.LazyFrame({"g": [1, 1, 1, 1, 1], "v": [10.0, 20.0, 30.0, 40.0, 50.0]}),
+    )
+    q = Quantiles()
+    assert q.qs == (0.25, 0.5, 0.75)
+    got = _agg(lf, q, "v")
+    assert [got["o0"][0], got["o1"][0], got["o2"][0]] == [20.0, 30.0, 40.0]
+
+
 def test_defaults_are_the_documented_set():
     assert AGG_DEFAULTS == ("count", "sum", "mean", "min", "max", "std", "n_unique")
