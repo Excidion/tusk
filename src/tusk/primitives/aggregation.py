@@ -227,19 +227,14 @@ class PercentTrue(AggregationPrimitive):
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the true-fraction expression, treating null as false.
 
-        Matches featuretools' ``PercentTrue``, which fills nulls with
-        ``False`` before averaging, so a null lowers the fraction instead of
-        being skipped. ``fill_null`` is elementwise rather than
-        length-changing, so -- like ``cast`` -- it composes with the
-        trailing ``mean()`` reduction the way a filtration such as
-        ``drop_nulls`` could not.
-
         Args:
             expr: The boolean column.
 
         Returns:
             A narwhals expression.
         """
+        # why: fill_null before mean() to match featuretools' PercentTrue,
+        # which counts a null as false rather than skipping it.
         return expr.fill_null(False).cast(nw.Int64).mean()
 
 

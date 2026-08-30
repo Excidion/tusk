@@ -6,9 +6,9 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | | Meaning |
 | --- | --- |
 | ✅ | Same values, covered by a test in the [differential suite][suite] |
-| ❓ | Both implement it, but no test yet |
+| ❓ | Both implement it, but no differential test yet |
 | ⚠️ | Diverges on purpose |
-| ❌ | Diverges or missing |
+| ❌ | Diverges, or not implemented |
 | ➕ | tusk only |
 
 [suite]: https://github.com/Excidion/tusk/tree/main/tests/differential
