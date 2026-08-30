@@ -24,7 +24,7 @@ pytestmark = pytest.mark.differential
 
 @pytest.fixture
 def parent_and_child():
-    """A parent/child pair with an empty parent group and nulls in the child column."""
+    """A parent/child pair with an empty parent group and nulls in the child columns."""
     rng = np.random.default_rng(0)
     parents = pd.DataFrame({"id": np.arange(1, 11)})
     child_values = rng.normal(size=40)
@@ -36,12 +36,26 @@ def parent_and_child():
             "value": child_values,
         },
     )
+    is_active = pd.array(rng.random(40) < 0.5, dtype="boolean")
+    is_active[rng.random(40) < 0.2] = pd.NA
+    children["is_active"] = is_active
+    all_null_group_id = 5
+    children.loc[children["parent_id"] == all_null_group_id, "is_active"] = pd.NA
+
     childless_parents = set(parents["id"]) - set(children["parent_id"])
     assert childless_parents
     groups_with_a_null_and_a_real_value = children.groupby("parent_id")["value"].apply(
         lambda values: values.isna().any() and values.notna().any(),
     )
     assert groups_with_a_null_and_a_real_value.any()
+
+    def has_a_null_and_both_true_and_false(flags):
+        known_flags = flags.dropna()
+        return flags.isna().any() and known_flags.any() and (~known_flags).any()
+
+    booleans_by_group = children.groupby("parent_id")["is_active"]
+    assert booleans_by_group.apply(has_a_null_and_both_true_and_false).any()
+    assert booleans_by_group.apply(lambda flags: flags.isna().all()).any()
     return parents, children
 
 
@@ -59,6 +73,27 @@ def test_median_matches_featuretools_on_every_parent_row(parent_and_child):
     pd.testing.assert_series_equal(
         ours[_as_tusk("MEDIAN(children.value)")].reset_index(drop=True).astype(float),
         theirs["MEDIAN(children.value)"].reset_index(drop=True).astype(float),
+        check_names=False,
+    )
+
+
+def test_percent_true_matches_featuretools_on_every_parent_row(parent_and_child):
+    """tusk's PERCENT_TRUE(children.is_active) equals featuretools' on every row.
+
+    Covers the three cases where the two could diverge: a group mixing true,
+    false, and null values, where a null must count as false in the
+    denominator rather than being skipped; a group that is entirely null,
+    where the result is 0.0 rather than null; and an empty group, where both
+    sides report the same missing value rather than 0.0.
+    """
+    parents, children = parent_and_child
+    ours = _tusk_matrix(parents, children, "percent_true")
+    theirs = _featuretools_matrix(parents, children, "percent_true")
+    pd.testing.assert_series_equal(
+        ours[_as_tusk("PERCENT_TRUE(children.is_active)")]
+        .reset_index(drop=True)
+        .astype(float),
+        theirs["PERCENT_TRUE(children.is_active)"].reset_index(drop=True).astype(float),
         check_names=False,
     )
 

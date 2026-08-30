@@ -218,14 +218,19 @@ class NUnique(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class PercentTrue(AggregationPrimitive):
-    """Fraction of rows where a boolean column is true."""
+    """Fraction of rows where a boolean column is true; a null counts as false."""
 
     name = "percent_true"
     input_dtypes = (F.BOOLEAN,)
     output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the true-fraction expression.
+        """Build the true-fraction expression, treating null as false.
+
+        Matches featuretools' ``PercentTrue``, which fills nulls with
+        ``False`` before averaging, so a null lowers the fraction instead of
+        being skipped. ``fill_null`` is a reduction-preserving expression, so
+        this stays legal inside a lazy ``group_by().agg()``.
 
         Args:
             expr: The boolean column.
@@ -233,7 +238,7 @@ class PercentTrue(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return expr.cast(nw.Int64).mean()
+        return expr.fill_null(False).cast(nw.Int64).mean()
 
 
 @register

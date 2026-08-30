@@ -44,6 +44,14 @@ def test_aggregations_over_group_one(lf, name, column, expected):
     assert got["o0"][0] == expected
 
 
+def test_percent_true_counts_null_as_false():
+    lf = nw.from_native(
+        pl.LazyFrame({"g": [1, 1, 1, 1, 1], "b": [True, False, True, True, None]}),
+    )
+    got = _agg(lf, resolve("percent_true"), "b")
+    assert got["o0"][0] == pytest.approx(0.6)
+
+
 def test_count_takes_no_column_input(lf):
     assert Count().input_dtypes == ()
     got = (
