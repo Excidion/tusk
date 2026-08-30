@@ -1,0 +1,138 @@
+"""Cross-check tusk's aggregation primitives against featuretools, one at a time.
+
+Each test builds one primitive on one side and the same primitive on the
+other, over a single parent/child pair, and compares the one resulting
+column. Model: ``tests/differential/test_vs_featuretools.py``. This file is
+self-contained (no imports from it) and grows by one primitive per commit.
+
+Run with: uv run --group validation pytest -m differential
+
+Verified against featuretools 1.31.0.
+"""
+
+import numpy as np
+import polars as pl
+import pytest
+
+import tusk
+
+pd = pytest.importorskip("pandas")
+featuretools = pytest.importorskip("featuretools")
+
+pytestmark = pytest.mark.differential
+
+
+@pytest.fixture
+def parent_and_child():
+    """A parent/child pair with an empty parent group and nulls in the child column."""
+    rng = np.random.default_rng(0)
+    parents = pd.DataFrame({"id": np.arange(1, 11)})
+    child_values = rng.normal(size=40)
+    child_values[rng.random(40) < 0.2] = np.nan
+    children = pd.DataFrame(
+        {
+            "id": np.arange(1, 41),
+            "parent_id": rng.integers(1, 9, size=40),  # parents 9 and 10 get none
+            "value": child_values,
+        },
+    )
+    return parents, children
+
+
+def test_median_matches_featuretools_on_every_parent_row(parent_and_child):
+    """tusk's MEDIAN(children.value) equals featuretools' on every parent row.
+
+    Covers both cases where median could diverge: a null-containing group,
+    where each side must skip the nulls rather than propagate them, and an
+    empty group, where median is undefined and both sides must report it as
+    such rather than pick a default.
+    """
+    parents, children = parent_and_child
+    ours = _tusk_matrix(parents, children, "median")
+    theirs = _featuretools_matrix(parents, children, "median")
+    pd.testing.assert_series_equal(
+        ours[_as_tusk("MEDIAN(children.value)")].reset_index(drop=True).astype(float),
+        theirs["MEDIAN(children.value)"].reset_index(drop=True).astype(float),
+        check_names=False,
+    )
+
+
+def _featuretools_matrix(parents, children, primitive_name):
+    """Run one aggregation primitive through featuretools and return its matrix.
+
+    Args:
+        parents: The parent table.
+        children: The child table.
+        primitive_name: The aggregation primitive's featuretools name, the
+            only entry in ``agg_primitives`` so exactly one feature is built.
+
+    Returns:
+        The feature matrix, sorted by the parent's index.
+    """
+    es = featuretools.EntitySet("aggregations")
+    es = es.add_dataframe(dataframe_name="parents", dataframe=parents, index="id")
+    es = es.add_dataframe(dataframe_name="children", dataframe=children, index="id")
+    es = es.add_relationship("parents", "id", "children", "parent_id")
+    matrix, _ = featuretools.dfs(
+        entityset=es,
+        target_dataframe_name="parents",
+        agg_primitives=[primitive_name],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    return matrix.sort_index()
+
+
+def _tusk_matrix(parents, children, primitive_name):
+    """Run one aggregation primitive through tusk and return its matrix.
+
+    Args:
+        parents: The parent table.
+        children: The child table.
+        primitive_name: The aggregation primitive's name, the only entry in
+            ``agg_primitives`` so exactly one feature is built. tusk and
+            featuretools spell aggregation primitive names the same way.
+
+    Returns:
+        The feature matrix, collected and sorted by the parent's primary key.
+    """
+    db = (
+        tusk.Database("aggregations")
+        .add_table("parents", pl.from_pandas(parents).lazy(), primary_key="id")
+        .add_table("children", pl.from_pandas(children).lazy(), primary_key="id")
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="parents",
+        agg_primitives=[primitive_name],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    return matrix.collect().sort("id").to_pandas().set_index("id")
+
+
+def _as_tusk(name: str) -> str:
+    """Translate a featuretools feature name into tusk's column name.
+
+    Every construct featuretools spells with punctuation -- application,
+    argument separator, path step, multi-output index, groupby suffix --
+    tusk spells with ``__``.
+
+    Args:
+        name: A featuretools feature name, e.g. ``MEDIAN(children.value)``.
+
+    Returns:
+        The equivalent tusk column name, e.g. ``MEDIAN__children__value``.
+    """
+    for old, new in (
+        (" by ", "__by__"),
+        (", ", "__"),
+        ("(", "__"),
+        (")", ""),
+        ("[", "__"),
+        ("]", ""),
+        (".", "__"),
+    ):
+        name = name.replace(old, new)
+    return name
