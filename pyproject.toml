@@ -1,10 +1,18 @@
 [project]
 name = "tusk-ml"
 version = "0.1.0"
-description = "Deep feature synthesis for narwhals dataframes"
+description = "Automated feature engineering for narwhals dataframes"
+authors = [
+    {name="Excidion", email="excidion@proton.me"}
+]
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = ["narwhals>=2.24"]
+
+[project.urls]
+"Documentation" = "https://excidion.github.io/tusk/"
+"Source Code"= "https://github.com/Excidion/tusk"
 
 [project.optional-dependencies]
 sklearn = ["scikit-learn>=1.4"]
