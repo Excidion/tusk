@@ -233,8 +233,6 @@ class PercentTrue(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # why: fill_null before mean() to match featuretools' PercentTrue,
-        # which counts a null as false rather than skipping it.
         return expr.fill_null(False).cast(nw.Int64).mean()
 
 
