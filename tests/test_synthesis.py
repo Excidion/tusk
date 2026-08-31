@@ -692,6 +692,92 @@ def test_unknown_target_raises(db):
         )
 
 
+def test_agg_primitives_rejects_a_transform_primitive(db):
+    """``year`` is a TransformPrimitive; agg_primitives requires an
+    AggregationPrimitive.
+
+    Without this check, resolve_all() accepts ``year`` and the mistake only
+    surfaces later as a polars InvalidOperationError from group_by().agg(),
+    which blames the wrong layer.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'year'.*aggregation primitive",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=["year"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_agg_primitives_rejects_a_cutoff_time_transform_primitive(db):
+    """``time_since`` is NeedsCutoffTime, TransformPrimitive -- not an
+    AggregationPrimitive.
+
+    Same failure mode as ``year`` in agg_primitives: caught here rather than
+    surfacing as a polars InvalidOperationError from group_by().agg().
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'time_since'.*aggregation primitive",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=["time_since"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_trans_primitives_rejects_an_aggregation_primitive(db):
+    """``sum`` is an AggregationPrimitive; trans_primitives requires a
+    TransformPrimitive.
+
+    Without this check, ``sum`` still matches numeric columns during the
+    walk, so it silently produces zero features and the resulting SchemaError
+    blames "no primitive matched" -- true of nothing else, but not of why.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'sum'.*transform primitive",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["sum"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_trans_primitives_rejects_a_zero_input_aggregation_primitive(db):
+    """``count`` takes no column input, so the walk never even tries to match it.
+
+    Without this check that falls through to ``max()`` on an empty sequence
+    inside the walk -- an internal error rather than one that names the
+    primitive.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'count'.*transform primitive",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["count"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
 def test_no_frames_are_touched(db, monkeypatch):
     def explode(_name):
         raise AssertionError("synthesis touched a frame")

@@ -47,7 +47,14 @@ def synthesize(
     """Generate feature definitions for a target table.
 
     ``database.schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
-    target table is unknown.
+    target table is unknown. Also raises
+    :class:`~tusk.exceptions.PrimitiveError` if a primitive resolved from
+    ``agg_primitives`` is not an
+    :class:`~tusk.primitives.base.AggregationPrimitive`, or one from
+    ``trans_primitives`` or ``groupby_trans_primitives`` is not a
+    :class:`~tusk.primitives.base.TransformPrimitive` -- raised when the
+    feature it belongs in is constructed, since every :class:`Feature`
+    subclass checks its own primitive's kind.
 
     Args:
         database: The schema to walk.
@@ -76,14 +83,12 @@ def synthesize(
             of its input dtypes anywhere in the walk.
     """
     database.schema(target_table)
-    context = _Context(
-        database=database,
-        agg=resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives),
-        trans=resolve_all(
-            TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
-        ),
-        groupby=resolve_all(groupby_trans_primitives or ()),
+    agg = resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives)
+    trans = resolve_all(
+        TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
     )
+    groupby = resolve_all(groupby_trans_primitives or ())
+    context = _Context(database=database, agg=agg, trans=trans, groupby=groupby)
     features = context.build(target_table, max_depth, ())
     context.warn_unmatched()
     keys = database.output_excluded_columns(target_table)

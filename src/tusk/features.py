@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from tusk.database import Relationship
-from tusk.primitives.base import Primitive
+from tusk.exceptions import PrimitiveError
+from tusk.primitives.base import AggregationPrimitive, Primitive, TransformPrimitive
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,14 @@ class TransformFeature(Feature):
     primitive: Primitive
     bases: tuple[Feature, ...]
 
+    def __post_init__(self) -> None:
+        """Confirm the primitive transforms rather than aggregates.
+
+        Raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_require_primitive_kind`, if it does not.
+        """
+        _require_primitive_kind(self.primitive, TransformPrimitive, "transform")
+
     @property
     def name(self) -> str:
         """Generated name, e.g. ``MONTH__started_at``."""
@@ -201,6 +210,14 @@ class AggregationFeature(Feature):
     primitive: Primitive
     bases: tuple[Feature, ...]
     relationship: Relationship
+
+    def __post_init__(self) -> None:
+        """Confirm the primitive aggregates rather than transforms.
+
+        Raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_require_primitive_kind`, if it does not.
+        """
+        _require_primitive_kind(self.primitive, AggregationPrimitive, "aggregation")
 
     @property
     def name(self) -> str:
@@ -312,6 +329,14 @@ class GroupByTransformFeature(Feature):
     bases: tuple[Feature, ...]
     relationship: Relationship
 
+    def __post_init__(self) -> None:
+        """Confirm the primitive transforms rather than aggregates.
+
+        Raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_require_primitive_kind`, if it does not.
+        """
+        _require_primitive_kind(self.primitive, TransformPrimitive, "transform")
+
     @property
     def name(self) -> str:
         """Generated name, e.g. ``CUM_SUM__amount__by__session_id``."""
@@ -355,3 +380,34 @@ class GroupByTransformFeature(Feature):
     def display_output_names(self) -> tuple[str, ...]:
         """One readable name per output column."""
         return self.primitive.display_output_names(self.display_name)
+
+
+def _require_primitive_kind(
+    primitive: Primitive,
+    required: type[Primitive],
+    needed: str,
+) -> None:
+    """Confirm a primitive is the kind its feature class requires.
+
+    Args:
+        primitive: The primitive to check.
+        required: The primitive base class the feature class requires.
+        needed: ``required``'s kind, ``"aggregation"`` or ``"transform"``.
+
+    Raises:
+        PrimitiveError: If ``primitive`` is not an instance of ``required``.
+    """
+    if isinstance(primitive, required):
+        return
+    is_aggregation = isinstance(primitive, AggregationPrimitive)
+    actual = "aggregation" if is_aggregation else "transform"
+    raise PrimitiveError(
+        f"{primitive.name!r} is {_article(actual)} {actual} primitive; "
+        f"{_article(needed)} {needed} feature needs {_article(needed)} "
+        f"{needed} primitive",
+    )
+
+
+def _article(word: str) -> str:
+    """Pick the indefinite article a following ``word`` needs."""
+    return "an" if word[0] in "aeiou" else "a"

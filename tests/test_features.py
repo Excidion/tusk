@@ -1,6 +1,8 @@
 import narwhals as nw
+import pytest
 
 from tusk.database import Relationship
+from tusk.exceptions import PrimitiveError
 from tusk.features import (
     AggregationFeature,
     DirectFeature,
@@ -84,3 +86,13 @@ def test_features_deduplicate_by_structural_equality():
     b = AggregationFeature(Mean(), (amount,), SESSION_TX)
     assert a == b
     assert len({a, b}) == 1
+
+
+def test_transform_feature_rejects_an_aggregation_primitive():
+    with pytest.raises(PrimitiveError, match="'mean'.*transform"):
+        TransformFeature(Mean(), (amount,))
+
+
+def test_aggregation_feature_rejects_a_transform_primitive():
+    with pytest.raises(PrimitiveError, match="'month'.*aggregation"):
+        AggregationFeature(resolve("month"), (amount,), SESSION_TX)

@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 import narwhals as nw
 import pytest
-from narwhals.exceptions import InvalidOperationError
 
 import tusk
 from tusk.compiler import compile_features
@@ -135,14 +134,14 @@ def test_a_hand_built_cutoff_time_aggregation_computes(db):
 def test_a_dfs_requested_cutoff_time_transform_used_as_an_aggregation_fails(db):
     """TimeSince is NeedsCutoffTime, TransformPrimitive -- not an AggregationPrimitive.
 
-    synthesize() never checks that agg_primitives are actually aggregations,
-    so requesting time_since by name through agg_primitives reaches the
-    compiler as an AggregationFeature. ``lit(cutoff_time) - col`` is not an
-    aggregate expression, so narwhals refuses it during ``group_by().agg()``
-    the same way it would refuse ``agg_primitives=["year"]``: tusk adds no
-    guard for this, since there is nothing to compute correctly either way.
+    synthesize() now checks that every agg_primitives entry is actually an
+    AggregationPrimitive, so requesting time_since by name through
+    agg_primitives is rejected before it ever reaches the compiler: it is a
+    user error, naming the wrong argument for a transform primitive, rather
+    than a tusk limitation for narwhals' group_by().agg() to discover on its
+    own terms.
     """
-    with pytest.raises(InvalidOperationError, match="does not aggregate"):
+    with pytest.raises(tusk.exceptions.PrimitiveError, match="'time_since'"):
         tusk.deep_feature_synthesis(
             database=db,
             target_table="customers",
