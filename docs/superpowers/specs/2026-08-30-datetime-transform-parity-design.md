@@ -25,24 +25,26 @@ Any user whose table holds a `Duration` column hits it with default primitives.
 
 ## Decisions
 
-These were settled with the maintainer before this document was written.
+These were settled with the maintainer.
 
 1. **The cutoff time is the clock.** tusk already takes `cutoff_time` as a row
    filter; it becomes the reference point too, as it is in featuretools
    (`uses_calc_time`). Requesting a cutoff-sensitive primitive without a
    `cutoff_time` is a `ValidationError`, not a fall back to the wall clock —
    the same database and cutoff must always give the same matrix.
-2. **Elapsed time is a `Duration`, not a number.** `time_since` returns a
-   duration; separate extractor primitives turn a duration into a number.
-   Composition through DFS replaces featuretools' `unit=` parameter.
-3. **`TEMPORAL` splits** into `DATETIME` and `DURATION` so that stacking lands
-   on the right primitives.
-4. **The extractors use narwhals' own conversions**, which floor to whole
-   units. tusk does not mirror featuretools' fractional units.
+2. **A primitive never stores the cutoff time.** It describes the question
+   being asked, not the feature, so it is passed in when the expression is
+   built. That is what lets one `FeatureList` be applied at several cutoff
+   times.
+3. **Elapsed time is a `Duration`, and stays one.** tusk builds features, not
+   encodings; converting a duration to a number is the caller's choice, as it
+   is for a string. No extractor primitives.
+4. **`TEMPORAL` splits** into `DATETIME`, `TIMESTAMP` and `DURATION` so each
+   primitive matches only the columns it can actually compute over.
 5. **No years anywhere.** A year is not a well-defined duration, so `age` and
    `total_years` are both out of scope. `age` keeps its ❌ row.
 6. **One word per concept:** `cutoff_time` everywhere — the parameter, the
-   field, and the prose.
+   argument, and the prose.
 
 ## Architecture
 
@@ -56,12 +58,15 @@ removed, and two narrower families are added beneath it.
 | --- | --- | --- |
 | `TEMPORAL` | `dtype.is_temporal()` — unchanged | `dtype_selector("temporal")` keeps working |
 | `DATETIME` | `Datetime`, `Date` | Calendar primitives |
-| `DURATION` | `Duration` | Elapsed-time extractors |
+| `TIMESTAMP` | `Datetime` | Time-of-day primitives, e.g. `hour` |
+| `DURATION` | `Duration` | Routed downstream by `dtype_selector` |
 
-`matches()` gains the two branches. Every primitive currently declaring
-`F.TEMPORAL` narrows to `F.DATETIME`: `day`, `hour`, `month`, `year`,
-`weekday`, `is_weekend`, `time_since_previous`. That narrowing is what fixes
-the crash above — a `Duration` column stops matching them.
+`matches()` gains the three branches. Every primitive currently declaring
+`F.TEMPORAL` narrows: `day`, `month`, `year`, `weekday`, `is_weekend` and
+`time_since_previous` to `F.DATETIME`, and `hour` to `F.TIMESTAMP`. That
+narrowing is what fixes the crash above — a `Duration` column stops matching
+any of them, and `hour` additionally stops matching a `Date` column, which
+raises the same way (`'hour' operation not supported for dtype 'date'`).
 
 `dtype_selector("datetime")` and `dtype_selector("duration")` follow with no
 new code, because the selector is generic over `DtypeFamily`. They are the
@@ -71,108 +76,107 @@ left to chance.
 
 ### Reaching the cutoff time
 
-`Primitive.build` takes expressions only. Threading a context parameter through
-every primitive to serve one of them today — and seven once the cutoff-sensitive
-aggregations land — is the wrong trade, so the cutoff time travels as state on
-the primitive instance.
+`Primitive.build` takes expressions only, and threading a context parameter
+through every primitive to serve one of them is the wrong trade. Instead the
+mixin declares its own call shape:
 
 ```py
-@dataclass(frozen=True)
-class NeedsCutoffTime:
-    """A primitive whose value is measured against the cutoff time."""
+class NeedsCutoffTime(Primitive):
+    def outputs(self, *inputs: nw.Expr, cutoff_time: datetime) -> tuple[nw.Expr, ...]: ...
+    def build(self, *inputs: nw.Expr, cutoff_time: datetime) -> nw.Expr | Sequence[nw.Expr]: ...
 
-    cutoff_time: datetime | None = None
-```
 
-A cutoff-sensitive aggregation and a cutoff-sensitive transform need different
-bases, so this is a mixin rather than a layer in the chain:
-
-```py
 class TimeSince(NeedsCutoffTime, TransformPrimitive): ...
 ```
 
+Nothing is stored and nothing is copied. Omitting the argument is an ordinary
+`TypeError`, so there is no unbound state to guard against, and one
+`FeatureList` stays applicable at several cutoff times by construction rather
+than by the compiler being careful.
+
 `NeedsCutoffTime` is a predicate rather than a noun, bending `CODESTYLE.md`'s
 class-naming rule. That is deliberate: the name states the requirement that
-actually bites a user, and it reads correctly at the point of use.
+actually bites a user, and it reads correctly at the point of use. It subclasses
+`Primitive` because a plain mixin left the type checker reconciling two
+conflicting `outputs` signatures at the compiler's `isinstance` branch.
 
-The mixin is the marker. `isinstance(primitive, NeedsCutoffTime)` drives both
-validation and binding, so there is no parallel boolean flag that can disagree
-with the type.
+Two alternatives were priced and rejected. Storing the value on the instance
+made it a constructor argument nobody wanted, guarded by a check that only
+fired where it ran — `features_only=True` and a direct `outputs()` call both
+skipped it. Declaring the cutoff time as an expression input would have put it
+into the feature graph, where synthesis matches every input against real
+columns and names features from their bases, requiring it to be excluded again
+from matching, naming, dtype and column emission.
 
-**Validation** happens in `tusk.api`, before anything compiles.
-`deep_feature_synthesis` and `calculate_feature_matrix` raise `ValidationError`
-when a `NeedsCutoffTime` primitive is requested and `cutoff_time` is None:
+**Validation** happens in `compile_features`, the single choke point every path
+reaches — `deep_feature_synthesis`, `apply_features`, `FeatureList.apply`, and
+direct `Feature` construction alike:
 
 ```
-time_since needs a cutoff_time; pass one to deep_feature_synthesis
+time_since needs a cutoff_time; pass one when applying the features
 ```
 
-**Binding** happens in the compiler, which substitutes the value with
-`dataclasses.replace(primitive, cutoff_time=cutoff_time)` at apply time.
-`build()` stays pure and every other primitive is untouched.
+**A `NeedsCutoffTime` aggregation is refused.** The compiler passes the cutoff
+time only on the row-wise path, so the combination would otherwise build
+against nothing.
 
 ## Primitives
 
 | Registry name | Input | Output | Expression |
 | --- | --- | --- | --- |
 | `time_since` | `DATETIME` | `Duration` | `lit(cutoff_time) - expr` |
-| `total_seconds` | `DURATION` | `Int64` | `total_seconds()` |
-| `total_minutes` | `DURATION` | `Int64` | `total_minutes()` |
-| `total_hours` | `DURATION` | `Int64` | `total_seconds() // 3600` |
-| `total_days` | `DURATION` | `Int64` | `total_seconds() // 86400` |
 
 `time_since` is `cutoff_time - value`, so a past timestamp yields a positive
 duration and a timestamp after the cutoff yields a negative one. This is
 featuretools' sign convention.
 
 `TimeSincePrevious` changes from `Float64` seconds to `Duration`, so that every
-elapsed-time primitive in tusk carries the same type.
+elapsed-time primitive in tusk carries the same type. It also stops truncating,
+since it no longer routes through `total_seconds()`.
 
-### The extractors floor, deliberately
+### A duration is the feature; a number is an encoding
 
-narwhals' duration conversions are integer floor conversions returning `Int64`,
-not unit conversions of a real number:
+An earlier draft of this spec added `total_seconds`, `total_minutes`,
+`total_hours` and `total_days`, on the argument that composing them with
+`time_since` replaces featuretools' `unit=` parameter. That is dropped.
 
-```py
-timedelta(seconds=90, microseconds=500000)
-  .dt.total_seconds() -> 90    # not 90.5
-  .dt.total_minutes() -> 1     # not 1.5083
+tusk builds features, not encodings. A `Duration` is the feature: it is the
+elapsed time, losing nothing. Turning it into a number means choosing a unit
+and a rounding rule, and that choice belongs to whoever is fitting the model —
+exactly as it does for a string column, which tusk also hands over unencoded.
+`dtype_selector("duration")` is the supported route for doing it downstream.
+
+This also removes a dependency on behaviour tusk does not have. Deep feature
+synthesis does **not** stack a transform primitive on another transform's
+output within a table, at any `max_depth`:
+
+```
+trans_primitives=["year", "absolute"], max_depth=1, 2 and 3
+  -> ABSOLUTE__v, YEAR__t   (never ABSOLUTE__YEAR__t)
 ```
 
-tusk uses them as they are. featuretools returns fractional units, so
-`TOTAL_MINUTES` of a 90.5-second duration is `1` here and `1.5083…` there.
-That difference is not a divergence in the coverage table's sense, because
-featuretools has no counterpart to these primitives at all — they exist only to
-turn tusk's `Duration` into a number, and each one answers "how many whole
-units have elapsed", the same question Python's `timedelta.days` answers.
+`_Context.build` calls `_transforms(table, features, depth_limit)` once, with
+`features` holding identity, aggregation and direct features, and appends the
+result afterwards, so a transform never sees another transform. The
+`feature.depth <= depth_limit` guard inside `_transforms` suggests stacking was
+intended, but it was never wired. Aggregation-on-aggregation stacking across
+tables does work and is documented; transform-on-transform does not.
 
-narwhals has no `total_hours` or `total_days` — the native set is
-`total_seconds`, `total_minutes`, `total_milliseconds`, `total_microseconds`,
-`total_nanoseconds`. Those two are therefore integer division of
-`total_seconds()`. Unlike a year, an hour and a day are exact for a duration
-— no calendar is involved — so this introduces no approximation, and it keeps
-one rule across all four extractors.
-
-The consequence to know: `TOTAL_DAYS` of a 23-hour duration is `0`. A caller
-wanting finer resolution asks for a finer unit.
-
-`time_since` itself is unaffected. It returns an exact `Duration`; the flooring
-lives entirely in the extractors.
+Wiring it up is a change to the synthesis engine with its own consequences for
+default output width, and is not part of this work.
 
 ### Defaults
 
-Neither `time_since` nor the extractors join `TRANS_DEFAULTS`. Adding
-`time_since` would make every default DFS call require a `cutoff_time`,
-breaking existing callers. The extractors stay out for symmetry and to keep the
-default matrix width stable. All are opt-in through `trans_primitives=[...]`.
+`time_since` does not join `TRANS_DEFAULTS`. Adding it would make every default
+DFS call require a `cutoff_time`, breaking existing callers. It is opt-in
+through `trans_primitives=[...]`.
 
 ### Depth
 
-`time_since` at `max_depth=1` produces a raw `Duration` column, which
-`dtype_selector("numeric")` will not select and scikit-learn cannot consume. A
-usable number needs `max_depth=2` and an extractor in `trans_primitives`. This
-is documented rather than warned about: tusk returns what was asked for, and
-`dtype_selector("duration")` exists precisely so the column can be routed.
+`time_since` produces a `Duration` column at any depth. `dtype_selector("numeric")`
+will not select it and scikit-learn cannot consume it directly, which is the
+same position a `String` column is in. `dtype_selector("duration")` exists so it
+can be routed to an encoder of the caller's choosing.
 
 ## Testing
 
@@ -181,45 +185,43 @@ following the per-group harness established in
 `tests/differential/test_aggregations.py`.
 
 **Parity**
-- `time_since`: tusk's `TOTAL_SECONDS(TIME_SINCE(x))` against featuretools'
-  `TIME_SINCE(x)`, over a fixed cutoff, on whole-second data so the extractor's
-  flooring is not in play. Covers a null datetime and a timestamp after the
-  cutoff (negative duration).
+- `time_since`: featuretools returns float seconds, tusk returns a `Duration`.
+  The test converts tusk's column to seconds *in the test* — not through a
+  primitive — and compares, over a fixed cutoff time, covering a null datetime
+  and a timestamp after the cutoff time (negative duration).
 
 **Divergence, pinned**
-- `time_since_previous`: returns `Duration` where featuretools returns float
-  seconds.
-
-**Floor semantics**
-- `TOTAL_SECONDS` of a 90.5-second duration is `90`; `TOTAL_MINUTES` of it is
-  `1`; `TOTAL_DAYS` of a 23-hour duration is `0`. These pin the flooring as
-  intended behaviour rather than an accident, so a later change to fractional
-  units has to be deliberate.
+- `time_since` and `time_since_previous` both return a `Duration` where
+  featuretools returns float seconds. Same information, different
+  representation.
 
 **Regression**
-- A `Duration` column no longer attracts `year`, `month`, `hour`, `weekday` or
-  `is_weekend`. This test fails on `main` with `InvalidOperationError`.
+- A `Duration` column no longer attracts `year`, `month`, `weekday` or
+  `is_weekend`, and a `Date` column no longer attracts `hour`. Both fail on
+  `main`.
 
 **Validation**
-- `time_since` without a `cutoff_time` raises `ValidationError`, from both
-  `deep_feature_synthesis` and `calculate_feature_matrix`.
+- `time_since` without a `cutoff_time` raises `ValidationError`, from
+  `deep_feature_synthesis` and from `FeatureList.apply`.
+- One `FeatureList` applied at two different cutoff times gives two different
+  correct answers. This is what the cutoff time never being stored on a
+  primitive buys, and nothing else in the suite pins it.
 
 **Selectors**
-- `dtype_selector("temporal")` selects both `Datetime` and `Duration` columns;
-  `dtype_selector("datetime")` and `dtype_selector("duration")` each select
-  only their own.
+- `dtype_selector("temporal")` selects `Datetime`, `Date` and `Duration`
+  columns; `dtype_selector("datetime")`, `("timestamp")` and `("duration")`
+  each select only their own.
 
 **Portability**
-- The extractors and `time_since` on duckdb, as the aggregation work did, to
-  check the SQL translation.
+- `time_since` on duckdb, as the aggregation work did, to check the SQL
+  translation of the datetime subtraction.
 
 ## Coverage table
 
 | Primitive | Before | After |
 | --- | --- | --- |
-| `time_since` | ❌ Needs a reference clock | ✅ |
+| `time_since` | ❌ Needs a reference clock | ⚠️ returns a `Duration`, not float seconds |
 | `time_since_previous` | ❓ | ⚠️ returns a `Duration`, not float seconds |
-| `total_seconds`, `total_minutes`, `total_hours`, `total_days` | — | ➕ four new rows |
 
 `age` keeps its ❌ row and its "Needs a reference clock" comment.
 

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give tusk a `time_since` transform measured against the cutoff time, and a `Duration` dtype family with extractor primitives that turn a duration into a number.
+**Goal:** Give tusk a `time_since` transform measured against the cutoff time, returning a `Duration`, and the dtype families needed for a duration to be routed rather than mis-matched.
 
-**Architecture:** `DtypeFamily.TEMPORAL` splits into narrower `DATETIME` and `DURATION` families so DFS stacking lands on the right primitives. A `NeedsCutoffTime` mixin carries the cutoff time as state on the primitive instance; the compiler validates it is present and binds it with `dataclasses.replace` at apply time, so `build()` stays pure and no other primitive changes.
+**Architecture:** `DtypeFamily.TEMPORAL` splits into narrower `DATETIME`, `TIMESTAMP` and `DURATION` families so each primitive matches only columns it can compute over. `NeedsCutoffTime` primitives store nothing: the compiler passes the cutoff time to `outputs()`, which forwards it to `build()`, so one `FeatureList` stays applicable at several cutoff times.
 
 **Tech Stack:** Python 3.10+, narwhals (backend-agnostic expressions), polars (test backend), duckdb (SQL portability tests), pytest, featuretools 1.31.0 (differential reference only).
 
@@ -16,8 +16,7 @@
 - **`CODESTYLE.md` is binding.** Newspaper ordering (callers above callees, high-level above detail); descriptive pronounceable names, no abbreviations; docstrings say *what* a thing does; comments explain *why* only and never restate the code; no commented-out code.
 - **One word per concept:** `cutoff_time` everywhere — the parameter, the field, the prose. Never `reference_time`, `cutoff`, or `clock`.
 - **`time_since` is `cutoff_time - value`**, so a past timestamp yields a positive duration and a timestamp after the cutoff yields a negative one.
-- **All four extractors truncate toward zero**, matching narwhals' own convention. Never use `//`, which floors toward negative infinity and would disagree with the native methods on negative durations.
-- **No years, no months.** `age`, `total_years` and `total_months` are out of scope; `age` keeps its ❌ coverage row.
+- **A duration stays a duration.** tusk builds features, not encodings; converting one to a number is the caller's choice. No extractor primitives, and no `age`, `total_years` or `total_months`.
 - **Nothing joins `TRANS_DEFAULTS`.** Every new primitive is opt-in through `trans_primitives=[...]`.
 - **Verification before each commit:** `uv run pytest` and `uv run ruff check .`, plus `uv run --group validation pytest -m differential` for any task touching the differential suite. Report the output.
 
@@ -27,12 +26,12 @@
 | --- | --- |
 | `src/tusk/dtypes.py` | Modify: add `DATETIME` and `DURATION` families and their `matches()` branches |
 | `src/tusk/primitives/base.py` | Modify: add the `NeedsCutoffTime` mixin |
-| `src/tusk/primitives/transform.py` | Modify: narrow seven primitives to `DATETIME`; add `TimeSince` and four extractors; change `TimeSincePrevious` to return `Duration` |
+| `src/tusk/primitives/transform.py` | Modify: narrow the calendar primitives; add `TimeSince`; change `TimeSincePrevious` to return `Duration` |
 | `src/tusk/compiler.py` | Modify: validate the cutoff time is present, and bind it into row-wise primitives |
 | `tests/test_dtypes.py` | Family membership, including the regression that a `Duration` is not a `DATETIME` |
-| `tests/test_primitives_transform.py` | Unit tests for the new primitives and their truncation semantics |
+| `tests/test_primitives_transform.py` | Unit tests for the new primitives |
 | `tests/test_sklearn_encoders.py` | `dtype_selector` over the new families |
-| `tests/test_backend_duckdb.py` | SQL translation of `time_since` and the extractors |
+| `tests/test_backend_duckdb.py` | SQL translation of `time_since` |
 | `tests/differential/test_datetime_transforms.py` | Create: per-primitive comparison against featuretools |
 | `docs/guide/primitive-coverage.md` | Row updates |
 
@@ -341,243 +340,14 @@ git commit -m "feat: add time_since, measured against the cutoff time"
 
 ---
 
-### Task 3: Duration extractors
+### Task 3: `TimeSincePrevious` returns a duration
 
 **Files:**
 - Modify: `src/tusk/primitives/transform.py`
 - Test: `tests/test_primitives_transform.py`
 
 **Interfaces:**
-- Consumes: `DtypeFamily.DURATION` from Task 1.
-- Produces: registered names `"total_seconds"`, `"total_minutes"`, `"total_hours"`, `"total_days"`. Each takes one `DURATION` input and returns `Int64`.
-
-- [ ] **Step 1: Write the failing tests**
-
-In `tests/test_primitives_transform.py`:
-
-```python
-@pytest.mark.parametrize(
-    ("name", "expected"),
-    [
-        ("total_seconds", [90, 82800, 90000]),
-        ("total_minutes", [1, 1380, 1500]),
-        ("total_hours", [0, 23, 25]),
-        ("total_days", [0, 0, 1]),
-    ],
-)
-def test_extractors_truncate_to_whole_units(name, expected):
-    """90.5s, 23h and 25h through each extractor.
-
-    Every extractor answers "how many whole units have elapsed", so 90.5
-    seconds is 1 whole minute and 23 hours is 0 whole days.
-    """
-    frame = nw.from_native(
-        pl.LazyFrame(
-            {
-                "d": [
-                    dt.timedelta(seconds=90, microseconds=500000),
-                    dt.timedelta(hours=23),
-                    dt.timedelta(hours=25),
-                ],
-            },
-        ),
-    )
-    primitive = resolve(name)
-    got = frame.select(primitive.outputs(nw.col("d"))[0].alias("o")).collect()
-    assert got.to_native()["o"].to_list() == expected
-
-
-@pytest.mark.parametrize(
-    ("name", "expected"),
-    [
-        ("total_seconds", [-90, -82800]),
-        ("total_minutes", [-1, -1380]),
-        ("total_hours", [0, -23]),
-        ("total_days", [0, 0]),
-    ],
-)
-def test_extractors_truncate_toward_zero_on_negative_durations(name, expected):
-    """time_since is negative after the cutoff, so this case is reachable.
-
-    narwhals' own total_seconds and total_minutes truncate toward zero rather
-    than flooring, so the derived hours and days must too: a floor would make
-    -90.5 seconds into -1 whole hours while total_seconds called it -90.
-    """
-    frame = nw.from_native(
-        pl.LazyFrame(
-            {
-                "d": [
-                    dt.timedelta(seconds=-90, microseconds=-500000),
-                    dt.timedelta(hours=-23),
-                ],
-            },
-        ),
-    )
-    primitive = resolve(name)
-    got = frame.select(primitive.outputs(nw.col("d"))[0].alias("o")).collect()
-    assert got.to_native()["o"].to_list() == expected
-
-
-def test_extractors_take_a_duration_input():
-    for name in ("total_seconds", "total_minutes", "total_hours", "total_days"):
-        assert resolve(name).input_dtypes == (DtypeFamily.DURATION,)
-```
-
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run: `uv run pytest tests/test_primitives_transform.py -k extractors -v`
-Expected: FAIL with `PrimitiveError: unknown primitive 'total_seconds'`.
-
-- [ ] **Step 3: Implement the extractors**
-
-In `src/tusk/primitives/transform.py`:
-
-```python
-@register
-@dataclass(frozen=True)
-class TotalSeconds(TransformPrimitive):
-    """Whole seconds in a duration."""
-
-    name = "total_seconds"
-    input_dtypes = (F.DURATION,)
-    output_dtype = nw.Int64
-
-    def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the whole-seconds expression.
-
-        Args:
-            expr: A duration expression.
-
-        Returns:
-            A narwhals expression of whole seconds.
-        """
-        return expr.dt.total_seconds()
-
-
-@register
-@dataclass(frozen=True)
-class TotalMinutes(TransformPrimitive):
-    """Whole minutes in a duration."""
-
-    name = "total_minutes"
-    input_dtypes = (F.DURATION,)
-    output_dtype = nw.Int64
-
-    def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the whole-minutes expression.
-
-        Args:
-            expr: A duration expression.
-
-        Returns:
-            A narwhals expression of whole minutes.
-        """
-        return expr.dt.total_minutes()
-
-
-@register
-@dataclass(frozen=True)
-class TotalHours(TransformPrimitive):
-    """Whole hours in a duration."""
-
-    name = "total_hours"
-    input_dtypes = (F.DURATION,)
-    output_dtype = nw.Int64
-    seconds_per_hour = 3600
-
-    def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the whole-hours expression.
-
-        narwhals has no ``total_hours``, and its own conversions truncate
-        toward zero rather than flooring, so dividing and casting matches
-        them where ``//`` would disagree on negative durations.
-
-        Args:
-            expr: A duration expression.
-
-        Returns:
-            A narwhals expression of whole hours.
-        """
-        return (expr.dt.total_seconds() / self.seconds_per_hour).cast(nw.Int64)
-
-
-@register
-@dataclass(frozen=True)
-class TotalDays(TransformPrimitive):
-    """Whole days in a duration."""
-
-    name = "total_days"
-    input_dtypes = (F.DURATION,)
-    output_dtype = nw.Int64
-    seconds_per_day = 86400
-
-    def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the whole-days expression.
-
-        narwhals has no ``total_days``, and its own conversions truncate
-        toward zero rather than flooring, so dividing and casting matches
-        them where ``//`` would disagree on negative durations.
-
-        Args:
-            expr: A duration expression.
-
-        Returns:
-            A narwhals expression of whole days.
-        """
-        return (expr.dt.total_seconds() / self.seconds_per_day).cast(nw.Int64)
-```
-
-Do not add any of these to `TRANS_DEFAULTS`.
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `uv run pytest tests/test_primitives_transform.py -k extractors -v`
-Expected: PASS.
-
-- [ ] **Step 5: Verify stacking works end to end**
-
-Add:
-
-```python
-def test_extractors_stack_on_time_since(db):
-    """The composition that replaces featuretools' unit= parameter."""
-    matrix, _ = tusk.deep_feature_synthesis(
-        database=db,
-        target_table="customers",
-        agg_primitives=[],
-        trans_primitives=["time_since", "total_days"],
-        max_depth=2,
-        cutoff_time=dt.datetime(2024, 3, 1),
-    )
-    got = matrix.collect().sort("id").to_native()
-    assert got["TOTAL_DAYS__TIME_SINCE__signed_up_at"].to_list() == [60, 60, 60]
-```
-
-Run: `uv run pytest tests/test_primitives_transform.py -k stack -v`
-Expected: PASS.
-
-- [ ] **Step 6: Run the full suite and linter**
-
-Run: `uv run pytest` then `uv run ruff check .`
-Expected: all pass.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/tusk/primitives/transform.py tests/test_primitives_transform.py
-git commit -m "feat: add duration extractors for seconds, minutes, hours and days"
-```
-
----
-
-### Task 4: `TimeSincePrevious` returns a duration
-
-**Files:**
-- Modify: `src/tusk/primitives/transform.py`
-- Test: `tests/test_primitives_transform.py`
-
-**Interfaces:**
-- Consumes: `DtypeFamily.DATETIME` from Task 1, and the extractors from Task 3 for the stacking test.
+- Consumes: `DtypeFamily.DATETIME` from Task 1.
 - Produces: `TIME_SINCE_PREVIOUS__x` changes dtype from `Float64` to `Duration`.
 
 - [ ] **Step 1: Update the existing test to the new contract**
@@ -639,7 +409,7 @@ git commit -m "refactor: time_since_previous returns a Duration"
 
 ---
 
-### Task 5: Differential suite, duckdb portability, and coverage rows
+### Task 4: Differential suite, duckdb portability, and coverage rows
 
 **Files:**
 - Create: `tests/differential/test_datetime_transforms.py`
@@ -647,7 +417,7 @@ git commit -m "refactor: time_since_previous returns a Duration"
 - Modify: `docs/guide/primitive-coverage.md`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-4.
+- Consumes: everything from Tasks 1-3.
 - Produces: nothing later tasks depend on.
 
 - [ ] **Step 1: Write the differential test**
