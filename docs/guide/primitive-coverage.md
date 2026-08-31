@@ -116,7 +116,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Cumulative transform | [`cum_min`][tusk.primitives.CumMin] | [`cum_min`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CumMin.html) | ❓ |  |  |
 | Cumulative transform | [`cum_sum`][tusk.primitives.CumSum] | [`cum_sum`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CumSum.html) | ❓ |  |  |
 | Cumulative transform | [`diff`][tusk.primitives.Diff] | [`diff`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Diff.html) | ❓ |  |  |
-| Cumulative transform | [`time_since_previous`][tusk.primitives.TimeSincePrevious] | [`time_since_previous`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSincePrevious.html) | ❓ |  |  |
+| Cumulative transform | [`time_since_previous`][tusk.primitives.TimeSincePrevious] | [`time_since_previous`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSincePrevious.html) | ⚠️ | [`test_time_since_previous_is_a_timedelta`](https://github.com/Excidion/tusk/blob/main/tests/test_primitives_transform.py) | Returns a `Duration`; featuretools returns float seconds. |
 | Cumulative transform | — | [`cum_mean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CumMean.html) | ❌ |  |  |
 | Cumulative transform | — | `cumulative_time_since_last_false` | ❌ |  | Needs a conditional forward-fill; narwhals has none. |
 | Cumulative transform | — | `cumulative_time_since_last_true` | ❌ |  | Needs a conditional forward-fill; narwhals has none. |
@@ -125,6 +125,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | [`hour`][tusk.primitives.Hour] | [`hour`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Hour.html) | ❓ |  |  |
 | Datetime transform | [`is_weekend`][tusk.primitives.IsWeekend] | [`is_weekend`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsWeekend.html) | ❌ |  | Agrees on real dates; a null datetime is null in tusk and `False` in featuretools. |
 | Datetime transform | [`month`][tusk.primitives.Month] | [`month`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Month.html) | ❓ |  |  |
+| Datetime transform | [`time_since`][tusk.primitives.TimeSince] | [`time_since`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSince.html) | ⚠️ | [`test_time_since_matches_featuretools_on_every_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_datetime_transforms.py) | Returns a `Duration`; featuretools returns float seconds. |
 | Datetime transform | [`weekday`][tusk.primitives.Weekday] | [`weekday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Weekday.html) | ⚠️ |  | tusk is ISO 1-7 (Monday = 1); featuretools is 0-6 (Monday = 0). |
 | Datetime transform | [`year`][tusk.primitives.Year] | [`year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Year.html) | ❓ |  |  |
 | Datetime transform | — | [`age`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Age.html) | ❌ |  | Needs a reference clock. |
@@ -150,7 +151,6 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | — | [`quarter`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Quarter.html) | ❌ |  |  |
 | Datetime transform | — | [`season`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Season.html) | ❌ |  |  |
 | Datetime transform | — | [`second`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Second.html) | ❌ |  |  |
-| Datetime transform | — | `time_since` | ❌ |  | Needs a reference clock. |
 | Datetime transform | — | [`week`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Week.html) | ❌ |  | narwhals exposes no ISO week number. |
 | Email and URL transform | — | [`email_address_to_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.EmailAddressToDomain.html) | ❌ |  |  |
 | Email and URL transform | — | [`is_free_email_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsFreeEmailDomain.html) | ❌ |  | Needs a bundled domain list. |

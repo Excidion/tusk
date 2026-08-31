@@ -11,6 +11,8 @@ duckdb is the cheapest such backend to run in-process, so it stands in for
 the whole class here.
 """
 
+import datetime as dt
+
 import narwhals as nw
 import pytest
 
@@ -165,6 +167,46 @@ def test_percent_true_holds_the_null_rule_on_duckdb(duck_db):
     assert row[10][column] == pytest.approx(0.5)
     assert row[20][column] == pytest.approx(0.0)
     assert row[30][column] is None
+
+
+def test_time_since_holds_the_elapsed_time_on_duckdb(duck_db):
+    """TIME_SINCE survives translation to SQL: a datetime literal minus a column.
+
+    ``occurred_at`` is ``transactions``' own ``row_creation_time``, so
+    ``cutoff_time`` is chosen after every transaction -- an earlier cutoff
+    would filter the very rows this test needs to see, since a target row is
+    invisible at a cutoff before it was created.
+
+    Materialized with ``.df()`` rather than the ``.pl()`` every neighbouring
+    test uses: duckdb's own ``DuckDBPyRelation.pl()`` raises
+    ``polars.exceptions.ComputeError: could not import from
+    `month_day_nano_interval` type`` for an INTERVAL column, a pyarrow/polars
+    limitation on this stack (duckdb 1.5.5, pyarrow 25.0.1, polars 1.43.2)
+    reached only now that a duckdb-backed test produces a Duration column.
+    duckdb itself computes the right interval -- ``.df()`` and ``.fetchall()``
+    both return it correctly -- so this is not a narwhals SQL translation bug.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    database, _ = duck_db
+    cutoff_time = dt.datetime(2024, 3, 6)
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="transactions",
+        max_depth=1,
+        agg_primitives=[],
+        trans_primitives=["time_since"],
+        features_only=True,
+    )
+    matrix = tusk.apply_features(features, database, cutoff_time=cutoff_time).df()
+    row = matrix.set_index("id")
+    column = "TIME_SINCE__occurred_at"
+    assert column in row.columns
+    assert row.loc[100, column] == dt.timedelta(days=1, hours=23)
+    assert row.loc[101, column] == dt.timedelta(days=1, hours=22)
+    assert row.loc[102, column] == dt.timedelta(hours=23)
+    assert row.loc[103, column] == dt.timedelta(hours=22)
 
 
 def test_quantiles_interpolates_linearly_on_duckdb(duck_db):

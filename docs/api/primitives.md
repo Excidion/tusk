@@ -60,6 +60,8 @@
 
 ::: tusk.primitives.IsWeekend
 
+::: tusk.primitives.TimeSince
+
 ::: tusk.primitives.Absolute
 
 ::: tusk.primitives.NaturalLog
