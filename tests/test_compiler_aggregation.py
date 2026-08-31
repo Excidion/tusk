@@ -1,15 +1,31 @@
+from dataclasses import dataclass
+from datetime import datetime
+
 import narwhals as nw
+import pytest
 
 from tusk.compiler import compile_features
 from tusk.database import Relationship
+from tusk.exceptions import PrimitiveError
 from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
+from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
 
 CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
 
 AMOUNT = IdentityFeature("transactions", "amount", nw.Float64())
+
+
+@dataclass(frozen=True)
+class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
+    """An aggregation that wrongly claims to need the cutoff time."""
+
+    name = "cutoff_aggregation_direct"
+
+    def build(self, *inputs, cutoff_time):
+        return nw.lit(cutoff_time).max()
 
 
 def collect(features, db):
@@ -76,3 +92,25 @@ def test_many_aggregations_from_one_child_produce_one_join(db):
     plan = compile_features(FeatureList(features), db).to_native().explain()
     assert plan.count("LEFT JOIN:") == 1
     assert plan.count("AGGREGATE") == 1
+
+
+def test_a_hand_built_cutoff_time_aggregation_is_rejected_by_the_compiler(db):
+    """resolve() never runs on a hand-built AggregationFeature.
+
+    deep_feature_synthesis routes every primitive through
+    tusk.primitives.registry.resolve(), which already refuses a primitive
+    that is both NeedsCutoffTime and AggregationPrimitive. Constructing an
+    AggregationFeature directly and compiling it -- a supported path, used
+    throughout this file -- skips resolve() entirely. A cutoff_time is passed
+    here so the compiler reaches _add_aggregations instead of stopping
+    earlier at "no cutoff_time given"; before the fix that call site called
+    primitive.outputs(*inputs) with no cutoff_time kwarg and died with a bare
+    TypeError instead of this actionable one.
+    """
+    feature = AggregationFeature(CutoffAggregation(), (AMOUNT,), SESSION_TX)
+    with pytest.raises(PrimitiveError, match="CutoffAggregation"):
+        compile_features(
+            FeatureList([feature]),
+            db,
+            cutoff_time=datetime(2024, 3, 1),
+        )

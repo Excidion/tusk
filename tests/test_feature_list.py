@@ -2,7 +2,7 @@
 
 import pickle
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import polars as pl
 import pytest
@@ -152,6 +152,34 @@ def test_apply_honors_the_cutoff_time(features, db):
 def test_apply_rejects_a_non_datetime_cutoff(features, db):
     with pytest.raises(TypeError, match="must be a datetime"):
         features.apply(db, cutoff_time=date(2024, 1, 1))
+
+
+def test_a_time_since_feature_list_is_reusable_across_cutoff_times(db):
+    """The property the whole NeedsCutoffTime redesign exists for.
+
+    A NeedsCutoffTime primitive stores nothing, so one FeatureList built once
+    can be applied at several different cutoff times. Every other cutoff-time
+    test in this suite applies its FeatureList exactly once, so a regression
+    that reintroduced stored state -- binding cutoff_time onto the primitive
+    at build time instead of passing it through apply() -- would pass the
+    rest of the suite and only show up here.
+    """
+    time_since = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="customers",
+        agg_primitives=[],
+        trans_primitives=["time_since"],
+        max_depth=1,
+        features_only=True,
+    )
+
+    # customers.signed_up_at is 2024-01-01 for all three rows (tests/conftest.py).
+    early = time_since.apply(db, cutoff_time=datetime(2024, 3, 1)).collect()
+    late = time_since.apply(db, cutoff_time=datetime(2024, 6, 1)).collect()
+
+    column = "TIME_SINCE__signed_up_at"
+    assert early[column].to_list() == [timedelta(days=60)] * 3
+    assert late[column].to_list() == [timedelta(days=152)] * 3
 
 
 def test_apply_features_accepts_a_plain_sequence(features, db):

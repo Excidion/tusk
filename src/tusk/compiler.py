@@ -23,7 +23,7 @@ from tusk.features import (
     IdentityFeature,
     TransformFeature,
 )
-from tusk.primitives.base import NeedsCutoffTime
+from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
 
 if TYPE_CHECKING:
     from tusk.feature_list import FeatureList
@@ -38,7 +38,10 @@ def compile_features(
 
     Also raises :class:`~tusk.exceptions.ValidationError`, from
     :func:`_require_cutoff_time`, if a primitive measures against
-    ``cutoff_time`` and none was given.
+    ``cutoff_time`` and none was given, and
+    :class:`~tusk.exceptions.PrimitiveError`, from
+    :func:`_reject_cutoff_time_aggregations`, if an aggregation's primitive
+    measures against the cutoff time.
 
     Args:
         features: Features to compute.
@@ -66,6 +69,7 @@ def compile_features(
     _reject_colliding_names(features)
     closure = _closure(features)
     _require_cutoff_time(closure, cutoff_time)
+    _reject_cutoff_time_aggregations(closure)
 
     frame = _table_frame(database, target, closure, cutoff_time)
     columns = [primary_key, *features.output_names]
@@ -121,6 +125,36 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         raise ValidationError(
             f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
             "when applying the features",
+        )
+
+
+def _reject_cutoff_time_aggregations(features: set[Feature]) -> None:
+    """Fail if an aggregation's primitive measures against the cutoff time.
+
+    :func:`~tusk.primitives.registry.resolve` already refuses this
+    combination, but that only runs on the :func:`~tusk.deep_feature_synthesis`
+    path. A :class:`~tusk.features.Feature` built by hand and compiled
+    directly -- through :func:`compile_features`, :func:`~tusk.apply_features`,
+    or :meth:`~tusk.FeatureList.apply` -- never reaches ``resolve()``, so the
+    same guard is repeated here, at the one choke point every path reaches.
+
+    Args:
+        features: The transitive closure of features to compile.
+
+    Raises:
+        PrimitiveError: If an aggregation's primitive measures against the
+            cutoff time.
+    """
+    offenders = {
+        type(primitive).__name__
+        for feature in features
+        if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
+        and isinstance(primitive, AggregationPrimitive)
+    }
+    if offenders:
+        raise PrimitiveError(
+            f"{', '.join(sorted(offenders))} measures against the cutoff "
+            "time from an aggregation, which tusk does not support yet",
         )
 
 
@@ -355,8 +389,9 @@ def _apply(
         frame: The frame to extend.
         feature: The feature to compute.
         database: The database, used to find ordering columns.
-        cutoff_time: The cutoff, bound onto a :class:`NeedsCutoffTime`
-            primitive before it builds its expression.
+        cutoff_time: The cutoff, passed as a keyword argument to a
+            :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
+            its expression.
 
     Returns:
         The extended frame.
