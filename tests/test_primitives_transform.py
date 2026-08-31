@@ -9,7 +9,7 @@ from tusk.dtypes import DtypeFamily
 from tusk.exceptions import ValidationError
 from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import resolve
-from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince
+from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
 
 
 @pytest.fixture
@@ -88,15 +88,24 @@ def test_order_dependent_primitives_are_flagged():
     assert month.order_dependent is False
 
 
-def test_time_since_previous_is_seconds(lf):
+def test_time_since_previous_is_a_timedelta(lf):
     # t in t-order: 3/4, 3/9, 3/10
     # Row 1 (3/4) is first: None
-    # Row 0 (3/9): diff from Row 1 (3/4) = 5 days + 1 hour = 432000 + 3600
-    # Row 2 (3/10): diff from Row 0 (3/9) = 1 day + 1 hour = 86400 + 3600
+    # Row 0 (3/9): diff from Row 1 (3/4) = 5 days + 1 hour
+    # Row 2 (3/10): diff from Row 0 (3/9) = 1 day + 1 hour
     got = _apply(lf, "time_since_previous", "t")
     assert got[1] is None
-    assert got[0] == pytest.approx(5 * 86400 + 3600)
-    assert got[2] == pytest.approx(86400 + 3600)
+    assert got[0] == dt.timedelta(days=5, hours=1)
+    assert got[2] == dt.timedelta(days=1, hours=1)
+
+
+def test_time_since_previous_returns_a_duration():
+    """One type for every elapsed-time primitive in tusk.
+
+    featuretools returns float seconds here; tusk returns a Duration so the
+    extractors stack on it the same way they stack on time_since.
+    """
+    assert TimeSincePrevious().output_dtype == nw.Duration
 
 
 def test_arithmetic_commutativity_flags():

@@ -382,23 +382,23 @@ class Diff(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class TimeSincePrevious(TransformPrimitive):
-    """Seconds elapsed since the previous row in row-creation order."""
+    """Time elapsed since the previous row in row-creation order."""
 
     name = "time_since_previous"
     input_dtypes = (F.DATETIME,)
-    output_dtype = nw.Float64
+    output_dtype = nw.Duration
     order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the elapsed-seconds expression.
+        """Build the elapsed-time expression.
 
         Args:
-            expr: A temporal expression.
+            expr: A datetime expression.
 
         Returns:
-            A narwhals expression of time elapsed in seconds.
+            A narwhals expression of the duration since the previous row.
         """
-        return expr.diff().dt.total_seconds().cast(nw.Float64)
+        return expr.diff()
 
 
 @register
