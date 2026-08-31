@@ -102,8 +102,9 @@ def test_time_since_previous_is_a_timedelta(lf):
 def test_time_since_previous_returns_a_duration():
     """One type for every elapsed-time primitive in tusk.
 
-    featuretools returns float seconds here; tusk returns a Duration so the
-    extractors stack on it the same way they stack on time_since.
+    featuretools returns float seconds here; tusk returns a Duration, the
+    same type time_since returns, and leaves the choice of unit to the
+    caller.
     """
     assert TimeSincePrevious().output_dtype == nw.Duration
 

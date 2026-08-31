@@ -358,8 +358,9 @@ git commit -m "feat: add time_since, measured against the cutoff time"
 def test_time_since_previous_returns_a_duration():
     """One type for every elapsed-time primitive in tusk.
 
-    featuretools returns float seconds here; tusk returns a Duration so the
-    extractors stack on it the same way they stack on time_since.
+    featuretools returns float seconds here; tusk returns a Duration, the
+    same type time_since returns, and leaves the choice of unit to the
+    caller.
     """
     assert TimeSincePrevious().output_dtype == nw.Duration
 ```
@@ -417,36 +418,38 @@ git commit -m "refactor: time_since_previous returns a Duration"
 - Modify: `docs/guide/primitive-coverage.md`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-3.
+- Consumes: `time_since` and `TimeSincePrevious` from Tasks 2 and 3.
 - Produces: nothing later tasks depend on.
 
 - [ ] **Step 1: Write the differential test**
 
 Create `tests/differential/test_datetime_transforms.py`, modelled on `tests/differential/test_aggregations.py` but self-contained (do not import from it). Carry `pytestmark = pytest.mark.differential` and gate `numpy`, `pandas`, `polars` and `featuretools` behind `pytest.importorskip`, exactly as that file does.
 
-Use whole-second timestamps only, so the extractor's truncation is not in play and any difference is a real disagreement about elapsed time.
+featuretools' `TIME_SINCE` returns float seconds; tusk's returns a `Duration`. Convert tusk's column to seconds **in the test** — `.dt.total_seconds()` on the collected frame — not through a primitive. tusk ships no duration-to-number primitive by design.
+
+Use whole-second timestamps so the conversion is exact and any difference is a real disagreement about elapsed time.
 
 ```python
 def test_time_since_matches_featuretools_on_every_row(rows):
-    """tusk's TOTAL_SECONDS(TIME_SINCE(x)) equals featuretools' TIME_SINCE(x).
+    """tusk's TIME_SINCE, converted to seconds, equals featuretools' TIME_SINCE.
 
     Covers a null datetime, which must stay null on both sides, and a
-    timestamp after the cutoff, where the duration is negative.
+    timestamp after the cutoff time, where the elapsed time is negative.
     """
 ```
 
-The featuretools side is a single-entry `trans_primitives=["time_since"]` with a `cutoff_time`; the tusk side is `trans_primitives=["time_since", "total_seconds"]` at `max_depth=2`, comparing tusk's `TOTAL_SECONDS__TIME_SINCE__x` against featuretools' `TIME_SINCE(x)` as floats. Assert the fixture's own invariants before comparing — that some value is null and some timestamp is after the cutoff — so the coverage claim cannot outlive the coverage.
+Both sides use a single-entry `trans_primitives=["time_since"]` with the same `cutoff_time`. Assert the fixture's own invariants before comparing — that some value is null and some timestamp falls after the cutoff time — so the coverage claim cannot outlive the coverage.
 
 - [ ] **Step 2: Run it**
 
 Run: `uv run --group validation pytest -m differential -k datetime -v`
-Expected: PASS. If tusk and featuretools disagree, **stop and report the values** rather than changing tusk — a disagreement is a question for the maintainer, not a bug to fix.
+Expected: PASS. If tusk and featuretools disagree on a value, **stop and report the numbers** rather than changing tusk — a disagreement is a question for the maintainer, not a bug to fix.
 
-- [ ] **Step 3: Add the duckdb portability tests**
+- [ ] **Step 3: Add the duckdb portability test**
 
-In `tests/test_backend_duckdb.py`, following the shape of the existing `test_percent_true_holds_the_null_rule_on_duckdb`, add one test that synthesizes `time_since` and `total_days` over the existing `transactions.occurred_at` data with a fixed `cutoff_time`, and asserts the values. This checks narwhals' SQL translation of both the datetime subtraction and the divide-and-cast.
+In `tests/test_backend_duckdb.py`, following the shape of the existing `test_percent_true_holds_the_null_rule_on_duckdb`, add one test that synthesizes `time_since` over the existing `transactions.occurred_at` data with a fixed `cutoff_time` and asserts the resulting durations. This checks narwhals' SQL translation of a datetime literal minus a datetime column.
 
-If duckdb rejects either expression or returns different values, **do not work around it and do not weaken the test** — report the exact error or values.
+If duckdb rejects the expression or returns different values, **do not work around it and do not weaken the test** — report the exact error or values.
 
 - [ ] **Step 4: Run the duckdb tests**
 
@@ -459,17 +462,16 @@ In `docs/guide/primitive-coverage.md`, matching the exact link format of neighbo
 
 | Row | Change |
 | --- | --- |
-| `time_since` | tusk column becomes `` [`time_since`][tusk.primitives.TimeSince] ``, Status ❌ → ✅, Test links the new differential test, Comment cleared |
-| `time_since_previous` | Status ❓ → ⚠️, Comment: "Returns a `Duration`; featuretools returns float seconds." |
-| four new ➕ rows | `total_seconds`, `total_minutes`, `total_hours`, `total_days` under Datetime transform, featuretools column `—`, Test linking the unit tests, Comment: "Unit test only, since featuretools has no counterpart." |
+| `time_since` | tusk column becomes `` [`time_since`][tusk.primitives.TimeSince] ``, Status ❌ → ⚠️, Test links the new differential test, Comment: "Returns a `Duration`; featuretools returns float seconds." |
+| `time_since_previous` | Status ❓ → ⚠️, Test links the new differential test if it covers this primitive, otherwise its unit test, Comment: "Returns a `Duration`; featuretools returns float seconds." |
 
-Leave the `age` row unchanged at ❌ with its existing comment.
+Leave the `age` row unchanged at ❌ with its existing comment. Add no rows for duration-to-number primitives — tusk ships none.
 
 - [ ] **Step 6: Verify the docs reference resolves**
 
-Run: `grep -n "TimeSince\|TotalSeconds\|TotalMinutes\|TotalHours\|TotalDays" docs/api/primitives.md`
+Run: `grep -n "TimeSince" docs/api/primitives.md`
 
-If the new classes are not listed there, add them alongside the existing primitive entries — a `[...][tusk.primitives.X]` link to a class mkdocstrings does not document renders as broken text.
+If `TimeSince` is not listed there, add it alongside the existing primitive entries — a `[...][tusk.primitives.TimeSince]` link to a class mkdocstrings does not document renders as broken text.
 
 - [ ] **Step 7: Run everything**
 
@@ -487,10 +489,10 @@ git commit -m "test: cross-check time_since against featuretools and duckdb"
 
 ## Self-Review
 
-**Spec coverage.** Dtype split → Task 1. `dtype_selector` over the new families → Task 1. `NeedsCutoffTime`, validation, binding → Task 2. `time_since` → Task 2. Four extractors and their floor semantics → Task 3. `TimeSincePrevious` → Task 4. Differential parity, duckdb portability, coverage rows → Task 5. The regression test for the `Duration` crash → Task 1. Depth documentation is covered by the coverage-table comments and the `time_since` docstring; no separate task.
+**Spec coverage.** Dtype split, including `TIMESTAMP` for `hour` → Task 1. `dtype_selector` over the new families → Task 1. `NeedsCutoffTime`, validation, and passing the cutoff time to `build()` → Task 2. `time_since` → Task 2. `TimeSincePrevious` → Task 3. Differential parity, duckdb portability, coverage rows → Task 4. The regression tests for the `Duration` and `Date` crashes → Task 1.
 
-**Deviation from the spec, deliberate.** The spec says the extractors "floor"; verification showed narwhals' `total_seconds`/`total_minutes` truncate toward zero rather than flooring, and the two differ on negative durations, which `time_since` produces. The plan uses truncation throughout for internal consistency and pins it with `test_extractors_truncate_toward_zero_on_negative_durations`. The spec's own example (90.5s → 90, 23h → 0 days) is unaffected.
+**Deviations from the original plan, both maintainer decisions.** The four duration extractors were dropped: tusk builds features, not encodings, and deep feature synthesis does not stack a transform on another transform's output, so composition could not have replaced featuretools' `unit=` parameter anyway. `age` and `total_years` were dropped because a year is not a well-defined duration.
 
 **Placeholders.** None: every code step carries the code, every test step the assertions, every run step the command and expected result.
 
-**Type consistency.** `NeedsCutoffTime.cutoff_time` is `datetime | None` in Task 2's definition, its `_require_cutoff_time` signature, and the `_apply` binding. Family names `DATETIME`/`DURATION` are identical in Tasks 1, 2 and 3. Registered names `time_since`, `total_seconds`, `total_minutes`, `total_hours`, `total_days` match between definition, tests and coverage rows. Output column names follow `generate_name`'s `__`-joined form throughout.
+**Type consistency.** Family names `DATETIME`/`TIMESTAMP`/`DURATION` are identical across tasks. `time_since` and `time_since_previous` are the only registered names this plan adds or changes, and both return `nw.Duration`. Output column names follow `generate_name`'s `__`-joined form throughout.
