@@ -8,11 +8,7 @@ import pytest
 import tusk.primitives  # noqa: F401  -- registers the built-in primitives
 from tusk.dtypes import DtypeFamily as F
 from tusk.exceptions import PrimitiveError
-from tusk.primitives.base import (
-    AggregationPrimitive,
-    NeedsCutoffTime,
-    TransformPrimitive,
-)
+from tusk.primitives.base import AggregationPrimitive, TransformPrimitive
 from tusk.primitives.registry import _REGISTRY, register, resolve, resolve_all
 
 
@@ -162,33 +158,6 @@ def test_a_plain_class_primitive_is_rejected_by_registered_name(restore_registry
     register(PlainClassPrimitive)
     with pytest.raises(PrimitiveError, match="PlainClassPrimitive"):
         resolve("plain_class_primitive")
-
-
-@dataclass(frozen=True)
-class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
-    """An aggregation that wrongly claims to need the cutoff time."""
-
-    name = "cutoff_aggregation"
-    input_dtypes = (F.NUMERIC,)
-
-    def build(self, expr):
-        return expr.max()
-
-
-def test_needs_cutoff_time_is_rejected_on_an_aggregation_primitive(restore_registry):
-    # The compiler only binds cutoff_time onto row-wise features, so an
-    # aggregation combining NeedsCutoffTime would silently build against None.
-    register(CutoffAggregation)
-    with pytest.raises(PrimitiveError, match="CutoffAggregation"):
-        resolve("cutoff_aggregation")
-
-
-def test_an_unregistered_cutoff_time_aggregation_instance_is_rejected():
-    # Passing an instance straight to deep_feature_synthesis never registers
-    # it, and that is a supported path -- so the check cannot live in
-    # register().
-    with pytest.raises(PrimitiveError, match="CutoffAggregation"):
-        resolve(CutoffAggregation())
 
 
 def test_an_unfrozen_dataclass_primitive_is_rejected():

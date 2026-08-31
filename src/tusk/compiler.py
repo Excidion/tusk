@@ -23,7 +23,7 @@ from tusk.features import (
     IdentityFeature,
     TransformFeature,
 )
-from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
+from tusk.primitives.base import NeedsCutoffTime, Primitive
 
 if TYPE_CHECKING:
     from tusk.feature_list import FeatureList
@@ -38,10 +38,7 @@ def compile_features(
 
     Also raises :class:`~tusk.exceptions.ValidationError`, from
     :func:`_require_cutoff_time`, if a primitive measures against
-    ``cutoff_time`` and none was given, and
-    :class:`~tusk.exceptions.PrimitiveError`, from
-    :func:`_reject_cutoff_time_aggregations`, if an aggregation's primitive
-    measures against the cutoff time.
+    ``cutoff_time`` and none was given.
 
     Args:
         features: Features to compute.
@@ -69,7 +66,6 @@ def compile_features(
     _reject_colliding_names(features)
     closure = _closure(features)
     _require_cutoff_time(closure, cutoff_time)
-    _reject_cutoff_time_aggregations(closure)
 
     frame = _table_frame(database, target, closure, cutoff_time)
     columns = [primary_key, *features.output_names]
@@ -125,36 +121,6 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         raise ValidationError(
             f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
             "when applying the features",
-        )
-
-
-def _reject_cutoff_time_aggregations(features: set[Feature]) -> None:
-    """Fail if an aggregation's primitive measures against the cutoff time.
-
-    :func:`~tusk.primitives.registry.resolve` already refuses this
-    combination, but that only runs on the :func:`~tusk.deep_feature_synthesis`
-    path. A :class:`~tusk.features.Feature` built by hand and compiled
-    directly -- through :func:`compile_features`, :func:`~tusk.apply_features`,
-    or :meth:`~tusk.FeatureList.apply` -- never reaches ``resolve()``, so the
-    same guard is repeated here, at the one choke point every path reaches.
-
-    Args:
-        features: The transitive closure of features to compile.
-
-    Raises:
-        PrimitiveError: If an aggregation's primitive measures against the
-            cutoff time.
-    """
-    offenders = {
-        type(primitive).__name__
-        for feature in features
-        if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
-        and isinstance(primitive, AggregationPrimitive)
-    }
-    if offenders:
-        raise PrimitiveError(
-            f"{', '.join(sorted(offenders))} measures against the cutoff "
-            "time from an aggregation, which tusk does not support yet",
         )
 
 
@@ -308,7 +274,7 @@ def _add_aggregations(
     exprs = []
     for feature in batch:
         inputs = [nw.col(b.name) for b in feature.base_features]
-        built = feature.primitive.outputs(*inputs)
+        built = _primitive_outputs(feature.primitive, inputs, cutoff_time)
         exprs.extend(
             e.alias(n) for e, n in zip(built, feature.output_names, strict=True)
         )
@@ -403,13 +369,7 @@ def _apply(
         raise SchemaError(f"cannot compile feature type {type(feature).__name__}")
 
     inputs = [nw.col(b.name) for b in feature.base_features]
-    primitive = feature.primitive
-    # cutoff_time is not None here: _require_cutoff_time refused the feature
-    # set otherwise. The check is repeated so the type narrows.
-    if isinstance(primitive, NeedsCutoffTime) and cutoff_time is not None:
-        exprs = list(primitive.outputs(*inputs, cutoff_time=cutoff_time))
-    else:
-        exprs = list(primitive.outputs(*inputs))
+    exprs = list(_primitive_outputs(feature.primitive, inputs, cutoff_time))
 
     partition = (
         [feature.relationship.foreign_key]
@@ -424,6 +384,31 @@ def _apply(
 
     named = [e.alias(n) for e, n in zip(exprs, feature.output_names, strict=True)]
     return frame.with_columns(*named)
+
+
+def _primitive_outputs(
+    primitive: Primitive,
+    inputs: Sequence[nw.Expr],
+    cutoff_time: datetime | None,
+) -> tuple[nw.Expr, ...]:
+    """Build a primitive's output expressions, threading the cutoff time when needed.
+
+    Args:
+        primitive: The primitive to build.
+        inputs: One expression per declared input.
+        cutoff_time: The cutoff, passed as a keyword argument to a
+            :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
+            its expression.
+
+    Returns:
+        One expression per output column.
+    """
+    # cutoff_time is not None whenever primitive needs it: _require_cutoff_time
+    # already refused the feature set otherwise. The check is repeated so the
+    # type narrows.
+    if isinstance(primitive, NeedsCutoffTime) and cutoff_time is not None:
+        return primitive.outputs(*inputs, cutoff_time=cutoff_time)
+    return primitive.outputs(*inputs)
 
 
 def _order_by(database: Database, table: str, primitive_name: str) -> tuple[str, ...]:

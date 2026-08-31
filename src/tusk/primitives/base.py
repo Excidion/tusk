@@ -18,26 +18,6 @@ import narwhals as nw
 from tusk.dtypes import DtypeFamily
 
 
-def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:
-    """Normalize what a primitive built to a tuple of expressions.
-
-    Args:
-        built: What :meth:`Primitive.build` returned.
-
-    Returns:
-        One expression per output column.
-    """
-    # Checking Sequence rather than (list, tuple) is deliberately broader than
-    # build()'s declared `nw.Expr | Sequence[nw.Expr]`: it is what lets ty
-    # narrow this branch exhaustively. build() is only ever implemented to
-    # return an nw.Expr or a list/tuple of them (see
-    # tests/test_primitives_base.py), so a str or range never actually reaches
-    # here in practice.
-    if isinstance(built, Sequence):
-        return tuple(built)
-    return (built,)
-
-
 class Primitive(ABC):
     """Base class for every primitive.
 
@@ -209,3 +189,23 @@ class NeedsCutoffTime(Primitive):
         Returns:
             A single expression, or a sequence for multi-output primitives.
         """
+
+
+def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:
+    """Normalize what a primitive built to a tuple of expressions.
+
+    Args:
+        built: What :meth:`Primitive.build` returned.
+
+    Returns:
+        One expression per output column.
+    """
+    # Checking Sequence rather than (list, tuple) is deliberately broader than
+    # build()'s declared `nw.Expr | Sequence[nw.Expr]`: it is what lets ty
+    # narrow this branch exhaustively. build() is only ever implemented to
+    # return an nw.Expr or a list/tuple of them (see
+    # tests/test_primitives_base.py), so a str or range never actually reaches
+    # here in practice.
+    if isinstance(built, Sequence):
+        return tuple(built)
+    return (built,)

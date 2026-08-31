@@ -1,12 +1,13 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import narwhals as nw
 import pytest
+from narwhals.exceptions import InvalidOperationError
 
+import tusk
 from tusk.compiler import compile_features
 from tusk.database import Relationship
-from tusk.exceptions import PrimitiveError
 from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
@@ -16,20 +17,31 @@ CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
 
 AMOUNT = IdentityFeature("transactions", "amount", nw.Float64())
+OCCURRED_AT = IdentityFeature("transactions", "occurred_at", nw.Datetime())
 
 
 @dataclass(frozen=True)
 class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
-    """An aggregation that wrongly claims to need the cutoff time."""
+    """An aggregation that measures against the cutoff time.
+
+    Time since the most recent child row, i.e. the smallest of the per-row
+    gaps to the cutoff -- a stand-in for the shape of primitive tusk does not
+    ship yet: an aggregation over a per-row cutoff-relative expression.
+    """
 
     name = "cutoff_aggregation_direct"
 
     def build(self, *inputs, cutoff_time):
-        return nw.lit(cutoff_time).max()
+        return (nw.lit(cutoff_time) - inputs[0]).min()
 
 
-def collect(features, db):
-    return compile_features(FeatureList(features), db).collect().to_native().sort("id")
+def collect(features, db, cutoff_time=None):
+    return (
+        compile_features(FeatureList(features), db, cutoff_time)
+        .collect()
+        .to_native()
+        .sort("id")
+    )
 
 
 def test_count_of_children(db):
@@ -94,23 +106,48 @@ def test_many_aggregations_from_one_child_produce_one_join(db):
     assert plan.count("AGGREGATE") == 1
 
 
-def test_a_hand_built_cutoff_time_aggregation_is_rejected_by_the_compiler(db):
+def test_a_hand_built_cutoff_time_aggregation_computes(db):
     """resolve() never runs on a hand-built AggregationFeature.
 
     deep_feature_synthesis routes every primitive through
-    tusk.primitives.registry.resolve(), which already refuses a primitive
-    that is both NeedsCutoffTime and AggregationPrimitive. Constructing an
-    AggregationFeature directly and compiling it -- a supported path, used
-    throughout this file -- skips resolve() entirely. A cutoff_time is passed
-    here so the compiler reaches _add_aggregations instead of stopping
-    earlier at "no cutoff_time given"; before the fix that call site called
-    primitive.outputs(*inputs) with no cutoff_time kwarg and died with a bare
-    TypeError instead of this actionable one.
+    tusk.primitives.registry.resolve(), but constructing an AggregationFeature
+    directly and compiling it -- a supported path, used throughout this file
+    -- skips resolve() entirely. _add_aggregations now threads cutoff_time
+    into the primitive's outputs() exactly as _apply does for row-wise
+    features, so this computes rather than raising.
+
+    The cutoff sits after every transaction. Session 10's latest transaction
+    is 2024-03-04 02:00, session 20's is 2024-03-05 02:00, so the minimum
+    cutoff-relative gap in each group is the distance to that row. Session 30
+    has no transactions, so its group never appears in the aggregate and the
+    left join leaves it null.
     """
-    feature = AggregationFeature(CutoffAggregation(), (AMOUNT,), SESSION_TX)
-    with pytest.raises(PrimitiveError, match="CutoffAggregation"):
-        compile_features(
-            FeatureList([feature]),
-            db,
+    feature = AggregationFeature(CutoffAggregation(), (OCCURRED_AT,), SESSION_TX)
+    cutoff_time = datetime(2024, 3, 10)
+    got = collect([feature], db, cutoff_time=cutoff_time)
+    assert got[feature.name].to_list() == [
+        timedelta(days=5, hours=22),
+        timedelta(days=4, hours=22),
+        None,
+    ]
+
+
+def test_a_dfs_requested_cutoff_time_transform_used_as_an_aggregation_fails(db):
+    """TimeSince is NeedsCutoffTime, TransformPrimitive -- not an AggregationPrimitive.
+
+    synthesize() never checks that agg_primitives are actually aggregations,
+    so requesting time_since by name through agg_primitives reaches the
+    compiler as an AggregationFeature. ``lit(cutoff_time) - col`` is not an
+    aggregate expression, so narwhals refuses it during ``group_by().agg()``
+    the same way it would refuse ``agg_primitives=["year"]``: tusk adds no
+    guard for this, since there is nothing to compute correctly either way.
+    """
+    with pytest.raises(InvalidOperationError, match="does not aggregate"):
+        tusk.deep_feature_synthesis(
+            database=db,
+            target_table="customers",
+            agg_primitives=["time_since"],
+            trans_primitives=[],
+            max_depth=2,
             cutoff_time=datetime(2024, 3, 1),
         )
