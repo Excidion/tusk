@@ -103,8 +103,9 @@ def apply_features(
     lands on a table with no ``row_creation_time``.
     :class:`~tusk.exceptions.ValidationError` is raised if ``cutoff_time``
     differs from the database's row creation times in tz awareness, or if
-    those disagree among themselves, and ``TypeError`` if ``cutoff_time`` is
-    not a ``datetime``.
+    those disagree among themselves; or if a feature's primitive measures
+    against ``cutoff_time`` and none was given. ``TypeError`` is raised if
+    ``cutoff_time`` is not a ``datetime``.
 
     Args:
         features: Feature definitions, all on the same target table.

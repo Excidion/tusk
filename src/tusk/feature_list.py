@@ -62,7 +62,9 @@ class FeatureList(Sequence[Feature]):
         :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
         primitive lands on a table with no ``row_creation_time``, and
         :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` disagrees
-        with the database's row creation times in tz awareness.
+        with the database's row creation times in tz awareness, or if a
+        feature's primitive measures against ``cutoff_time`` and none was
+        given.
 
         Args:
             database: The database to compute over.

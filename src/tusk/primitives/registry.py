@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import TypeVar
 
 from tusk.exceptions import PrimitiveError
-from tusk.primitives.base import Primitive
+from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime, Primitive
 
 _REGISTRY: dict[str, type[Primitive]] = {}
 _P = TypeVar("_P", bound=Primitive)
@@ -43,8 +43,9 @@ def resolve(spec: str | Primitive) -> Primitive:
         A primitive instance.
 
     Raises:
-        PrimitiveError: If the name is not registered, or the primitive is not
-            a frozen dataclass with equality enabled.
+        PrimitiveError: If the name is not registered, the primitive is not a
+            frozen dataclass with equality enabled, or it measures against the
+            cutoff time from an aggregation.
     """
     if isinstance(spec, Primitive):
         primitive = spec
@@ -56,7 +57,32 @@ def resolve(spec: str | Primitive) -> Primitive:
             msg = f"unknown primitive {spec!r}; available: {known}"
             raise PrimitiveError(msg) from None
     _require_frozen_dataclass(primitive)
+    _reject_cutoff_time_aggregation(primitive)
     return primitive
+
+
+def _reject_cutoff_time_aggregation(primitive: Primitive) -> None:
+    """Refuse an aggregation that measures against the cutoff time.
+
+    The compiler binds the cutoff time onto row-wise features only, so such an
+    aggregation would build against None and quietly produce nulls. Checked
+    here rather than in :func:`register` because an instance passed straight
+    to ``deep_feature_synthesis`` never registers.
+
+    Args:
+        primitive: The resolved primitive to check.
+
+    Raises:
+        PrimitiveError: If it is one.
+    """
+    if isinstance(primitive, NeedsCutoffTime) and isinstance(
+        primitive,
+        AggregationPrimitive,
+    ):
+        raise PrimitiveError(
+            f"{type(primitive).__name__!r} measures against the cutoff time "
+            "from an aggregation, which tusk does not support yet",
+        )
 
 
 def _require_frozen_dataclass(primitive: Primitive) -> None:

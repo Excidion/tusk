@@ -8,6 +8,7 @@ raise otherwise.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import narwhals as nw
 
@@ -409,13 +410,14 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
     input_dtypes = (F.DATETIME,)
     output_dtype = nw.Duration
 
-    def build(self, expr: nw.Expr) -> nw.Expr:
+    def build(self, expr: nw.Expr, *, cutoff_time: datetime) -> nw.Expr:
         """Build the elapsed-time expression.
 
         Args:
             expr: A datetime expression.
+            cutoff_time: The moment the values are measured against.
 
         Returns:
             A narwhals expression of the duration since each value.
         """
-        return nw.lit(self.cutoff_time) - expr
+        return nw.lit(cutoff_time) - expr

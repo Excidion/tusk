@@ -7,7 +7,6 @@ check is explicitly requested.
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -37,6 +36,10 @@ def compile_features(
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
 
+    Also raises :class:`~tusk.exceptions.ValidationError`, from
+    :func:`_require_cutoff_time`, if a primitive measures against
+    ``cutoff_time`` and none was given.
+
     Args:
         features: Features to compute.
         database: The database holding the frames.
@@ -61,9 +64,10 @@ def compile_features(
         )
 
     _reject_colliding_names(features)
-    _require_cutoff_time(_closure(features), cutoff_time)
+    closure = _closure(features)
+    _require_cutoff_time(closure, cutoff_time)
 
-    frame = _table_frame(database, target, _closure(features), cutoff_time)
+    frame = _table_frame(database, target, closure, cutoff_time)
     columns = [primary_key, *features.output_names]
     return frame.select(*dict.fromkeys(columns))
 
@@ -103,21 +107,20 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         cutoff_time: The cutoff, or None.
 
     Raises:
-        ValidationError: If any primitive needs the cutoff time and none was
-            given.
+        ValidationError: If a primitive measures against ``cutoff_time`` and
+            none was given.
     """
     if cutoff_time is not None:
         return
-    needed = set()
-    for feature in features:
-        primitive = getattr(feature, "primitive", None)
-        if isinstance(primitive, NeedsCutoffTime):
-            needed.add(primitive.name)
-    needed = sorted(needed)
-    if needed:
+    measuring = {
+        primitive.name
+        for feature in features
+        if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
+    }
+    if measuring:
         raise ValidationError(
-            f"{', '.join(needed)} needs a cutoff_time; pass one to "
-            "deep_feature_synthesis",
+            f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
+            "when applying the features",
         )
 
 
@@ -366,9 +369,12 @@ def _apply(
 
     inputs = [nw.col(b.name) for b in feature.base_features]
     primitive = feature.primitive
-    if isinstance(primitive, NeedsCutoffTime):
-        primitive = dataclasses.replace(primitive, cutoff_time=cutoff_time)
-    exprs = list(primitive.outputs(*inputs))
+    # cutoff_time is not None here: _require_cutoff_time refused the feature
+    # set otherwise. The check is repeated so the type narrows.
+    if isinstance(primitive, NeedsCutoffTime) and cutoff_time is not None:
+        exprs = list(primitive.outputs(*inputs, cutoff_time=cutoff_time))
+    else:
+        exprs = list(primitive.outputs(*inputs))
 
     partition = (
         [feature.relationship.foreign_key]

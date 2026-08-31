@@ -117,8 +117,9 @@ def test_time_since_measures_from_the_cutoff_time():
             {"t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 6, 1), None]},
         ),
     )
-    primitive = TimeSince(cutoff_time=dt.datetime(2024, 3, 1))
-    got = frame.select(primitive.outputs(nw.col("t"))[0].alias("o")).collect()
+    primitive = TimeSince()
+    expr = primitive.outputs(nw.col("t"), cutoff_time=dt.datetime(2024, 3, 1))[0]
+    got = frame.select(expr.alias("o")).collect()
     assert got.to_native()["o"].to_list() == [
         dt.timedelta(days=60),
         dt.timedelta(days=-92),
@@ -131,8 +132,14 @@ def test_time_since_needs_a_datetime_input():
     assert isinstance(TimeSince(), NeedsCutoffTime)
 
 
+def test_time_since_cannot_be_built_without_a_cutoff_time():
+    """There is no unbound state to guard against: the argument is required."""
+    with pytest.raises(TypeError, match="cutoff_time"):
+        TimeSince().outputs(nw.col("t"))  # ty: ignore[missing-argument]
+
+
 def test_deep_feature_synthesis_rejects_time_since_without_a_cutoff_time(db):
-    """The clock is the cutoff time, so there is no answer without one."""
+    """A cutoff_time is required, so there is no answer without one."""
     with pytest.raises(ValidationError, match="time_since needs a cutoff_time"):
         tusk.deep_feature_synthesis(
             database=db,
@@ -141,6 +148,18 @@ def test_deep_feature_synthesis_rejects_time_since_without_a_cutoff_time(db):
             trans_primitives=["time_since"],
             max_depth=1,
         )
+
+
+def test_cutoff_time_is_not_a_constructor_argument():
+    """A primitive never stores the cutoff time, so there is nothing to set.
+
+    This is what lets one FeatureList be applied at several cutoff times: the
+    value reaches the expression at build time and is never written down.
+    """
+    # Passed as **kwargs because a type checker rejects the literal call
+    # before it can ever run.
+    with pytest.raises(TypeError, match="cutoff_time"):
+        TimeSince(**{"cutoff_time": dt.datetime(2024, 3, 1)})
 
 
 def test_deep_feature_synthesis_computes_time_since_with_a_cutoff_time(db):
