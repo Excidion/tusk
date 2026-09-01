@@ -317,7 +317,9 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         {
             primitive.name
             for feature in features
-            if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
+            if isinstance(
+                primitive := getattr(feature, "primitive", None), NeedsCutoffTime
+            )
         },
     )
     if needed:
@@ -339,11 +341,11 @@ Then in `_apply`, add the parameter (documenting it in the docstring's `Args`) a
 
 ```python
     inputs = [nw.col(b.name) for b in feature.base_features]
-    exprs = list(_primitive_outputs(feature.primitive, inputs, cutoff_time))
+    exprs = list(_build_expressions(feature.primitive, inputs, cutoff_time))
 ```
 
 ```python
-def _primitive_outputs(
+def _build_expressions(
     primitive: Primitive,
     inputs: Sequence[nw.Expr],
     cutoff_time: datetime | None,
@@ -356,7 +358,7 @@ def _primitive_outputs(
 
 Leave the existing `getattr(feature.primitive, "order_dependent", False)` check reading from `feature.primitive`; it needs no cutoff time.
 
-Binding for aggregation features is not part of this task — no aggregation primitive uses `NeedsCutoffTime` yet. It is added in a later commit, once `_add_aggregations` also threads `cutoff_time` through `_primitive_outputs`.
+Binding for aggregation features is not part of this task — no aggregation primitive uses `NeedsCutoffTime` yet. It is added in a later commit, once `_add_aggregations` also threads `cutoff_time` through `_build_expressions`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
@@ -412,18 +414,19 @@ Expected: FAIL — `output_dtype` is still `nw.Float64`.
 In `src/tusk/primitives/transform.py`, in `TimeSincePrevious`:
 
 ```python
-    output_dtype = nw.Duration
+output_dtype = nw.Duration
 
-    def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the elapsed-time expression.
 
-        Args:
-            expr: A datetime expression.
+def build(self, expr: nw.Expr) -> nw.Expr:
+    """Build the elapsed-time expression.
 
-        Returns:
-            A narwhals expression of the duration since the previous row.
-        """
-        return expr.diff()
+    Args:
+        expr: A datetime expression.
+
+    Returns:
+        A narwhals expression of the duration since the previous row.
+    """
+    return expr.diff()
 ```
 
 Update the class docstring from "Seconds elapsed since the previous row in row-creation order" to "Time elapsed since the previous row in row-creation order."

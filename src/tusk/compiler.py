@@ -124,7 +124,7 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
 
 
 def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -> None:
-    """Fail if a primitive measures against a cutoff time that was not given.
+    """Fail if a primitive requires a cutoff time that was not given.
 
     Args:
         features: The transitive closure of features to compile.
@@ -274,7 +274,7 @@ def _add_aggregations(
     exprs = []
     for feature in batch:
         inputs = [nw.col(b.name) for b in feature.base_features]
-        built = _primitive_outputs(feature.primitive, inputs, cutoff_time)
+        built = _build_expressions(feature.primitive, inputs, cutoff_time)
         exprs.extend(
             e.alias(n) for e, n in zip(built, feature.output_names, strict=True)
         )
@@ -369,7 +369,7 @@ def _apply(
         raise SchemaError(f"cannot compile feature type {type(feature).__name__}")
 
     inputs = [nw.col(b.name) for b in feature.base_features]
-    exprs = list(_primitive_outputs(feature.primitive, inputs, cutoff_time))
+    exprs = list(_build_expressions(feature.primitive, inputs, cutoff_time))
 
     partition = (
         [feature.relationship.foreign_key]
@@ -386,7 +386,7 @@ def _apply(
     return frame.with_columns(*named)
 
 
-def _primitive_outputs(
+def _build_expressions(
     primitive: Primitive,
     inputs: Sequence[nw.Expr],
     cutoff_time: datetime | None,
@@ -403,9 +403,6 @@ def _primitive_outputs(
     Returns:
         One expression per output column.
     """
-    # cutoff_time is not None whenever primitive needs it: _require_cutoff_time
-    # already refused the feature set otherwise. The check is repeated so the
-    # type narrows.
     if isinstance(primitive, NeedsCutoffTime) and cutoff_time is not None:
         return primitive.outputs(*inputs, cutoff_time=cutoff_time)
     return primitive.outputs(*inputs)
