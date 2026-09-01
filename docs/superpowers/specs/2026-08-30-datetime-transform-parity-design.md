@@ -116,9 +116,8 @@ direct `Feature` construction alike:
 time_since needs a cutoff_time; pass one when applying the features
 ```
 
-**A `NeedsCutoffTime` aggregation is refused.** The compiler passes the cutoff
-time only on the row-wise path, so the combination would otherwise build
-against nothing.
+**The compiler passes the cutoff time on both the row-wise and the aggregation
+path**, so a `NeedsCutoffTime` aggregation computes rather than being refused.
 
 ## Primitives
 

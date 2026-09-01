@@ -5,13 +5,11 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 
 | | Meaning |
 | --- | --- |
-| ✅ | Same values, covered by a test in the [differential suite][suite] |
-| ❓ | Both implement it, but no differential test yet |
+| ✅ | Same values, covered by a test |
+| ❓ | Both implement it, but no test yet |
 | ⚠️ | Diverges on purpose |
 | ❌ | Diverges, or not implemented |
 | ➕ | tusk only |
-
-[suite]: https://github.com/Excidion/tusk/tree/main/tests/differential
 
 | Group | tusk | featuretools | Status | Test | Comment |
 | --- | --- | --- | --- | --- | --- |
@@ -22,7 +20,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Aggregation | [`min`][tusk.primitives.Min] | [`min`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Min.html) | ✅ | [`test_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
 | Aggregation | [`n_unique`][tusk.primitives.NUnique] | [`num_unique`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumUnique.html) | ⚠️ | [`test_n_unique_of_an_empty_group_diverges_from_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) | An empty group is `0` in tusk and `NaN` in featuretools; null handling agrees. |
 | Aggregation | [`percent_true`][tusk.primitives.PercentTrue] | [`percent_true`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PercentTrue.html) | ✅ | [`test_percent_true_matches_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) |  |
-| Aggregation | [`quantiles`][tusk.primitives.Quantiles] | — | ➕ | [`test_quantiles_defaults_to_the_quartiles`](https://github.com/Excidion/tusk/blob/main/tests/test_primitives_aggregation.py) | Unit test only, since featuretools has no `quantiles` counterpart to differential-test against. |
+| Aggregation | [`quantiles`][tusk.primitives.Quantiles] | — | ➕ | [`test_quantiles_defaults_to_the_quartiles`](https://github.com/Excidion/tusk/blob/main/tests/test_primitives_aggregation.py) | featuretools has no `quantiles` counterpart. |
 | Aggregation | [`std`][tusk.primitives.Std] | [`std`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Std.html) | ✅ | [`test_stacked_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
 | Aggregation | [`sum`][tusk.primitives.Sum] | [`sum`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Sum.html) | ✅ | [`test_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
 | Aggregation | — | [`all`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.All.html) | ❌ |  |  |
@@ -126,7 +124,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | [`is_weekend`][tusk.primitives.IsWeekend] | [`is_weekend`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsWeekend.html) | ❌ |  | Agrees on real dates; a null datetime is null in tusk and `False` in featuretools. |
 | Datetime transform | [`month`][tusk.primitives.Month] | [`month`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Month.html) | ❓ |  |  |
 | Datetime transform | [`time_since`][tusk.primitives.TimeSince] | [`time_since`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSince.html) | ⚠️ | [`test_time_since_matches_featuretools_on_every_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_datetime_transforms.py) | Returns a `Duration`; featuretools returns float seconds. |
-| Datetime transform | [`weekday`][tusk.primitives.Weekday] | [`weekday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Weekday.html) | ⚠️ |  | tusk is ISO 1-7 (Monday = 1); featuretools is 0-6 (Monday = 0). |
+| Datetime transform | [`weekday`][tusk.primitives.Weekday] | [`weekday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Weekday.html) | ⚠️ | [`test_row_wise_transforms`](https://github.com/Excidion/tusk/blob/main/tests/test_primitives_transform.py) | tusk is ISO 1-7 (Monday = 1); featuretools is 0-6 (Monday = 0). |
 | Datetime transform | [`year`][tusk.primitives.Year] | [`year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Year.html) | ❓ |  |  |
 | Datetime transform | — | [`age`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Age.html) | ❌ |  | Needs a reference clock. |
 | Datetime transform | — | [`date_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToHoliday.html) | ❌ |  | Needs the `holidays` package. |

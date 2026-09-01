@@ -149,9 +149,9 @@ class TransformFeature(Feature):
         """Confirm the primitive transforms rather than aggregates.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_primitive_kind`, if it does not.
+        :func:`_reject_wrong_kind`, if it does not.
         """
-        _require_primitive_kind(self.primitive, TransformPrimitive, "transform")
+        _reject_wrong_kind(self.primitive, TransformPrimitive, "a transform feature")
 
     @property
     def name(self) -> str:
@@ -215,9 +215,13 @@ class AggregationFeature(Feature):
         """Confirm the primitive aggregates rather than transforms.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_primitive_kind`, if it does not.
+        :func:`_reject_wrong_kind`, if it does not.
         """
-        _require_primitive_kind(self.primitive, AggregationPrimitive, "aggregation")
+        _reject_wrong_kind(
+            self.primitive,
+            AggregationPrimitive,
+            "an aggregation feature",
+        )
 
     @property
     def name(self) -> str:
@@ -333,9 +337,9 @@ class GroupByTransformFeature(Feature):
         """Confirm the primitive transforms rather than aggregates.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_primitive_kind`, if it does not.
+        :func:`_reject_wrong_kind`, if it does not.
         """
-        _require_primitive_kind(self.primitive, TransformPrimitive, "transform")
+        _reject_wrong_kind(self.primitive, TransformPrimitive, "a transform feature")
 
     @property
     def name(self) -> str:
@@ -382,32 +386,23 @@ class GroupByTransformFeature(Feature):
         return self.primitive.display_output_names(self.display_name)
 
 
-def _require_primitive_kind(
+def _reject_wrong_kind(
     primitive: Primitive,
     required: type[Primitive],
-    needed: str,
+    where: str,
 ) -> None:
-    """Confirm a primitive is the kind its feature class requires.
+    """Confirm a primitive is the kind ``where`` requires.
 
     Args:
         primitive: The primitive to check.
-        required: The primitive base class the feature class requires.
-        needed: ``required``'s kind, ``"aggregation"`` or ``"transform"``.
+        required: The primitive base class required.
+        where: What is requiring it, named for the error message.
 
     Raises:
         PrimitiveError: If ``primitive`` is not an instance of ``required``.
     """
-    if isinstance(primitive, required):
-        return
-    is_aggregation = isinstance(primitive, AggregationPrimitive)
-    actual = "aggregation" if is_aggregation else "transform"
-    raise PrimitiveError(
-        f"{primitive.name!r} is {_article(actual)} {actual} primitive; "
-        f"{_article(needed)} {needed} feature needs {_article(needed)} "
-        f"{needed} primitive",
-    )
-
-
-def _article(word: str) -> str:
-    """Pick the indefinite article a following ``word`` needs."""
-    return "an" if word[0] in "aeiou" else "a"
+    if not isinstance(primitive, required):
+        raise PrimitiveError(
+            f"primitive mismatch: {primitive.name!r} in {where} is not "
+            f"{required.__name__}",
+        )

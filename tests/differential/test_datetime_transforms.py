@@ -2,8 +2,9 @@
 
 Each test builds one primitive on one side and the same primitive on the
 other, over a single table, and compares the one resulting column. Model:
-``tests/differential/test_aggregations.py``; this file is self-contained and
-does not import from it.
+``tests/differential/test_aggregations.py``; this file builds its own
+matrices rather than importing them, sharing only ``_as_tusk`` from
+:mod:`differential`.
 
 Run with: uv run --group validation pytest -m differential
 
@@ -15,6 +16,7 @@ import datetime as dt
 import pytest
 
 import tusk
+from differential import _as_tusk
 
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
@@ -134,29 +136,3 @@ def _tusk_matrix(frame, cutoff_time, primitive_name):
         cutoff_time=cutoff_time,
     )
     return matrix.collect().sort("id").to_pandas().set_index("id")
-
-
-def _as_tusk(name: str) -> str:
-    """Translate a featuretools feature name into tusk's column name.
-
-    Every construct featuretools spells with punctuation -- application,
-    argument separator, path step, multi-output index, groupby suffix --
-    tusk spells with ``__``.
-
-    Args:
-        name: A featuretools feature name, e.g. ``TIME_SINCE(occurred_at)``.
-
-    Returns:
-        The equivalent tusk column name, e.g. ``TIME_SINCE__occurred_at``.
-    """
-    for old, new in (
-        (" by ", "__by__"),
-        (", ", "__"),
-        ("(", "__"),
-        (")", ""),
-        ("[", "__"),
-        ("]", ""),
-        (".", "__"),
-    ):
-        name = name.replace(old, new)
-    return name

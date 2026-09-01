@@ -200,13 +200,13 @@ def test_time_since_holds_the_elapsed_time_on_duckdb(duck_db):
         features_only=True,
     )
     matrix = tusk.apply_features(features, database, cutoff_time=cutoff_time).df()
-    row = matrix.set_index("id")
+    rows_by_id = matrix.set_index("id")
     column = "TIME_SINCE__occurred_at"
-    assert column in row.columns
-    assert row.loc[100, column] == dt.timedelta(days=1, hours=23)
-    assert row.loc[101, column] == dt.timedelta(days=1, hours=22)
-    assert row.loc[102, column] == dt.timedelta(hours=23)
-    assert row.loc[103, column] == dt.timedelta(hours=22)
+    assert column in matrix.columns
+    assert rows_by_id.loc[100, column] == dt.timedelta(days=1, hours=23)
+    assert rows_by_id.loc[101, column] == dt.timedelta(days=1, hours=22)
+    assert rows_by_id.loc[102, column] == dt.timedelta(hours=23)
+    assert rows_by_id.loc[103, column] == dt.timedelta(hours=22)
 
 
 def test_quantiles_interpolates_linearly_on_duckdb(duck_db):

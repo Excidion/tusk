@@ -152,7 +152,7 @@ git commit -m "fix: stop calendar primitives matching Duration columns"
 
 **Interfaces:**
 - Consumes: `DtypeFamily.DATETIME` from Task 1.
-- Produces: `NeedsCutoffTime`, a frozen dataclass mixin with one field `cutoff_time: datetime | None = None`, importable from `tusk.primitives.base`. Also the registered primitive name `"time_since"`, whose output column for input `x` is `TIME_SINCE__x` with dtype `Duration`.
+- Produces: `NeedsCutoffTime`, a `Primitive` subclass whose `outputs()` takes `cutoff_time` as a keyword argument and forwards it to `build()`, importable from `tusk.primitives.base`. Nothing is stored on the instance. Also the registered primitive name `"time_since"`, whose output column for input `x` is `TIME_SINCE__x` with dtype `Duration`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -213,24 +213,50 @@ The `db` fixture is in `tests/conftest.py`; its `customers` table has `signed_up
 Run: `uv run pytest tests/test_primitives_transform.py -k time_since -v`
 Expected: FAIL with `NameError: TimeSince` / `ImportError: NeedsCutoffTime`.
 
-- [ ] **Step 3: Add the mixin**
+- [ ] **Step 3: Add the base class**
 
-In `src/tusk/primitives/base.py`, after the imports add `from dataclasses import dataclass` and `from datetime import datetime`, then at the end of the module:
+In `src/tusk/primitives/base.py`, after the imports add `from datetime import datetime`, then at the end of the module:
 
 ```python
-@dataclass(frozen=True)
-class NeedsCutoffTime:
-    """A primitive whose value is measured against the cutoff time.
+class NeedsCutoffTime(Primitive):
+    """A primitive that measures against the cutoff time.
 
-    Attributes:
-        cutoff_time: The moment values are measured against. The compiler
-            fills this in; a primitive built by hand carries None until then.
+    The cutoff time describes the question being asked rather than the
+    feature, so it is never stored on a primitive: the compiler passes it in
+    at the moment the expression is built. That is what lets one
+    :class:`~tusk.FeatureList` be applied at several cutoff times.
     """
 
-    cutoff_time: datetime | None = None
+    def outputs(self, *inputs: nw.Expr, cutoff_time: datetime) -> tuple[nw.Expr, ...]:
+        """Normalize :meth:`build` to a tuple of expressions.
+
+        Args:
+            *inputs: One expression per declared input.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            One expression per output column.
+        """
+        return _as_tuple(self.build(*inputs, cutoff_time=cutoff_time))
+
+    @abstractmethod
+    def build(
+        self,
+        *inputs: nw.Expr,
+        cutoff_time: datetime,
+    ) -> nw.Expr | Sequence[nw.Expr]:
+        """Build this primitive's narwhals expression.
+
+        Args:
+            *inputs: One expression per declared input.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            A single expression, or a sequence for multi-output primitives.
+        """
 ```
 
-The mixin is the marker: `isinstance(primitive, NeedsCutoffTime)` is what drives both validation and binding, so no parallel boolean flag can disagree with the type.
+`isinstance(primitive, NeedsCutoffTime)` is what drives both validation and binding, so no parallel boolean flag can disagree with the type. It subclasses `Primitive` rather than being a plain mixin because a mixin left the type checker reconciling two conflicting `outputs` signatures at the compiler's `isinstance` branch.
 
 - [ ] **Step 4: Add the primitive**
 
@@ -246,23 +272,24 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
     input_dtypes = (F.DATETIME,)
     output_dtype = nw.Duration
 
-    def build(self, expr: nw.Expr) -> nw.Expr:
+    def build(self, expr: nw.Expr, *, cutoff_time: datetime) -> nw.Expr:
         """Build the elapsed-time expression.
 
         Args:
             expr: A datetime expression.
+            cutoff_time: The moment the values are measured against.
 
         Returns:
             A narwhals expression of the duration since each value.
         """
-        return nw.lit(self.cutoff_time) - expr
+        return nw.lit(cutoff_time) - expr
 ```
 
 Place it in newspaper order relative to its neighbours. Do not add it to `TRANS_DEFAULTS`.
 
 - [ ] **Step 5: Validate and bind in the compiler**
 
-In `src/tusk/compiler.py`, import `dataclasses`, `ValidationError`, and `NeedsCutoffTime`.
+In `src/tusk/compiler.py`, import `ValidationError` and `NeedsCutoffTime`.
 
 In `compile_features`, after the existing `_reject_colliding_names(features)` call:
 
@@ -308,18 +335,28 @@ Change the `_apply` call site in `_table_frame` to pass the cutoff through:
         frame = _apply(frame, feature, database, cutoff_time)
 ```
 
-Then in `_apply`, add the parameter (documenting it in the docstring's `Args`) and bind before building:
+Then in `_apply`, add the parameter (documenting it in the docstring's `Args`) and thread it through a helper that passes `cutoff_time` as a keyword to `outputs()` only when the primitive needs it — nothing is ever assigned onto the primitive itself:
 
 ```python
-    primitive = feature.primitive
-    if isinstance(primitive, NeedsCutoffTime):
-        primitive = dataclasses.replace(primitive, cutoff_time=cutoff_time)
-    exprs = list(primitive.outputs(*inputs))
+    inputs = [nw.col(b.name) for b in feature.base_features]
+    exprs = list(_primitive_outputs(feature.primitive, inputs, cutoff_time))
 ```
 
-Leave the existing `getattr(feature.primitive, "order_dependent", False)` check reading from `feature.primitive`; only the expression build uses the bound copy.
+```python
+def _primitive_outputs(
+    primitive: Primitive,
+    inputs: Sequence[nw.Expr],
+    cutoff_time: datetime | None,
+) -> tuple[nw.Expr, ...]:
+    """Build a primitive's output expressions, threading the cutoff time when needed."""
+    if isinstance(primitive, NeedsCutoffTime) and cutoff_time is not None:
+        return primitive.outputs(*inputs, cutoff_time=cutoff_time)
+    return primitive.outputs(*inputs)
+```
 
-Binding for aggregation features is not part of this plan — no aggregation primitive uses `NeedsCutoffTime` yet.
+Leave the existing `getattr(feature.primitive, "order_dependent", False)` check reading from `feature.primitive`; it needs no cutoff time.
+
+Binding for aggregation features is not part of this task — no aggregation primitive uses `NeedsCutoffTime` yet. It is added in a later commit, once `_add_aggregations` also threads `cutoff_time` through `_primitive_outputs`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
@@ -492,6 +529,8 @@ git commit -m "test: cross-check time_since against featuretools and duckdb"
 **Spec coverage.** Dtype split, including `TIMESTAMP` for `hour` → Task 1. `dtype_selector` over the new families → Task 1. `NeedsCutoffTime`, validation, and passing the cutoff time to `build()` → Task 2. `time_since` → Task 2. `TimeSincePrevious` → Task 3. Differential parity, duckdb portability, coverage rows → Task 4. The regression tests for the `Duration` and `Date` crashes → Task 1.
 
 **Deviations from the original plan, both maintainer decisions.** The four duration extractors were dropped: tusk builds features, not encodings, and deep feature synthesis does not stack a transform on another transform's output, so composition could not have replaced featuretools' `unit=` parameter anyway. `age` and `total_years` were dropped because a year is not a well-defined duration.
+
+`NeedsCutoffTime` shipped as a `Primitive` subclass carrying no state, not the frozen-dataclass-mixin-with-a-`cutoff_time`-field this plan specified. Storing the value on the instance made it a constructor argument nobody wanted, guarded by a check that only fired where it ran; a plain mixin also left the type checker reconciling two conflicting `outputs` signatures at the compiler's `isinstance` branch. The compiler instead threads `cutoff_time` through as a keyword argument to `outputs()`/`build()`, both here and — once `8989b22` extended `_add_aggregations` the same way — on the aggregation path this plan said was out of scope.
 
 **Placeholders.** None: every code step carries the code, every test step the assertions, every run step the command and expected result.
 

@@ -23,13 +23,14 @@ class DtypeFamily(Enum):
     both families exist rather than one wider one.
 
     ``TEMPORAL``, ``DATETIME``, ``TIMESTAMP``, and ``DURATION`` exist as four
-    separate families for the same kind of reason: ``TEMPORAL`` is the union
-    kept for ``dtype_selector``; ``DATETIME`` covers both ``Date`` and
-    ``Datetime`` for calendar primitives like ``year`` that only need a
-    calendar position; ``TIMESTAMP`` narrows that further to ``Datetime``
-    alone, for a primitive like ``hour`` that needs a time of day, which a
-    bare ``Date`` does not carry; and ``DURATION`` is elapsed time, which a
-    calendar primitive cannot operate on even though it is temporal.
+    separate families for the same kind of reason: ``TEMPORAL`` matches
+    everything the narrow families do, plus ``Time``, and is kept broad for
+    ``dtype_selector``; ``DATETIME`` covers both ``Date`` and ``Datetime`` for
+    calendar primitives like ``year`` that only need a calendar position;
+    ``TIMESTAMP`` narrows that further to ``Datetime`` alone, for a primitive
+    like ``hour`` that needs a time of day, which a bare ``Date`` does not
+    carry; and ``DURATION`` is elapsed time, which a calendar primitive
+    cannot operate on even though it is temporal.
     """
 
     NUMERIC = "numeric"

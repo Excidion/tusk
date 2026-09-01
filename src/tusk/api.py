@@ -31,8 +31,9 @@ def deep_feature_synthesis(
 
     Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target table
     is unknown or the walk generates no features at all, and
-    :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive name or
-    an order-dependent primitive on a table with no ``row_creation_time``.
+    :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive name, an
+    order-dependent primitive on a table with no ``row_creation_time``, or a
+    primitive of the wrong kind for the argument it was passed to.
     Compilation raises :class:`~tusk.exceptions.SchemaError` if the target
     table has no ``primary_key``, and whatever :func:`apply_features`
     documents for ``cutoff_time``.

@@ -7,6 +7,7 @@ import pytest
 import tusk
 from tusk.compiler import compile_features
 from tusk.database import Relationship
+from tusk.dtypes import DtypeFamily as F
 from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
@@ -29,6 +30,7 @@ class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
     """
 
     name = "cutoff_aggregation_direct"
+    input_dtypes = (F.DATETIME,)
 
     def build(self, *inputs, cutoff_time):
         return (nw.lit(cutoff_time) - inputs[0]).min()
@@ -124,6 +126,34 @@ def test_a_hand_built_cutoff_time_aggregation_computes(db):
     feature = AggregationFeature(CutoffAggregation(), (OCCURRED_AT,), SESSION_TX)
     cutoff_time = datetime(2024, 3, 10)
     got = collect([feature], db, cutoff_time=cutoff_time)
+    assert got[feature.name].to_list() == [
+        timedelta(days=5, hours=22),
+        timedelta(days=4, hours=22),
+        None,
+    ]
+
+
+def test_a_dfs_synthesized_cutoff_time_aggregation_computes(db):
+    """A cutoff-measuring aggregation computes when reached through DFS.
+
+    test_a_hand_built_cutoff_time_aggregation_computes above pins
+    _add_aggregations in isolation, by constructing an AggregationFeature
+    directly -- which skips resolve() and synthesize() entirely. This drives
+    the same primitive through deep_feature_synthesis so resolve(),
+    synthesize() and compile_features() are all exercised end to end, the way
+    a caller actually reaches _add_aggregations. Expected values match
+    test_a_hand_built_cutoff_time_aggregation_computes.
+    """
+    feature_matrix, features = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="sessions",
+        agg_primitives=[CutoffAggregation()],
+        trans_primitives=[],
+        max_depth=1,
+        cutoff_time=datetime(2024, 3, 10),
+    )
+    (feature,) = [f for f in features if isinstance(f, AggregationFeature)]
+    got = feature_matrix.collect().sort("id")
     assert got[feature.name].to_list() == [
         timedelta(days=5, hours=22),
         timedelta(days=4, hours=22),

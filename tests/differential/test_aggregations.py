@@ -2,8 +2,9 @@
 
 Each test builds one primitive on one side and the same primitive on the
 other, over a single parent/child pair, and compares the one resulting
-column. Model: ``tests/differential/test_vs_featuretools.py``; this file is
-self-contained and does not import from it.
+column. Model: ``tests/differential/test_vs_featuretools.py``; this file
+builds its own matrices rather than importing them, sharing only
+``_as_tusk`` from :mod:`differential`.
 
 Run with: uv run --group validation pytest -m differential
 
@@ -13,6 +14,7 @@ Verified against featuretools 1.31.0.
 import pytest
 
 import tusk
+from differential import _as_tusk
 
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
@@ -172,29 +174,3 @@ def _tusk_matrix(parents, children, primitive_name):
         max_depth=1,
     )
     return matrix.collect().sort("id").to_pandas().set_index("id")
-
-
-def _as_tusk(name: str) -> str:
-    """Translate a featuretools feature name into tusk's column name.
-
-    Every construct featuretools spells with punctuation -- application,
-    argument separator, path step, multi-output index, groupby suffix --
-    tusk spells with ``__``.
-
-    Args:
-        name: A featuretools feature name, e.g. ``MEDIAN(children.value)``.
-
-    Returns:
-        The equivalent tusk column name, e.g. ``MEDIAN__children__value``.
-    """
-    for old, new in (
-        (" by ", "__by__"),
-        (", ", "__"),
-        ("(", "__"),
-        (")", ""),
-        ("[", "__"),
-        ("]", ""),
-        (".", "__"),
-    ):
-        name = name.replace(old, new)
-    return name

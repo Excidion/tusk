@@ -151,7 +151,7 @@ primitives apply to which columns:
 | Family | Matches |
 | --- | --- |
 | `"numeric"` | integers and floats |
-| `"temporal"` | `Date`, `Datetime`, `Duration` (the union of `"datetime"`, `"timestamp"`, and `"duration"`) |
+| `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` — everything `"datetime"`, `"timestamp"`, and `"duration"` match, plus `Time` |
 | `"datetime"` | `Date`, `Datetime` |
 | `"timestamp"` | `Datetime` |
 | `"duration"` | `Duration` |

@@ -10,8 +10,12 @@ everything pushed down to the backend.
 `n_unique`, `percent_true`, `quantiles`.
 
 **Transform** — `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
-`absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
+`time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric`.
+
+`time_since` is the one transform that needs more than its input column: it
+requires a `cutoff_time` at apply time, since its value is measured against
+that moment rather than derived from the row alone.
 
 **Order-dependent** (require a `row_creation_time` on the table) — `cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`.

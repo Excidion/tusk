@@ -1,7 +1,10 @@
+from dataclasses import dataclass
+
 import narwhals as nw
 import pytest
 
 from tusk.database import Relationship
+from tusk.dtypes import DtypeFamily as F
 from tusk.exceptions import PrimitiveError
 from tusk.features import (
     AggregationFeature,
@@ -11,12 +14,32 @@ from tusk.features import (
     TransformFeature,
 )
 from tusk.primitives.aggregation import Count, Mean, Quantiles
+from tusk.primitives.base import Primitive
 from tusk.primitives.registry import resolve
 
 CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
 
 amount = IdentityFeature("transactions", "amount", nw.Float64())
+
+
+@dataclass(frozen=True)
+class Neither(Primitive):
+    """A primitive that is neither an aggregation nor a transform primitive.
+
+    Stands in for a custom primitive that subclasses only
+    :class:`~tusk.primitives.base.Primitive`, or only
+    :class:`~tusk.primitives.base.NeedsCutoffTime`, to exercise the case
+    :func:`~tusk.features._require_primitive_kind` cannot name a rejected
+    primitive's actual kind for.
+    """
+
+    name = "neither"
+    input_dtypes = (F.NUMERIC,)
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Pass the input through unchanged."""
+        return expr
 
 
 def test_identity_feature():
@@ -96,3 +119,14 @@ def test_transform_feature_rejects_an_aggregation_primitive():
 def test_aggregation_feature_rejects_a_transform_primitive():
     with pytest.raises(PrimitiveError, match="'month'.*aggregation"):
         AggregationFeature(resolve("month"), (amount,), SESSION_TX)
+
+
+def test_transform_feature_rejects_a_primitive_of_neither_kind():
+    with pytest.raises(
+        PrimitiveError,
+        match=(
+            "primitive mismatch: 'neither' in a transform feature is not "
+            "TransformPrimitive"
+        ),
+    ):
+        TransformFeature(Neither(), (amount,))

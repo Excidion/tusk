@@ -702,7 +702,7 @@ def test_agg_primitives_rejects_a_transform_primitive(db):
     """
     with pytest.raises(
         tusk.exceptions.PrimitiveError,
-        match="'year'.*aggregation primitive",
+        match="'year'.*agg_primitives",
     ):
         synthesize(
             db,
@@ -723,7 +723,7 @@ def test_agg_primitives_rejects_a_cutoff_time_transform_primitive(db):
     """
     with pytest.raises(
         tusk.exceptions.PrimitiveError,
-        match="'time_since'.*aggregation primitive",
+        match="'time_since'.*agg_primitives",
     ):
         synthesize(
             db,
@@ -745,7 +745,7 @@ def test_trans_primitives_rejects_an_aggregation_primitive(db):
     """
     with pytest.raises(
         tusk.exceptions.PrimitiveError,
-        match="'sum'.*transform primitive",
+        match="'sum'.*trans_primitives",
     ):
         synthesize(
             db,
@@ -766,7 +766,7 @@ def test_trans_primitives_rejects_a_zero_input_aggregation_primitive(db):
     """
     with pytest.raises(
         tusk.exceptions.PrimitiveError,
-        match="'count'.*transform primitive",
+        match="'count'.*trans_primitives",
     ):
         synthesize(
             db,
@@ -775,6 +775,57 @@ def test_trans_primitives_rejects_a_zero_input_aggregation_primitive(db):
             trans_primitives=["count"],
             groupby_trans_primitives=[],
             max_depth=1,
+        )
+
+
+def test_groupby_trans_primitives_rejects_an_aggregation_primitive(db):
+    """``sum`` is an AggregationPrimitive; groupby_trans_primitives requires a
+    TransformPrimitive.
+
+    This call site had no test, so a copy-paste error here -- the wrong
+    argument name in the message, or the wrong required type -- would pass
+    the suite unnoticed.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'sum'.*groupby_trans_primitives",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=[],
+            groupby_trans_primitives=["sum"],
+            max_depth=1,
+        )
+
+
+def test_agg_primitives_rejects_a_transform_primitive_even_with_no_matching_column():
+    """``hour`` in agg_primitives must raise even when no column could match it.
+
+    Without the eager check, resolve_all() accepts ``hour``, and since the
+    child table here has no datetime column, the walk never constructs an
+    AggregationFeature for it either -- so the mistake would surface only as
+    an UnmatchedPrimitiveWarning blaming dtypes, not as the wrong-argument
+    mistake it actually is.
+    """
+    db = (
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1], "n": [1.0]}), primary_key="id")
+        .add_table("c", pl.LazyFrame({"id": [1], "p_id": [1]}), primary_key="id")
+        .add_relationship(parent="p", child="c", foreign_key="p_id")
+    )
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'hour'.*agg_primitives",
+    ):
+        synthesize(
+            db,
+            "p",
+            agg_primitives=["hour"],
+            trans_primitives=["absolute"],
+            groupby_trans_primitives=[],
+            max_depth=2,
         )
 
 

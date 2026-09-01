@@ -12,6 +12,8 @@
 
 ::: tusk.primitives.TransformPrimitive
 
+::: tusk.primitives.NeedsCutoffTime
+
 ## Registry
 
 ::: tusk.primitives.register

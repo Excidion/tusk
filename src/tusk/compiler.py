@@ -99,6 +99,30 @@ def _reject_colliding_names(features: Sequence[Feature]) -> None:
                 )
 
 
+def _closure(features: Sequence[Feature]) -> set[Feature]:
+    """Expand features to include every feature they are computed from.
+
+    A requested feature's inputs must exist as columns before it can be
+    computed, so the compiler always works over the transitive closure rather
+    than the caller's list.
+
+    Args:
+        features: Starting features.
+
+    Returns:
+        The features plus all of their transitive bases.
+    """
+    out: set[Feature] = set()
+    stack = list(features)
+    while stack:
+        feature = stack.pop()
+        if feature in out:
+            continue
+        out.add(feature)
+        stack.extend(feature.base_features)
+    return out
+
+
 def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -> None:
     """Fail if a primitive measures against a cutoff time that was not given.
 
@@ -122,30 +146,6 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
             f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
             "when applying the features",
         )
-
-
-def _closure(features: Sequence[Feature]) -> set[Feature]:
-    """Expand features to include every feature they are computed from.
-
-    A requested feature's inputs must exist as columns before it can be
-    computed, so the compiler always works over the transitive closure rather
-    than the caller's list.
-
-    Args:
-        features: Starting features.
-
-    Returns:
-        The features plus all of their transitive bases.
-    """
-    out: set[Feature] = set()
-    stack = list(features)
-    while stack:
-        feature = stack.pop()
-        if feature in out:
-            continue
-        out.add(feature)
-        stack.extend(feature.base_features)
-    return out
 
 
 def _base_frame(
