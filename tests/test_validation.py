@@ -502,6 +502,23 @@ def test_any_cutoff_passes_against_a_timeless_database():
     check_cutoff_time_zone(db, dt.datetime(2026, 1, 1))
 
 
+def test_a_cutoff_falls_back_to_datetime_column_awareness_with_no_row_creation_time():
+    # time_since subtracts the cutoff from any Datetime column, so awareness
+    # still matters even where nothing declares row_creation_time.
+    aware_at = dt.datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))
+    db = tusk.Database("x").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "at": [aware_at]}),
+        primary_key="id",
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_cutoff_time_zone(db, dt.datetime(2026, 1, 1))
+    assert "is tz-naive" in str(excinfo.value)
+    assert "tz-aware" in str(excinfo.value)
+
+    check_cutoff_time_zone(db, dt.datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")))
+
+
 def test_a_utc_offset_of_zero_still_counts_as_aware():
     # tzinfo is not None is not enough on its own; utcoffset() is the test.
     with pytest.raises(ValidationError, match="is tz-aware"):

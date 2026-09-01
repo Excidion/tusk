@@ -56,6 +56,7 @@ with no sessions gets:
 | `N_UNIQUE` | `0` | Zero rows hold zero distinct values. Nulls are not values either, so a group of only nulls is also `0`. |
 | `SUM` | `0` | The additive identity. |
 | `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
+| `PERCENT_TRUE` | `null` | Undefined over an empty set, same as `MEAN`. Within a non-empty group a null counts as false, so an all-null group computes to `0.0` rather than falling through to this default. |
 
 The split is not arbitrary. Reporting `COUNT = 0` asserts we *know* there were
 no rows; a null `SUM` beside it would claim the total is unknown, which

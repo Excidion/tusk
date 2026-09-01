@@ -1,4 +1,5 @@
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import narwhals as nw
 import polars as pl
@@ -170,6 +171,30 @@ def test_cutoff_time_is_not_a_constructor_argument():
     # before it can ever run.
     with pytest.raises(TypeError, match="cutoff_time"):
         TimeSince(**{"cutoff_time": dt.datetime(2024, 3, 1)})
+
+
+def test_time_since_rejects_a_mismatched_cutoff_with_no_row_creation_time():
+    """time_since measures against cutoff_time even with no row_creation_time
+    declared, so the tz mismatch must surface as ValidationError -- not as a
+    raw backend error naming a narwhals expression.
+    """
+    db = tusk.Database("x").add_table(
+        "events",
+        pl.LazyFrame(
+            {"id": [1], "at": [dt.datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))]},
+        ),
+        primary_key="id",
+    )
+    with pytest.raises(ValidationError, match="tz-naive"):
+        matrix, _ = tusk.deep_feature_synthesis(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=["time_since"],
+            max_depth=1,
+            cutoff_time=dt.datetime(2026, 1, 1),
+        )
+        matrix.collect()
 
 
 def test_deep_feature_synthesis_computes_time_since_with_a_cutoff_time(db):

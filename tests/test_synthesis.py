@@ -208,18 +208,20 @@ def test_hour_applies_to_a_time_column_but_year_does_not():
         ),
         primary_key="id",
     )
-    got = names(
-        synthesize(
-            db,
-            "events",
-            agg_primitives=[],
-            trans_primitives=["hour", "year"],
-            groupby_trans_primitives=[],
-            max_depth=1,
-        ),
+    features = synthesize(
+        db,
+        "events",
+        agg_primitives=[],
+        trans_primitives=["hour", "year"],
+        groupby_trans_primitives=[],
+        max_depth=1,
     )
+    got = names(features)
     assert "HOUR__started_at" in got
     assert "YEAR__started_at" not in got
+
+    matrix = features.apply(db).collect().sort("id")
+    assert matrix["HOUR__started_at"].to_list() == [9, 14]
 
 
 def test_row_creation_time_is_available_as_a_transform_input(db):

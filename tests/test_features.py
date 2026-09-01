@@ -28,9 +28,8 @@ class Neither(Primitive):
     """A primitive that is neither an aggregation nor a transform primitive.
 
     Stands in for a custom primitive that subclasses only
-    :class:`~tusk.primitives.base.Primitive`, or only
-    :class:`~tusk.primitives.base.NeedsCutoffTime`, to exercise the case
-    :func:`~tusk.features._require_primitive_kind` cannot name a rejected
+    :class:`~tusk.primitives.base.Primitive`, to exercise the case
+    :func:`~tusk.features._reject_wrong_kind` cannot name a rejected
     primitive's actual kind for.
     """
 

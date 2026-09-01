@@ -184,22 +184,31 @@ def check_row_creation_time_awareness(database: Database) -> bool | None:
 
 
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
-    """Confirm a cutoff matches the database's row creation times in tz awareness.
+    """Confirm a cutoff matches the database's tz awareness.
 
-    Reads the schemas only. A timeless database accepts any cutoff.
+    Reads the schemas only. Row creation times decide awareness when any
+    table declares one; otherwise any Datetime column does, since
+    ``time_since`` subtracts the cutoff from those directly regardless of
+    whether anything gets filtered. A database with no Datetime column at all
+    accepts any cutoff.
 
     Args:
-        database: The database the cutoff will filter.
+        database: The database the cutoff will measure against.
         cutoff_time: The cutoff.
 
     Raises:
         ValidationError: If the cutoff's time zone awareness differs from the
-            row creation times', or if those disagree among themselves.
+            database's, or if the row creation times disagree among
+            themselves.
     """
-    # A tz-aware timestamp and a naive one have no defined ordering: the
-    # filter would either raise inside the backend or coerce one side and cut
-    # at the wrong instant.
+    # A tz-aware timestamp and a naive one have no defined ordering: filtering
+    # would raise inside the backend, and subtracting one from the other --
+    # time_since -- fails the same way even where nothing is filtered.
+    described_as = "row creation times"
     database_aware = check_row_creation_time_awareness(database)
+    if database_aware is None:
+        described_as = "Datetime columns"
+        database_aware = _any_datetime_column_awareness(database)
     if database_aware is None:
         return
 
@@ -209,9 +218,32 @@ def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
 
     raise ValidationError(
         f"cutoff_time {cutoff_time!r} is "
-        f"tz-{'aware' if cutoff_aware else 'naive'}, but the database's row "
-        f"creation times are tz-{'aware' if database_aware else 'naive'}",
+        f"tz-{'aware' if cutoff_aware else 'naive'}, but the database's "
+        f"{described_as} are tz-{'aware' if database_aware else 'naive'}",
     )
+
+
+def _any_datetime_column_awareness(database: Database) -> bool | None:
+    """Report the tz awareness of one Datetime column in the database.
+
+    Used only when no table declares a ``row_creation_time``.
+    ``check_consistent_time_zones`` guarantees every Datetime column in a
+    validated database agrees, but that is a separate check the caller may
+    not have run, so this reads only one column rather than assuming
+    agreement.
+
+    Args:
+        database: The database to inspect.
+
+    Returns:
+        awareness: ``True`` if the column found is tz-aware, ``False`` if
+            naive, ``None`` if the database has no Datetime column.
+    """
+    for table in database.table_names:
+        for dtype in database.schema(table).dtypes.values():
+            if dtype == nw.Datetime:
+                return dtype.time_zone is not None
+    return None
 
 
 def check_matching_key_dtypes(database: Database, relationship: Relationship) -> None:
