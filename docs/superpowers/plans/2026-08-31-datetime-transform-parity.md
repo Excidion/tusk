@@ -4,7 +4,7 @@
 
 **Goal:** Give tusk a `time_since` transform measured against the cutoff time, returning a `Duration`, and the dtype families needed for a duration to be routed rather than mis-matched.
 
-**Architecture:** `DtypeFamily.TEMPORAL` splits into narrower `DATETIME`, `TIMESTAMP` and `DURATION` families so each primitive matches only columns it can compute over. `NeedsCutoffTime` primitives store nothing: the compiler passes the cutoff time to `outputs()`, which forwards it to `build()`, so one `FeatureList` stays applicable at several cutoff times.
+**Architecture:** `DtypeFamily.TEMPORAL` splits into narrower `HAS_DATE`, `HAS_TIME` and `DURATION` families, named for the operation a primitive needs and overlapping on `Datetime`, so each primitive matches only columns it can compute over. `NeedsCutoffTime` primitives store nothing: the compiler passes the cutoff time to `outputs()`, which forwards it to `build()`, so one `FeatureList` stays applicable at several cutoff times.
 
 **Tech Stack:** Python 3.10+, narwhals (backend-agnostic expressions), polars (test backend), duckdb (SQL portability tests), pytest, featuretools 1.31.0 (differential reference only).
 
@@ -24,7 +24,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/tusk/dtypes.py` | Modify: add `DATETIME` and `DURATION` families and their `matches()` branches |
+| `src/tusk/dtypes.py` | Modify: add `HAS_DATE`, `HAS_TIME` and `DURATION` families and their `matches()` branches |
 | `src/tusk/primitives/base.py` | Modify: add the `NeedsCutoffTime` mixin |
 | `src/tusk/primitives/transform.py` | Modify: narrow the calendar primitives; add `TimeSince`; change `TimeSincePrevious` to return `Duration` |
 | `src/tusk/compiler.py` | Modify: validate the cutoff time is present, and bind it into row-wise primitives |
@@ -526,7 +526,7 @@ git commit -m "test: cross-check time_since against featuretools and duckdb"
 
 ## Self-Review
 
-**Spec coverage.** Dtype split, including `TIMESTAMP` for `hour` → Task 1. `dtype_selector` over the new families → Task 1. `NeedsCutoffTime`, validation, and passing the cutoff time to `build()` → Task 2. `time_since` → Task 2. `TimeSincePrevious` → Task 3. Differential parity, duckdb portability, coverage rows → Task 4. The regression tests for the `Duration` and `Date` crashes → Task 1.
+**Spec coverage.** Dtype split, including `HAS_TIME` for `hour` → Task 1. `dtype_selector` over the new families → Task 1. `NeedsCutoffTime`, validation, and passing the cutoff time to `build()` → Task 2. `time_since` → Task 2. `TimeSincePrevious` → Task 3. Differential parity, duckdb portability, coverage rows → Task 4. The regression tests for the `Duration` and `Date` crashes → Task 1.
 
 **Deviations from the original plan, both maintainer decisions.** The four duration extractors were dropped: tusk builds features, not encodings, and deep feature synthesis does not stack a transform on another transform's output, so composition could not have replaced featuretools' `unit=` parameter anyway. `age` and `total_years` were dropped because a year is not a well-defined duration.
 
@@ -534,4 +534,4 @@ git commit -m "test: cross-check time_since against featuretools and duckdb"
 
 **Placeholders.** None: every code step carries the code, every test step the assertions, every run step the command and expected result.
 
-**Type consistency.** Family names `DATETIME`/`TIMESTAMP`/`DURATION` are identical across tasks. `time_since` and `time_since_previous` are the only registered names this plan adds or changes, and both return `nw.Duration`. Output column names follow `generate_name`'s `__`-joined form throughout.
+**Type consistency.** Family names `HAS_DATE`/`HAS_TIME`/`DURATION` are identical across tasks. `time_since` and `time_since_previous` are the only registered names this plan adds or changes, and both return `nw.Duration`. Output column names follow `generate_name`'s `__`-joined form throughout.

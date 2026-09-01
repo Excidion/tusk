@@ -151,9 +151,9 @@ primitives apply to which columns:
 | Family | Matches |
 | --- | --- |
 | `"numeric"` | integers and floats |
-| `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` — everything `"datetime"`, `"timestamp"`, and `"duration"` match, plus `Time` |
-| `"datetime"` | `Date`, `Datetime` |
-| `"timestamp"` | `Datetime` |
+| `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` — every temporal dtype |
+| `"has_date"` | `Date`, `Datetime` — columns a calendar position can be read from |
+| `"has_time"` | `Datetime`, `Time` — columns an hour or minute can be read from |
 | `"duration"` | `Duration` |
 | `"string"` | `String` |
 | `"categorical"` | `Categorical`, `Enum` |

@@ -113,7 +113,7 @@ def test_transforms_respect_dtype_families():
             max_depth=1,
         ),
     )
-    # month requires DATETIME: it takes occurred_at and not amount.
+    # month requires HAS_DATE: it takes occurred_at and not amount.
     assert "MONTH__occurred_at" in got
     assert "MONTH__amount" not in got
     # absolute requires NUMERIC: it takes amount and not occurred_at.
@@ -159,9 +159,10 @@ def test_calendar_primitives_skip_a_duration_column():
 def test_hour_skips_a_date_column_but_month_does_not():
     """Date carries no time of day, so HOUR must not be generated for it.
 
-    Before TIMESTAMP existed, Hour declared DATETIME, which a Date
+    Before HAS_TIME existed, Hour declared DATETIME, which a Date
     satisfies, so DFS generated HOUR(date) and polars raised
     InvalidOperationError: 'hour' operation not supported for dtype 'date'.
+    Date is not in HAS_TIME today for the same reason.
     """
     db = tusk.Database("dtypes").add_table(
         "events",
@@ -188,6 +189,37 @@ def test_hour_skips_a_date_column_but_month_does_not():
     assert "HOUR__occurred_on" not in got
     assert "MONTH__occurred_at" in got
     assert "MONTH__occurred_on" in got
+
+
+def test_hour_applies_to_a_time_column_but_year_does_not():
+    """A Time column carries a time of day but no calendar date.
+
+    HAS_TIME matches Time, so hour can now be computed on it -- a capability
+    the DATETIME/TIMESTAMP split never provided, since Time matched neither
+    family. HAS_DATE excludes Time, since a bare time of day carries no year.
+    """
+    db = tusk.Database("dtypes").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "started_at": [dt.time(9, 30), dt.time(14, 15)],
+            },
+        ),
+        primary_key="id",
+    )
+    got = names(
+        synthesize(
+            db,
+            "events",
+            agg_primitives=[],
+            trans_primitives=["hour", "year"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        ),
+    )
+    assert "HOUR__started_at" in got
+    assert "YEAR__started_at" not in got
 
 
 def test_row_creation_time_is_available_as_a_transform_input(db):

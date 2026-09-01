@@ -137,8 +137,8 @@ def test_time_since_measures_from_the_cutoff_time():
     ]
 
 
-def test_time_since_needs_a_datetime_input():
-    assert TimeSince().input_dtypes == (DtypeFamily.DATETIME,)
+def test_time_since_needs_a_has_date_input():
+    assert TimeSince().input_dtypes == (DtypeFamily.HAS_DATE,)
     assert isinstance(TimeSince(), NeedsCutoffTime)
 
 

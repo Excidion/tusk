@@ -30,7 +30,7 @@ class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
     """
 
     name = "cutoff_aggregation_direct"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
 
     def build(self, *inputs, cutoff_time):
         return (nw.lit(cutoff_time) - inputs[0]).min()

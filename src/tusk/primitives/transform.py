@@ -25,7 +25,7 @@ class Year(TransformPrimitive):
     """Calendar year."""
 
     name = "year"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Int32
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -46,7 +46,7 @@ class Month(TransformPrimitive):
     """Calendar month, 1-12."""
 
     name = "month"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Int8
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -67,7 +67,7 @@ class Day(TransformPrimitive):
     """Day of month, 1-31."""
 
     name = "day"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Int8
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -88,7 +88,7 @@ class Hour(TransformPrimitive):
     """Hour of day, 0-23."""
 
     name = "hour"
-    input_dtypes = (F.TIMESTAMP,)
+    input_dtypes = (F.HAS_TIME,)
     output_dtype = nw.Int8
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -109,7 +109,7 @@ class Weekday(TransformPrimitive):
     """ISO weekday, 1 (Monday) to 7 (Sunday)."""
 
     name = "weekday"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Int8
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -130,7 +130,7 @@ class IsWeekend(TransformPrimitive):
     """Whether the date falls on a Saturday or Sunday."""
 
     name = "is_weekend"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Boolean
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -385,7 +385,7 @@ class TimeSincePrevious(TransformPrimitive):
     """Time elapsed since the previous row in row-creation order."""
 
     name = "time_since_previous"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Duration
     order_dependent = True
 
@@ -407,7 +407,7 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
     """Time elapsed from a datetime to the cutoff time."""
 
     name = "time_since"
-    input_dtypes = (F.DATETIME,)
+    input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Duration
 
     def build(self, expr: nw.Expr, *, cutoff_time: datetime) -> nw.Expr:

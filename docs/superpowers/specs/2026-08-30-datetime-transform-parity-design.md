@@ -39,7 +39,7 @@ These were settled with the maintainer.
 3. **Elapsed time is a `Duration`, and stays one.** tusk builds features, not
    encodings; converting a duration to a number is the caller's choice, as it
    is for a string. No extractor primitives.
-4. **`TEMPORAL` splits** into `DATETIME`, `TIMESTAMP` and `DURATION` so each
+4. **`TEMPORAL` splits** into `HAS_DATE`, `HAS_TIME` and `DURATION` so each
    primitive matches only the columns it can actually compute over.
 5. **No years anywhere.** A year is not a well-defined duration, so `age` and
    `total_years` are both out of scope. `age` keeps its ❌ row.
@@ -57,18 +57,25 @@ removed, and two narrower families are added beneath it.
 | Family | Matches | Purpose |
 | --- | --- | --- |
 | `TEMPORAL` | `dtype.is_temporal()` — unchanged | `dtype_selector("temporal")` keeps working |
-| `DATETIME` | `Datetime`, `Date` | Calendar primitives |
-| `TIMESTAMP` | `Datetime` | Time-of-day primitives, e.g. `hour` |
+| `HAS_DATE` | `Datetime`, `Date` | Calendar primitives |
+| `HAS_TIME` | `Datetime`, `Time` | Time-of-day primitives, e.g. `hour` |
 | `DURATION` | `Duration` | Routed downstream by `dtype_selector` |
+
+`HAS_DATE` and `HAS_TIME` are named for the operation a primitive needs
+rather than for a single dtype, and they deliberately overlap on `Datetime`
+rather than partition the temporal dtypes: a `Time` column has no calendar
+date, so it is outside `HAS_DATE`, but it does carry an hour, so `HAS_TIME`
+covers it too — a capability the original `DATETIME`/`TIMESTAMP` split never
+gave `hour`, since `Time` matched neither family.
 
 `matches()` gains the three branches. Every primitive currently declaring
 `F.TEMPORAL` narrows: `day`, `month`, `year`, `weekday`, `is_weekend` and
-`time_since_previous` to `F.DATETIME`, and `hour` to `F.TIMESTAMP`. That
+`time_since_previous` to `F.HAS_DATE`, and `hour` to `F.HAS_TIME`. That
 narrowing is what fixes the crash above — a `Duration` column stops matching
 any of them, and `hour` additionally stops matching a `Date` column, which
 raises the same way (`'hour' operation not supported for dtype 'date'`).
 
-`dtype_selector("datetime")` and `dtype_selector("duration")` follow with no
+`dtype_selector("has_date")` and `dtype_selector("duration")` follow with no
 new code, because the selector is generic over `DtypeFamily`. They are the
 supported way for a user to route a raw duration column into their own encoder
 in a `ColumnTransformer`, and are tested and documented as such rather than
@@ -123,7 +130,7 @@ path**, so a `NeedsCutoffTime` aggregation computes rather than being refused.
 
 | Registry name | Input | Output | Expression |
 | --- | --- | --- | --- |
-| `time_since` | `DATETIME` | `Duration` | `lit(cutoff_time) - expr` |
+| `time_since` | `HAS_DATE` | `Duration` | `lit(cutoff_time) - expr` |
 
 `time_since` is `cutoff_time - value`, so a past timestamp yields a positive
 duration and a timestamp after the cutoff yields a negative one. This is
@@ -208,7 +215,7 @@ following the per-group harness established in
 
 **Selectors**
 - `dtype_selector("temporal")` selects `Datetime`, `Date` and `Duration`
-  columns; `dtype_selector("datetime")`, `("timestamp")` and `("duration")`
+  columns; `dtype_selector("has_date")`, `("has_time")` and `("duration")`
   each select only their own.
 
 **Portability**

@@ -72,33 +72,39 @@ def test_string_family_still_excludes_categorical_and_enum():
     assert not matches(schema["e"], DtypeFamily.STRING)
 
 
-def test_duration_is_temporal_but_not_datetime():
+def test_duration_is_temporal_but_not_has_date():
     """A Duration is temporal, yet must not match the calendar family.
 
-    Calendar primitives declare DATETIME. Before the split they declared
+    Calendar primitives declare HAS_DATE. Before the split they declared
     TEMPORAL, which a Duration satisfies, so DFS generated YEAR(duration)
     and polars raised InvalidOperationError.
     """
     duration = nw.Duration()
     assert matches(duration, DtypeFamily.TEMPORAL)
     assert matches(duration, DtypeFamily.DURATION)
-    assert not matches(duration, DtypeFamily.DATETIME)
+    assert not matches(duration, DtypeFamily.HAS_DATE)
 
 
-def test_datetime_and_date_are_datetime_but_not_duration():
+def test_datetime_and_date_have_date_but_not_duration():
     for dtype in (nw.Datetime(), nw.Date()):
         assert matches(dtype, DtypeFamily.TEMPORAL)
-        assert matches(dtype, DtypeFamily.DATETIME)
+        assert matches(dtype, DtypeFamily.HAS_DATE)
         assert not matches(dtype, DtypeFamily.DURATION)
 
 
-def test_timestamp_matches_datetime_but_not_date_or_duration():
-    """A Date carries no time of day, so it must not match TIMESTAMP.
+def test_has_time_matches_datetime_and_time_but_not_date_or_duration():
+    """A Date carries no time of day, so it must not match HAS_TIME.
 
-    Hour declares TIMESTAMP. Before this family existed it declared
+    Hour declares HAS_TIME. Before this family existed it declared
     DATETIME, which a Date satisfies, so DFS generated HOUR(date) and polars
     raised InvalidOperationError.
     """
-    assert matches(nw.Datetime(), DtypeFamily.TIMESTAMP)
-    assert not matches(nw.Date(), DtypeFamily.TIMESTAMP)
-    assert not matches(nw.Duration(), DtypeFamily.TIMESTAMP)
+    assert matches(nw.Datetime(), DtypeFamily.HAS_TIME)
+    assert matches(nw.Time(), DtypeFamily.HAS_TIME)
+    assert not matches(nw.Date(), DtypeFamily.HAS_TIME)
+    assert not matches(nw.Duration(), DtypeFamily.HAS_TIME)
+
+
+def test_has_date_excludes_time():
+    """A bare time of day carries no calendar date to read year/month from."""
+    assert not matches(nw.Time(), DtypeFamily.HAS_DATE)

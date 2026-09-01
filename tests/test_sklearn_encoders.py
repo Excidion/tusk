@@ -59,7 +59,7 @@ def test_dtype_selector_rejects_an_unknown_family():
         dtype_selector("texty")
 
 
-def test_dtype_selector_separates_datetime_from_duration():
+def test_dtype_selector_separates_has_date_from_duration():
     """The narrow families are the supported way to route a duration column."""
     frame = pl.DataFrame(
         {
@@ -68,9 +68,21 @@ def test_dtype_selector_separates_datetime_from_duration():
             "n": [1],
         },
     )
-    assert dtype_selector("datetime")(frame) == ["when"]
+    assert dtype_selector("has_date")(frame) == ["when"]
     assert dtype_selector("duration")(frame) == ["elapsed"]
     assert dtype_selector("temporal")(frame) == ["when", "elapsed"]
+
+
+def test_dtype_selector_has_time_matches_datetime_and_time_only():
+    """HAS_TIME routes a bare time-of-day column alongside a full datetime."""
+    frame = pl.DataFrame(
+        {
+            "when": [dt.datetime(2024, 1, 1)],
+            "at": [dt.time(9, 30)],
+            "on": [dt.date(2024, 1, 1)],
+        },
+    )
+    assert dtype_selector("has_time")(frame) == ["when", "at"]
 
 
 def test_dtype_selector_reevaluates_on_a_subset():
