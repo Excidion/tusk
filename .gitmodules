@@ -1,0 +1,6 @@
+[submodule "agents/constitution"]
+	path = agents/constitution
+	url = https://github.com/kenn-io/constitution.git
+[submodule "agents/style"]
+	path = agents/style
+	url = https://github.com/Excidion/style.git
