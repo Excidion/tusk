@@ -12,6 +12,8 @@
 
 ::: tusk.primitives.TransformPrimitive
 
+::: tusk.primitives.NeedsCutoffTime
+
 ## Registry
 
 ::: tusk.primitives.register
@@ -59,6 +61,8 @@
 ::: tusk.primitives.Weekday
 
 ::: tusk.primitives.IsWeekend
+
+::: tusk.primitives.TimeSince
 
 ::: tusk.primitives.Absolute
 

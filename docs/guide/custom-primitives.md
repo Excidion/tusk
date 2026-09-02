@@ -84,3 +84,38 @@ customer's total, and so on — a genuinely useful feature type that has no othe
 path into tusk. See [what can go in
 `groupby_trans_primitives`](primitives.md#what-can-go-in-groupby_trans_primitives)
 for why the built-in elementwise transforms cannot.
+
+## Primitives that measure against the cutoff time
+
+Mix in [`NeedsCutoffTime`][tusk.primitives.NeedsCutoffTime] for a primitive
+whose value depends on the moment the feature matrix is built, not just its
+input column — `time_since` is the built-in example. `build()` takes
+`cutoff_time` as a keyword alongside the usual input expressions:
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+
+import narwhals as nw
+from tusk.dtypes import DtypeFamily as F
+from tusk.primitives import NeedsCutoffTime, TransformPrimitive, register
+
+
+@register
+@dataclass(frozen=True)
+class TimeSince(NeedsCutoffTime, TransformPrimitive):
+    """Time elapsed from a datetime to the cutoff time."""
+
+    name = "time_since"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Duration
+
+    def build(self, expr: nw.Expr, *, cutoff_time: datetime) -> nw.Expr:
+        return nw.lit(cutoff_time) - expr
+```
+
+The primitive never stores `cutoff_time` — it is a dataclass field-free
+argument passed in at build time — which is what lets one `FeatureList` built
+once be applied at several cutoff times. `deep_feature_synthesis()` and
+`FeatureList.apply()` raise `ValidationError` if such a primitive is requested
+and no `cutoff_time` is given.

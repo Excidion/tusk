@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import narwhals as nw
 
 from tusk.database import Database, Relationship
-from tusk.exceptions import PrimitiveError, SchemaError
+from tusk.exceptions import PrimitiveError, SchemaError, ValidationError
 from tusk.features import (
     AggregationFeature,
     DirectFeature,
@@ -23,6 +23,7 @@ from tusk.features import (
     IdentityFeature,
     TransformFeature,
 )
+from tusk.primitives.base import NeedsCutoffTime, Primitive
 
 if TYPE_CHECKING:
     from tusk.feature_list import FeatureList
@@ -34,6 +35,10 @@ def compile_features(
     cutoff_time: datetime | None = None,
 ) -> nw.LazyFrame:
     """Compile feature definitions into a lazy feature matrix.
+
+    Also raises :class:`~tusk.exceptions.ValidationError`, from
+    :func:`_require_cutoff_time`, if a primitive measures against
+    ``cutoff_time`` and none was given.
 
     Args:
         features: Features to compute.
@@ -59,8 +64,10 @@ def compile_features(
         )
 
     _reject_colliding_names(features)
+    closure = _closure(features)
+    _require_cutoff_time(closure, cutoff_time)
 
-    frame = _table_frame(database, target, _closure(features), cutoff_time)
+    frame = _table_frame(database, target, closure, cutoff_time)
     columns = [primary_key, *features.output_names]
     return frame.select(*dict.fromkeys(columns))
 
@@ -114,6 +121,31 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
         out.add(feature)
         stack.extend(feature.base_features)
     return out
+
+
+def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -> None:
+    """Fail if a primitive requires a cutoff time that was not given.
+
+    Args:
+        features: The transitive closure of features to compile.
+        cutoff_time: The cutoff, or None.
+
+    Raises:
+        ValidationError: If a primitive measures against ``cutoff_time`` and
+            none was given.
+    """
+    if cutoff_time is not None:
+        return
+    measuring = {
+        primitive.name
+        for feature in features
+        if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
+    }
+    if measuring:
+        raise ValidationError(
+            f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
+            "when applying the features",
+        )
 
 
 def _base_frame(
@@ -198,7 +230,7 @@ def _table_frame(
         f for f in needed if isinstance(f, (TransformFeature, GroupByTransformFeature))
     ]
     for feature in sorted(row_wise, key=lambda f: f.depth):
-        frame = _apply(frame, feature, database)
+        frame = _apply(frame, feature, database, cutoff_time)
 
     handled = (
         IdentityFeature,
@@ -242,7 +274,7 @@ def _add_aggregations(
     exprs = []
     for feature in batch:
         inputs = [nw.col(b.name) for b in feature.base_features]
-        built = feature.primitive.outputs(*inputs)
+        built = _build_expressions(feature.primitive, inputs, cutoff_time)
         exprs.extend(
             e.alias(n) for e, n in zip(built, feature.output_names, strict=True)
         )
@@ -306,7 +338,12 @@ def _add_directs(
     )
 
 
-def _apply(frame: nw.LazyFrame, feature: Feature, database: Database) -> nw.LazyFrame:
+def _apply(
+    frame: nw.LazyFrame,
+    feature: Feature,
+    database: Database,
+    cutoff_time: datetime | None,
+) -> nw.LazyFrame:
     """Add a row-wise feature's columns to a frame.
 
     Order-dependent primitives are wrapped in ``.over(..., order_by=...)``
@@ -318,6 +355,9 @@ def _apply(frame: nw.LazyFrame, feature: Feature, database: Database) -> nw.Lazy
         frame: The frame to extend.
         feature: The feature to compute.
         database: The database, used to find ordering columns.
+        cutoff_time: The cutoff, passed as a keyword argument to a
+            :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
+            its expression.
 
     Returns:
         The extended frame.
@@ -329,7 +369,7 @@ def _apply(frame: nw.LazyFrame, feature: Feature, database: Database) -> nw.Lazy
         raise SchemaError(f"cannot compile feature type {type(feature).__name__}")
 
     inputs = [nw.col(b.name) for b in feature.base_features]
-    exprs = list(feature.primitive.outputs(*inputs))
+    exprs = list(_build_expressions(feature.primitive, inputs, cutoff_time))
 
     partition = (
         [feature.relationship.foreign_key]
@@ -344,6 +384,28 @@ def _apply(frame: nw.LazyFrame, feature: Feature, database: Database) -> nw.Lazy
 
     named = [e.alias(n) for e, n in zip(exprs, feature.output_names, strict=True)]
     return frame.with_columns(*named)
+
+
+def _build_expressions(
+    primitive: Primitive,
+    inputs: Sequence[nw.Expr],
+    cutoff_time: datetime | None,
+) -> tuple[nw.Expr, ...]:
+    """Build a primitive's output expressions, threading the cutoff time when needed.
+
+    Args:
+        primitive: The primitive to build.
+        inputs: One expression per declared input.
+        cutoff_time: The cutoff, passed as a keyword argument to a
+            :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
+            its expression.
+
+    Returns:
+        One expression per output column.
+    """
+    if isinstance(primitive, NeedsCutoffTime) and cutoff_time is not None:
+        return primitive.outputs(*inputs, cutoff_time=cutoff_time)
+    return primitive.outputs(*inputs)
 
 
 def _order_by(database: Database, table: str, primitive_name: str) -> tuple[str, ...]:

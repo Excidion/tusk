@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from tusk.database import Relationship
-from tusk.primitives.base import Primitive
+from tusk.exceptions import PrimitiveError
+from tusk.primitives.base import AggregationPrimitive, Primitive, TransformPrimitive
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,14 @@ class TransformFeature(Feature):
     primitive: Primitive
     bases: tuple[Feature, ...]
 
+    def __post_init__(self) -> None:
+        """Confirm the primitive transforms rather than aggregates.
+
+        Raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_reject_wrong_kind`, if it does not.
+        """
+        _reject_wrong_kind(self.primitive, TransformPrimitive, "a transform feature")
+
     @property
     def name(self) -> str:
         """Generated name, e.g. ``MONTH__started_at``."""
@@ -201,6 +210,18 @@ class AggregationFeature(Feature):
     primitive: Primitive
     bases: tuple[Feature, ...]
     relationship: Relationship
+
+    def __post_init__(self) -> None:
+        """Confirm the primitive aggregates rather than transforms.
+
+        Raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_reject_wrong_kind`, if it does not.
+        """
+        _reject_wrong_kind(
+            self.primitive,
+            AggregationPrimitive,
+            "an aggregation feature",
+        )
 
     @property
     def name(self) -> str:
@@ -312,6 +333,14 @@ class GroupByTransformFeature(Feature):
     bases: tuple[Feature, ...]
     relationship: Relationship
 
+    def __post_init__(self) -> None:
+        """Confirm the primitive transforms rather than aggregates.
+
+        Raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_reject_wrong_kind`, if it does not.
+        """
+        _reject_wrong_kind(self.primitive, TransformPrimitive, "a transform feature")
+
     @property
     def name(self) -> str:
         """Generated name, e.g. ``CUM_SUM__amount__by__session_id``."""
@@ -355,3 +384,25 @@ class GroupByTransformFeature(Feature):
     def display_output_names(self) -> tuple[str, ...]:
         """One readable name per output column."""
         return self.primitive.display_output_names(self.display_name)
+
+
+def _reject_wrong_kind(
+    primitive: Primitive,
+    required: type[Primitive],
+    where: str,
+) -> None:
+    """Confirm a primitive is the kind ``where`` requires.
+
+    Args:
+        primitive: The primitive to check.
+        required: The primitive base class required.
+        where: What is requiring it, named for the error message.
+
+    Raises:
+        PrimitiveError: If ``primitive`` is not an instance of ``required``.
+    """
+    if not isinstance(primitive, required):
+        raise PrimitiveError(
+            f"primitive mismatch: {primitive.name!r} in {where} is not "
+            f"{required.__name__}",
+        )

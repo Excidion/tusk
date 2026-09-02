@@ -10,11 +10,18 @@ everything pushed down to the backend.
 `n_unique`, `percent_true`, `quantiles`.
 
 **Transform** — `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
-`absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
+`time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric`.
+
+`time_since` is the one transform that needs more than its input column: it
+requires a `cutoff_time` at apply time, since its value is measured against
+that moment rather than derived from the row alone.
 
 **Order-dependent** (require a `row_creation_time` on the table) — `cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`.
+
+See [primitive coverage](primitive-coverage.md) for how these line up against
+featuretools.
 
 Every name above is also an importable class — `from tusk.primitives import
 Year, CumSum` — and takes the same form as a user-defined one, so `Year` and
@@ -49,6 +56,7 @@ with no sessions gets:
 | `N_UNIQUE` | `0` | Zero rows hold zero distinct values. Nulls are not values either, so a group of only nulls is also `0`. |
 | `SUM` | `0` | The additive identity. |
 | `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
+| `PERCENT_TRUE` | `null` | Undefined over an empty set, same as `MEAN`. Within a non-empty group a null counts as false, so an all-null group computes to `0.0` rather than falling through to this default. |
 
 The split is not arbitrary. Reporting `COUNT = 0` asserts we *know* there were
 no rows; a null `SUM` beside it would claim the total is unknown, which

@@ -66,3 +66,8 @@ different answer.
 
 - **`N_UNIQUE` on an empty group is `0`**, not `NaN`. See [empty
   groups](primitives.md#empty-groups) for the reasoning and the full table.
+
+## Primitive coverage
+
+[Primitive coverage](primitive-coverage.md) lists every featuretools primitive
+beside its tusk counterpart.

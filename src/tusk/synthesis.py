@@ -29,9 +29,10 @@ from tusk.features import (
     GroupByTransformFeature,
     IdentityFeature,
     TransformFeature,
+    _reject_wrong_kind,
 )
 from tusk.primitives.aggregation import AGG_DEFAULTS
-from tusk.primitives.base import Primitive
+from tusk.primitives.base import AggregationPrimitive, Primitive, TransformPrimitive
 from tusk.primitives.registry import resolve_all
 from tusk.primitives.transform import TRANS_DEFAULTS
 
@@ -47,7 +48,16 @@ def synthesize(
     """Generate feature definitions for a target table.
 
     ``database.schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
-    target table is unknown.
+    target table is unknown. Also raises
+    :class:`~tusk.exceptions.PrimitiveError`, via
+    :func:`~tusk.features._reject_wrong_kind`, if a primitive resolved from
+    ``agg_primitives`` is not an
+    :class:`~tusk.primitives.base.AggregationPrimitive`, or one from
+    ``trans_primitives`` or ``groupby_trans_primitives`` is not a
+    :class:`~tusk.primitives.base.TransformPrimitive`. Checked here, eagerly,
+    rather than left to each :class:`Feature` subclass's own check: a
+    primitive that matches no column is never built into a feature at all, so
+    only the argument it was passed to can name the mistake.
 
     Args:
         database: The schema to walk.
@@ -76,14 +86,18 @@ def synthesize(
             of its input dtypes anywhere in the walk.
     """
     database.schema(target_table)
-    context = _Context(
-        database=database,
-        agg=resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives),
-        trans=resolve_all(
-            TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
-        ),
-        groupby=resolve_all(groupby_trans_primitives or ()),
+    agg = resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives)
+    trans = resolve_all(
+        TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
     )
+    groupby = resolve_all(groupby_trans_primitives or ())
+    for primitive in agg:
+        _reject_wrong_kind(primitive, AggregationPrimitive, "agg_primitives")
+    for primitive in trans:
+        _reject_wrong_kind(primitive, TransformPrimitive, "trans_primitives")
+    for primitive in groupby:
+        _reject_wrong_kind(primitive, TransformPrimitive, "groupby_trans_primitives")
+    context = _Context(database=database, agg=agg, trans=trans, groupby=groupby)
     features = context.build(target_table, max_depth, ())
     context.warn_unmatched()
     keys = database.output_excluded_columns(target_table)

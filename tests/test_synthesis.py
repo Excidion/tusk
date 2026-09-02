@@ -113,12 +113,115 @@ def test_transforms_respect_dtype_families():
             max_depth=1,
         ),
     )
-    # month requires TEMPORAL: it takes occurred_at and not amount.
+    # month requires HAS_DATE: it takes occurred_at and not amount.
     assert "MONTH__occurred_at" in got
     assert "MONTH__amount" not in got
     # absolute requires NUMERIC: it takes amount and not occurred_at.
     assert "ABSOLUTE__amount" in got
     assert "ABSOLUTE__occurred_at" not in got
+
+
+def test_calendar_primitives_skip_a_duration_column():
+    """The reported bug: DFS generated YEAR(duration) and polars crashed.
+
+    Regression coverage that only calls ``dtypes.matches`` directly would
+    stay green even if a calendar primitive's ``input_dtypes`` regressed
+    back to ``TEMPORAL``, since ``matches`` itself would not have changed.
+    Exercising synthesis end to end catches that class of regression.
+    """
+    db = tusk.Database("dtypes").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 4, 5)],
+                "elapsed": [dt.timedelta(hours=1), dt.timedelta(hours=2)],
+            },
+        ),
+        primary_key="id",
+    )
+    got = names(
+        synthesize(
+            db,
+            "events",
+            agg_primitives=[],
+            trans_primitives=["year", "month"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        ),
+    )
+    assert "YEAR__occurred_at" in got
+    assert "YEAR__elapsed" not in got
+    assert "MONTH__occurred_at" in got
+    assert "MONTH__elapsed" not in got
+
+
+def test_hour_skips_a_date_column_but_month_does_not():
+    """Date carries no time of day, so HOUR must not be generated for it.
+
+    Before HAS_TIME existed, Hour declared DATETIME, which a Date
+    satisfies, so DFS generated HOUR(date) and polars raised
+    InvalidOperationError: 'hour' operation not supported for dtype 'date'.
+    Date is not in HAS_TIME today for the same reason.
+    """
+    db = tusk.Database("dtypes").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 4, 5)],
+                "occurred_on": [dt.date(2024, 3, 4), dt.date(2024, 4, 5)],
+            },
+        ),
+        primary_key="id",
+    )
+    got = names(
+        synthesize(
+            db,
+            "events",
+            agg_primitives=[],
+            trans_primitives=["hour", "month"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        ),
+    )
+    assert "HOUR__occurred_at" in got
+    assert "HOUR__occurred_on" not in got
+    assert "MONTH__occurred_at" in got
+    assert "MONTH__occurred_on" in got
+
+
+def test_hour_applies_to_a_time_column_but_year_does_not():
+    """A Time column carries a time of day but no calendar date.
+
+    HAS_TIME matches Time, so hour can now be computed on it -- a capability
+    the DATETIME/TIMESTAMP split never provided, since Time matched neither
+    family. HAS_DATE excludes Time, since a bare time of day carries no year.
+    """
+    db = tusk.Database("dtypes").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "started_at": [dt.time(9, 30), dt.time(14, 15)],
+            },
+        ),
+        primary_key="id",
+    )
+    features = synthesize(
+        db,
+        "events",
+        agg_primitives=[],
+        trans_primitives=["hour", "year"],
+        groupby_trans_primitives=[],
+        max_depth=1,
+    )
+    got = names(features)
+    assert "HOUR__started_at" in got
+    assert "YEAR__started_at" not in got
+
+    matrix = features.apply(db).collect().sort("id")
+    assert matrix["HOUR__started_at"].to_list() == [9, 14]
 
 
 def test_row_creation_time_is_available_as_a_transform_input(db):
@@ -620,6 +723,143 @@ def test_unknown_target_raises(db):
             trans_primitives=[],
             groupby_trans_primitives=[],
             max_depth=1,
+        )
+
+
+def test_agg_primitives_rejects_a_transform_primitive(db):
+    """``year`` is a TransformPrimitive; agg_primitives requires an
+    AggregationPrimitive.
+
+    Without this check, resolve_all() accepts ``year`` and the mistake only
+    surfaces later as a polars InvalidOperationError from group_by().agg(),
+    which blames the wrong layer.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'year'.*agg_primitives",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=["year"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_agg_primitives_rejects_a_cutoff_time_transform_primitive(db):
+    """``time_since`` is NeedsCutoffTime, TransformPrimitive -- not an
+    AggregationPrimitive.
+
+    Same failure mode as ``year`` in agg_primitives: caught here rather than
+    surfacing as a polars InvalidOperationError from group_by().agg().
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'time_since'.*agg_primitives",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=["time_since"],
+            trans_primitives=[],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_trans_primitives_rejects_an_aggregation_primitive(db):
+    """``sum`` is an AggregationPrimitive; trans_primitives requires a
+    TransformPrimitive.
+
+    Without this check, ``sum`` still matches numeric columns during the
+    walk, so it silently produces zero features and the resulting SchemaError
+    blames "no primitive matched" -- true of nothing else, but not of why.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'sum'.*trans_primitives",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["sum"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_trans_primitives_rejects_a_zero_input_aggregation_primitive(db):
+    """``count`` takes no column input, so the walk never even tries to match it.
+
+    Without this check that falls through to ``max()`` on an empty sequence
+    inside the walk -- an internal error rather than one that names the
+    primitive.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'count'.*trans_primitives",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["count"],
+            groupby_trans_primitives=[],
+            max_depth=1,
+        )
+
+
+def test_groupby_trans_primitives_rejects_an_aggregation_primitive(db):
+    """``sum`` is an AggregationPrimitive; groupby_trans_primitives requires a
+    TransformPrimitive.
+
+    This call site had no test, so a copy-paste error here -- the wrong
+    argument name in the message, or the wrong required type -- would pass
+    the suite unnoticed.
+    """
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'sum'.*groupby_trans_primitives",
+    ):
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=[],
+            groupby_trans_primitives=["sum"],
+            max_depth=1,
+        )
+
+
+def test_agg_primitives_rejects_a_transform_primitive_even_with_no_matching_column():
+    """``hour`` in agg_primitives must raise even when no column could match it.
+
+    Without the eager check, resolve_all() accepts ``hour``, and since the
+    child table here has no datetime column, the walk never constructs an
+    AggregationFeature for it either -- so the mistake would surface only as
+    an UnmatchedPrimitiveWarning blaming dtypes, not as the wrong-argument
+    mistake it actually is.
+    """
+    db = (
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1], "n": [1.0]}), primary_key="id")
+        .add_table("c", pl.LazyFrame({"id": [1], "p_id": [1]}), primary_key="id")
+        .add_relationship(parent="p", child="c", foreign_key="p_id")
+    )
+    with pytest.raises(
+        tusk.exceptions.PrimitiveError,
+        match="'hour'.*agg_primitives",
+    ):
+        synthesize(
+            db,
+            "p",
+            agg_primitives=["hour"],
+            trans_primitives=["absolute"],
+            groupby_trans_primitives=[],
+            max_depth=2,
         )
 
 

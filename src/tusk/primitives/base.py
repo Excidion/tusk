@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any, ClassVar
 
 import narwhals as nw
@@ -122,16 +123,7 @@ class Primitive(ABC):
         Returns:
             One expression per output column.
         """
-        built = self.build(*inputs)
-        # Checking Sequence rather than (list, tuple) is deliberately broader
-        # than build()'s declared `nw.Expr | Sequence[nw.Expr]`: it is what
-        # lets ty narrow this branch exhaustively. build() is only ever
-        # implemented to return an nw.Expr or a list/tuple of them (see
-        # tests/test_primitives_base.py), so a str or range never actually
-        # reaches here in practice.
-        if isinstance(built, Sequence):
-            return tuple(built)
-        return (built,)
+        return _as_tuple(self.build(*inputs))
 
     @abstractmethod
     def build(self, *inputs: nw.Expr) -> nw.Expr | Sequence[nw.Expr]:
@@ -159,3 +151,55 @@ class TransformPrimitive(Primitive):
     """
 
     order_dependent: ClassVar[bool] = False
+
+
+class NeedsCutoffTime(Primitive):
+    """A primitive that measures against the cutoff time.
+
+    The cutoff time describes the question being asked rather than the
+    feature, so it is never stored on a primitive: the compiler passes it in
+    at the moment the expression is built. That is what lets one
+    :class:`~tusk.FeatureList` be applied at several cutoff times.
+    """
+
+    def outputs(self, *inputs: nw.Expr, cutoff_time: datetime) -> tuple[nw.Expr, ...]:
+        """Normalize :meth:`build` to a tuple of expressions.
+
+        Args:
+            *inputs: One expression per declared input.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            One expression per output column.
+        """
+        return _as_tuple(self.build(*inputs, cutoff_time=cutoff_time))
+
+    @abstractmethod
+    def build(
+        self,
+        *inputs: nw.Expr,
+        cutoff_time: datetime,
+    ) -> nw.Expr | Sequence[nw.Expr]:
+        """Build this primitive's narwhals expression.
+
+        Args:
+            *inputs: One expression per declared input.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            A single expression, or a sequence for multi-output primitives.
+        """
+
+
+def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:
+    """Normalize what a primitive built to a tuple of expressions.
+
+    Args:
+        built: What :meth:`Primitive.build` returned.
+
+    Returns:
+        One expression per output column.
+    """
+    if isinstance(built, Sequence):
+        return tuple(built)
+    return (built,)

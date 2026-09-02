@@ -1,12 +1,16 @@
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import narwhals as nw
 import polars as pl
 import pytest
 
-from tusk.primitives.base import TransformPrimitive
+import tusk
+from tusk.dtypes import DtypeFamily
+from tusk.exceptions import ValidationError
+from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import resolve
-from tusk.primitives.transform import TRANS_DEFAULTS
+from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
 
 
 @pytest.fixture
@@ -85,15 +89,25 @@ def test_order_dependent_primitives_are_flagged():
     assert month.order_dependent is False
 
 
-def test_time_since_previous_is_seconds(lf):
+def test_time_since_previous_is_a_timedelta(lf):
     # t in t-order: 3/4, 3/9, 3/10
     # Row 1 (3/4) is first: None
-    # Row 0 (3/9): diff from Row 1 (3/4) = 5 days + 1 hour = 432000 + 3600
-    # Row 2 (3/10): diff from Row 0 (3/9) = 1 day + 1 hour = 86400 + 3600
+    # Row 0 (3/9): diff from Row 1 (3/4) = 5 days + 1 hour
+    # Row 2 (3/10): diff from Row 0 (3/9) = 1 day + 1 hour
     got = _apply(lf, "time_since_previous", "t")
     assert got[1] is None
-    assert got[0] == pytest.approx(5 * 86400 + 3600)
-    assert got[2] == pytest.approx(86400 + 3600)
+    assert got[0] == dt.timedelta(days=5, hours=1)
+    assert got[2] == dt.timedelta(days=1, hours=1)
+
+
+def test_time_since_previous_returns_a_duration():
+    """One type for every elapsed-time primitive in tusk.
+
+    featuretools returns float seconds here; tusk returns a Duration, the
+    same type time_since returns, and leaves the choice of unit to the
+    caller.
+    """
+    assert TimeSincePrevious().output_dtype == nw.Duration
 
 
 def test_arithmetic_commutativity_flags():
@@ -105,3 +119,93 @@ def test_arithmetic_commutativity_flags():
 
 def test_defaults_exclude_arithmetic():
     assert TRANS_DEFAULTS == ("year", "month", "weekday")
+
+
+def test_time_since_measures_from_the_cutoff_time():
+    """A past timestamp gives a positive duration, a future one negative."""
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 6, 1), None]},
+        ),
+    )
+    primitive = TimeSince()
+    expr = primitive.outputs(nw.col("t"), cutoff_time=dt.datetime(2024, 3, 1))[0]
+    got = frame.select(expr.alias("o")).collect()
+    assert got.to_native()["o"].to_list() == [
+        dt.timedelta(days=60),
+        dt.timedelta(days=-92),
+        None,
+    ]
+
+
+def test_time_since_needs_a_has_date_input():
+    assert TimeSince().input_dtypes == (DtypeFamily.HAS_DATE,)
+    assert isinstance(TimeSince(), NeedsCutoffTime)
+
+
+def test_time_since_cannot_be_built_without_a_cutoff_time():
+    """There is no unbound state to guard against: the argument is required."""
+    with pytest.raises(TypeError, match="cutoff_time"):
+        TimeSince().outputs(nw.col("t"))  # ty: ignore[missing-argument]
+
+
+def test_deep_feature_synthesis_rejects_time_since_without_a_cutoff_time(db):
+    """A cutoff_time is required, so there is no answer without one."""
+    with pytest.raises(ValidationError, match="time_since needs a cutoff_time"):
+        tusk.deep_feature_synthesis(
+            database=db,
+            target_table="customers",
+            agg_primitives=[],
+            trans_primitives=["time_since"],
+            max_depth=1,
+        )
+
+
+def test_cutoff_time_is_not_a_constructor_argument():
+    """A primitive never stores the cutoff time, so there is nothing to set.
+
+    This is what lets one FeatureList be applied at several cutoff times: the
+    value reaches the expression at build time and is never written down.
+    """
+    # Passed as **kwargs because a type checker rejects the literal call
+    # before it can ever run.
+    with pytest.raises(TypeError, match="cutoff_time"):
+        TimeSince(**{"cutoff_time": dt.datetime(2024, 3, 1)})
+
+
+def test_time_since_rejects_a_mismatched_cutoff_with_no_row_creation_time():
+    """time_since measures against cutoff_time even with no row_creation_time
+    declared, so the tz mismatch must surface as ValidationError -- not as a
+    raw backend error naming a narwhals expression.
+    """
+    db = tusk.Database("x").add_table(
+        "events",
+        pl.LazyFrame(
+            {"id": [1], "at": [dt.datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))]},
+        ),
+        primary_key="id",
+    )
+    with pytest.raises(ValidationError, match="tz-naive"):
+        matrix, _ = tusk.deep_feature_synthesis(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=["time_since"],
+            max_depth=1,
+            cutoff_time=dt.datetime(2026, 1, 1),
+        )
+        matrix.collect()
+
+
+def test_deep_feature_synthesis_computes_time_since_with_a_cutoff_time(db):
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="customers",
+        agg_primitives=[],
+        trans_primitives=["time_since"],
+        max_depth=1,
+        cutoff_time=dt.datetime(2024, 3, 1),
+    )
+    got = matrix.collect().sort("id")
+    # customers.signed_up_at is 2024-01-01 for all three rows (tests/conftest.py)
+    assert got["TIME_SINCE__signed_up_at"].to_list() == [dt.timedelta(days=60)] * 3

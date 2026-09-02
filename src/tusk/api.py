@@ -31,8 +31,9 @@ def deep_feature_synthesis(
 
     Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target table
     is unknown or the walk generates no features at all, and
-    :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive name or
-    an order-dependent primitive on a table with no ``row_creation_time``.
+    :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive name, an
+    order-dependent primitive on a table with no ``row_creation_time``, or a
+    primitive of the wrong kind for the argument it was passed to.
     Compilation raises :class:`~tusk.exceptions.SchemaError` if the target
     table has no ``primary_key``, and whatever :func:`apply_features`
     documents for ``cutoff_time``.
@@ -51,7 +52,7 @@ def deep_feature_synthesis(
         max_depth: Maximum number of stacked primitive applications.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives.
-            Its tz awareness must match the database's row creation times'.
+            Its tz awareness must match the database's Datetime columns'.
             A table with no ``row_creation_time`` is timeless and passes
             through unfiltered, so a cutoff on a database that declares none is
             silently a no-op. None disables filtering. Ignored entirely when
@@ -102,9 +103,10 @@ def apply_features(
     :class:`~tusk.exceptions.PrimitiveError` if an order-dependent primitive
     lands on a table with no ``row_creation_time``.
     :class:`~tusk.exceptions.ValidationError` is raised if ``cutoff_time``
-    differs from the database's row creation times in tz awareness, or if
-    those disagree among themselves, and ``TypeError`` if ``cutoff_time`` is
-    not a ``datetime``.
+    differs from the database's Datetime columns in tz awareness, or if
+    those disagree among themselves; or if a feature's primitive measures
+    against ``cutoff_time`` and none was given. ``TypeError`` is raised if
+    ``cutoff_time`` is not a ``datetime``.
 
     Args:
         features: Feature definitions, all on the same target table.
@@ -112,7 +114,7 @@ def apply_features(
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives, so
             the matrix may have fewer rows than the target. Its tz awareness
-            must match the database's row creation times'. A table with no
+            must match the database's Datetime columns'. A table with no
             ``row_creation_time`` is timeless and passes through unfiltered,
             so a cutoff on a database that declares none is silently a no-op.
             None disables filtering.

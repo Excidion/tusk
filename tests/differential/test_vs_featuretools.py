@@ -65,6 +65,7 @@ import polars as pl
 import pytest
 
 import tusk
+from differential import _as_tusk
 
 pd = pytest.importorskip("pandas")
 featuretools = pytest.importorskip("featuretools")
@@ -148,32 +149,6 @@ def matrices(synthetic):
     """Both tools' feature matrices over the same synthetic tables."""
     customers, sessions = synthetic
     return _tusk_matrix(customers, sessions), _featuretools_matrix(customers, sessions)
-
-
-def _as_tusk(name: str) -> str:
-    """Translate a featuretools feature name into tusk's column name.
-
-    Every construct featuretools spells with punctuation -- application,
-    argument separator, path step, multi-output index, groupby suffix --
-    tusk spells with ``__``.
-
-    Args:
-        name: A featuretools feature name, e.g. ``MEAN(sessions.value)``.
-
-    Returns:
-        The equivalent tusk column name, e.g. ``MEAN__sessions__value``.
-    """
-    for old, new in (
-        (" by ", "__by__"),
-        (", ", "__"),
-        ("(", "__"),
-        (")", ""),
-        ("[", "__"),
-        ("]", ""),
-        (".", "__"),
-    ):
-        name = name.replace(old, new)
-    return name
 
 
 @pytest.mark.parametrize(

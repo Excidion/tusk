@@ -320,7 +320,7 @@ def test_an_aware_cutoff_on_naive_row_creation_times_is_rejected(db):
             cutoff_time=datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
         )
     assert "tz-aware" in str(excinfo.value)
-    assert "row creation times are tz-naive" in str(excinfo.value)
+    assert "datetimes are tz-naive" in str(excinfo.value)
 
 
 def test_a_naive_cutoff_on_aware_row_creation_times_is_rejected():

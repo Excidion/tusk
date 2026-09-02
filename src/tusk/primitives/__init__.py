@@ -15,7 +15,12 @@ from tusk.primitives.aggregation import (
     Std,
     Sum,
 )
-from tusk.primitives.base import AggregationPrimitive, Primitive, TransformPrimitive
+from tusk.primitives.base import (
+    AggregationPrimitive,
+    NeedsCutoffTime,
+    Primitive,
+    TransformPrimitive,
+)
 from tusk.primitives.registry import register, resolve, resolve_all
 from tusk.primitives.transform import (
     TRANS_DEFAULTS,
@@ -34,6 +39,7 @@ from tusk.primitives.transform import (
     MultiplyNumeric,
     NaturalLog,
     SubtractNumeric,
+    TimeSince,
     TimeSincePrevious,
     Weekday,
     Year,
@@ -62,6 +68,7 @@ __all__ = [
     "MultiplyNumeric",
     "NUnique",
     "NaturalLog",
+    "NeedsCutoffTime",
     "PercentTrue",
     "Primitive",
     "Quantiles",
@@ -69,6 +76,7 @@ __all__ = [
     "SubtractNumeric",
     "Sum",
     "TRANS_DEFAULTS",
+    "TimeSince",
     "TimeSincePrevious",
     "TransformPrimitive",
     "Weekday",

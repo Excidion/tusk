@@ -62,14 +62,16 @@ class FeatureList(Sequence[Feature]):
         :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
         primitive lands on a table with no ``row_creation_time``, and
         :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` disagrees
-        with the database's row creation times in tz awareness.
+        with the database's Datetime columns in tz awareness, or if a
+        feature's primitive measures against ``cutoff_time`` and none was
+        given.
 
         Args:
             database: The database to compute over.
             cutoff_time: Only rows whose ``row_creation_time`` is at or before
                 this value are visible, on the target table as well as its
                 relatives, so the matrix may have fewer rows than the target.
-                Its tz awareness must match the database's row creation times'.
+                Its tz awareness must match the database's Datetime columns'.
                 None disables filtering.
 
         Returns:
