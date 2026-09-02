@@ -14,7 +14,6 @@ from tusk.validation import (
     check_cutoff_time_zone,
     check_datetime_row_creation_time,
     check_non_null_primary_key,
-    check_row_creation_time_awareness,
     check_unique_primary_key,
     validate_table,
 )
@@ -397,42 +396,11 @@ def row_creation_db(*time_zones):
     return db
 
 
-def test_all_aware_row_creation_times_report_aware():
-    assert check_row_creation_time_awareness(row_creation_db("UTC")) is True
-
-
-def test_differing_zones_still_report_aware():
-    db = row_creation_db("UTC", "Europe/Berlin")
-    assert check_row_creation_time_awareness(db) is True
-
-
-def test_all_naive_row_creation_times_report_naive():
-    assert check_row_creation_time_awareness(row_creation_db(None, None)) is False
-
-
-def test_a_timeless_database_reports_no_awareness():
-    db = tusk.Database("x").add_table(
-        "t",
-        pl.LazyFrame({"id": [1]}),
-        primary_key="id",
-    )
-    assert check_row_creation_time_awareness(db) is None
-
-
-def test_mixed_row_creation_time_awareness_is_reported():
-    db = row_creation_db("UTC", None, None)
-    with pytest.raises(ValidationError) as excinfo:
-        check_row_creation_time_awareness(db)
-    assert len(excinfo.value.args) == 1
-    assert str(excinfo.value) == (
-        "database mixes tz-aware and tz-naive row creation times: "
-        "1 tz-aware (t0.at), 2 tz-naive (t1.at, t2.at)"
-    )
-
-
-def test_a_datetime_column_that_is_not_the_row_creation_time_is_ignored():
-    # consistent_time_zones covers every Datetime column; this one answers
-    # only what the cutoff has to be comparable against.
+def test_a_datetime_column_that_is_not_the_row_creation_time_still_counts():
+    # time_since subtracts the cutoff from whatever column its feature was
+    # built on, so an aware column the cutoff never filters against still has
+    # to agree with it. Reaching the backend instead raises a polars
+    # SchemaError about the supertype of datetime[us] and datetime[us, UTC].
     db = tusk.Database("x").add_table(
         "t",
         pl.LazyFrame(
@@ -445,17 +413,8 @@ def test_a_datetime_column_that_is_not_the_row_creation_time_is_ignored():
         primary_key="id",
         row_creation_time="at",
     )
-    assert check_row_creation_time_awareness(db) is False
-
-
-def test_a_non_datetime_row_creation_time_counts_as_naive():
-    db = tusk.Database("x").add_table(
-        "t",
-        pl.LazyFrame({"id": [1], "at": [dt.date(2024, 1, 1)]}),
-        primary_key="id",
-        row_creation_time="at",
-    )
-    assert check_row_creation_time_awareness(db) is False
+    with pytest.raises(ValidationError, match="mixes tz-aware and tz-naive"):
+        check_cutoff_time_zone(db, dt.datetime(2026, 1, 1))
 
 
 def test_a_cutoff_matching_naive_row_creation_times_passes():
@@ -477,14 +436,14 @@ def test_an_aware_cutoff_against_naive_row_creation_times_is_reported():
             dt.datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")),
         )
     assert "is tz-aware" in str(excinfo.value)
-    assert "row creation times are tz-naive" in str(excinfo.value)
+    assert "datetimes are tz-naive" in str(excinfo.value)
 
 
 def test_a_naive_cutoff_against_aware_row_creation_times_is_reported():
     with pytest.raises(ValidationError) as excinfo:
         check_cutoff_time_zone(row_creation_db("UTC"), dt.datetime(2026, 1, 1))
     assert "is tz-naive" in str(excinfo.value)
-    assert "row creation times are tz-aware" in str(excinfo.value)
+    assert "datetimes are tz-aware" in str(excinfo.value)
 
 
 def test_a_cutoff_against_mixed_row_creation_times_is_reported():
@@ -502,7 +461,7 @@ def test_any_cutoff_passes_against_a_timeless_database():
     check_cutoff_time_zone(db, dt.datetime(2026, 1, 1))
 
 
-def test_a_cutoff_falls_back_to_datetime_column_awareness_with_no_row_creation_time():
+def test_a_cutoff_is_checked_against_a_database_with_no_row_creation_time():
     # time_since subtracts the cutoff from any Datetime column, so awareness
     # still matters even where nothing declares row_creation_time.
     aware_at = dt.datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))

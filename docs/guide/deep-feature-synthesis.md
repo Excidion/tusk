@@ -58,10 +58,15 @@ features in a `FeatureList` — and so all features passed to
 It must be a `datetime`, not just a `date`. A date has no time of day, and
 therefore risks differing behaviors across dataframe backends.
 
-Its time zone awareness must match the database's row creation times. A
-comparison between a tz-aware timestamp and a naive one has no defined
-ordering, so a mismatch raises
-[`ValidationError`][tusk.exceptions.ValidationError].
+Its time zone awareness must match the database's `Datetime` columns — every
+one of them, not only the declared row creation times. A comparison between a
+tz-aware timestamp and a naive one has no defined ordering, so a mismatch
+raises [`ValidationError`][tusk.exceptions.ValidationError]. Filtering is not
+the only place the cutoff meets a column: `TimeSince` subtracts it from
+whatever column its feature was built on, so a database that mixes awareness
+is rejected outright rather than at whichever column the query happens to
+reach. `validate(database="consistent_time_zones")` reports the same mixing
+without a cutoff.
 
 It filters the target table too, so the matrix can have fewer rows than the
 target — a row that did not exist yet at the cutoff has no features to compute.
