@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, narwhals (backend-agnostic expressions), polars (test backend), duckdb (SQL portability tests), pytest, featuretools 1.31.0 (differential reference only).
 
-**Spec:** `docs/superpowers/specs/2026-08-30-datetime-transform-parity-design.md`
+**Spec:** `superpowers/specs/2026-08-30-datetime-transform-parity-design.md`
 
 ## Global Constraints
 

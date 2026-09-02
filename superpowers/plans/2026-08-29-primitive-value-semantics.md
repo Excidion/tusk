@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3, `dataclasses`, pytest, ruff, ty, pre-commit.
 
-**Spec:** `docs/superpowers/specs/2026-08-29-primitive-value-semantics-design.md`
+**Spec:** `superpowers/specs/2026-08-29-primitive-value-semantics-design.md`
 
 ## Global Constraints
 

@@ -8,10 +8,6 @@ repo_url = "https://github.com/Excidion/tusk"
 repo_name = "Excidion/tusk"
 edit_uri = "edit/main/docs"
 
-[[project.extra.social]]
-icon = "fontawesome/brands/python"
-link = "https://pypi.org/project/tusk-ml/"
-
 nav = [
     "index.md",
     { "Guide" = [
@@ -36,6 +32,10 @@ nav = [
         "api/exceptions.md",
     ] },
 ]
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://pypi.org/project/tusk-ml/"
 
 [project.theme]
 language = "en"

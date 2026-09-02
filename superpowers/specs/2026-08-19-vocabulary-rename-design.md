@@ -160,7 +160,7 @@ Docs:
    and "deep feature synthesis" to name the algorithm. That prose is fine and
    stays; only identifiers lose the abbreviation. Renaming prose occurrences of
    "DFS" is out of scope.
-3. **`docs/superpowers/specs/` and `docs/superpowers/plans/`** hold dated
+3. **`superpowers/specs/` and `superpowers/plans/`** hold dated
    records of past decisions and contain the largest concentration of the old
    names. They are history and stay verbatim. This spec is the record of the
    change.

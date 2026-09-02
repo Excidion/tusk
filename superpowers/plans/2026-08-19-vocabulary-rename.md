@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, narwhals, polars/pyarrow/duckdb backends, pytest, uv, ruff + ty + interrogate + pydoclint via pre-commit, zensical for docs.
 
-**Spec:** `docs/superpowers/specs/2026-08-19-vocabulary-rename-design.md`
+**Spec:** `superpowers/specs/2026-08-19-vocabulary-rename-design.md`
 
 ## Global Constraints
 
@@ -16,7 +16,7 @@
 - **Behaviour is frozen.** This is a rename. No signature reordering, no new arguments, no logic edits. Every assertion in the suite must keep passing unchanged except where it names a renamed symbol.
 - **`tests/differential/test_vs_featuretools.py` calls two libraries.** `featuretools.EntitySet`, `.add_dataframe(dataframe_name=…, index=…)`, `featuretools.dfs(entityset=…, target_dataframe_name=…)` are *featuretools'* API and MUST NOT be renamed. Only the `tusk.` half of each comparison changes. Never run an unreviewed global substitution over this file.
 - **Prose keeps "DFS" and "deep feature synthesis".** Only code identifiers lose the abbreviation. Do not rewrite prose uses of "DFS".
-- **`docs/superpowers/specs/` and `docs/superpowers/plans/`** are historical records. They contain many old names. Leave every file in them untouched (this plan and its spec included).
+- **`superpowers/specs/` and `superpowers/plans/`** are historical records. They contain many old names. Leave every file in them untouched (this plan and its spec included).
 - **Out of scope, do not touch:** `agg_primitives`, `trans_primitives`, `groupby_trans_primitives`, `AGG_DEFAULTS`, `TRANS_DEFAULTS`, `max_depth`, `cutoff_time`, `row_creation_time`, `primary_key`, `foreign_key`, `parent`, `child`, `features_only`, "feature matrix" as the name of the output, and the internal function names `synthesis.synthesize()` and `compiler.compile_features()`.
 - **Standard test command:** `uv run --group validation pytest -q`. The validation group must be present or `tests/differential/` fails to *collect* (it imports pandas/featuretools) even though the marker deselects it. Baseline before any work: `149 passed, 1 skipped, 41 deselected`.
 - **Differential test command:** `uv run --group validation pytest -q -m differential`. Baseline: `36 passed, 6 skipped`.
@@ -716,7 +716,7 @@ Expected: all hooks pass — notably interrogate (100% docstring coverage) and p
 - [ ] **Step 6: Review the whole diff**
 
 Run: `git diff f92ab86..HEAD --stat` then read the source diff in full.
-Confirm: no behaviour change, no signature reordering, no stray edits under `docs/superpowers/`.
+Confirm: no behaviour change, no signature reordering, no stray edits under `superpowers/`.
 
 - [ ] **Step 7: Commit any fixes**
 

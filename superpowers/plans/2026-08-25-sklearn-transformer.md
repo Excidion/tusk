@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, narwhals, scikit-learn (optional extra), polars/pyarrow/duckdb backends, pytest, uv, ruff + ty + interrogate + pydoclint via pre-commit, zensical for docs.
 
-**Spec:** `docs/superpowers/specs/2026-08-24-sklearn-transformer-design.md`
+**Spec:** `superpowers/specs/2026-08-24-sklearn-transformer-design.md`
 
 **One deviation from the spec:** it names a single module `src/tusk/sklearn.py`; this plan uses a `src/tusk/sklearn/` package instead. tusk's docstring density puts the whole thing well past 500 lines in one file, and the four concerns split cleanly. The public import path is identical — `from tusk.sklearn import DFSTransformer` — so no documented contract changes.
 

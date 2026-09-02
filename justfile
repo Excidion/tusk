@@ -30,6 +30,10 @@ benchmark:
 docs:
     uv run --group docs zensical build --clean
 
+# start docs test server
+docs-test:
+    -uv run --group docs zensical serve --open
+
 # Build the wheel and the source distribution into dist/.
 build:
     uv build

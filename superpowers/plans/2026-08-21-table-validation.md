@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, narwhals, polars/pyarrow/duckdb backends, pytest, uv, ruff + ty + interrogate + pydoclint via pre-commit, zensical for docs.
 
-**Spec:** `docs/superpowers/specs/2026-08-21-table-validation-design.md`
+**Spec:** `superpowers/specs/2026-08-21-table-validation-design.md`
 
 ## Global Constraints
 
