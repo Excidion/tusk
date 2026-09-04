@@ -48,3 +48,8 @@ def test_entry_points_are_spelled_out():
 def test_entityset_module_is_gone():
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("tusk.entityset")
+
+
+def test_schema_diagram_is_exported():
+    assert callable(tusk.Database("d").plot)
+    assert tusk.SchemaDiagram

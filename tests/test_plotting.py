@@ -223,3 +223,26 @@ def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "mermaidx", None)
     with pytest.raises(ImportError, match=r"tusk-ml\[plot\]"):
         SchemaDiagram(SOURCE).save(tmp_path / "schema.svg")
+
+
+def test_plot_returns_a_diagram_of_the_database(db):
+    diagram = db.plot()
+    assert isinstance(diagram, SchemaDiagram)
+    assert '"customers" ||--o{ "sessions" : customer_id' in diagram.source
+    assert '"sessions" ||--o{ "transactions" : session_id' in diagram.source
+
+
+def test_plot_passes_the_column_mode_through(db):
+    assert "age" in db.plot(columns=True).source
+    assert "age" not in db.plot(columns="structural").source
+    assert "age" not in db.plot(columns=False).source
+
+
+def test_plot_reads_no_rows(db, monkeypatch):
+    # The whole diagram comes from declared schema. Collecting would make
+    # plotting cost as much as computing, on a method that looks free.
+    def fail(*args, **kwargs):
+        raise AssertionError("plot() must not collect")
+
+    monkeypatch.setattr(nw.LazyFrame, "collect", fail)
+    db.plot()

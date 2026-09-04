@@ -178,3 +178,34 @@ looks for: the wrong column, or two id spaces that never met.
 In `unique_primary_key`, nulls count as one distinct value, so **repeated
 nulls fail** while **a single null passes**. A lone null key is a real defect,
 but `non_null_primary_key` is the check that reports it.
+
+## Looking at the schema
+
+`plot()` draws the database as a Mermaid entity-relationship diagram. It reads
+no rows, so it costs nothing:
+
+```python
+db.plot()
+```
+
+In a notebook the diagram renders inline. Elsewhere, `print(db.plot())` gives
+the Mermaid source, and `save()` writes a file:
+
+```python
+db.plot().save("schema.svg")
+```
+
+`.mmd` and `.md` write the source and need nothing installed. `.svg`, `.png`
+and `.pdf` render the diagram and need the extra:
+
+```bash
+pip install tusk-ml[plot]
+```
+
+Wide tables make an unreadable picture. `columns="structural"` keeps only the
+primary key, the foreign keys and the `row_creation_time`; `columns=False`
+keeps only the table names and the lines between them:
+
+```python
+db.plot(columns="structural")
+```
