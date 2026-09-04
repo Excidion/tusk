@@ -130,9 +130,11 @@ verified by rendering through mermaidx.
 | Column name starting with a digit | Prefix `_` | `2024_total` is a parse error; `_2024_total` parses |
 | `Datetime(time_unit='ns', time_zone='UTC')` | → `Datetime[ns-UTC]` | Quotes, commas and `=` are illegal in the type slot |
 | `Datetime(time_unit='us', time_zone=None)` | → `Datetime[us]` | A naive datetime shows no zone |
-| `List(Int64)` | → `List[Int64]` | Same charset restriction |
+| `Datetime(..., time_zone='America/New_York')` | → `Datetime[ns-America_New_York]` | `/`, `+` and `:` are all parse errors; every character outside `[A-Za-z0-9_-]` becomes `_` |
+| `Duration(time_unit='ms')` | → `Duration[ms]` | Same charset restriction |
+| `List(Int64)` | → `List[Int64]` | Rendered recursively, so `List(List(Int64))` → `List[List[Int64]]` |
 | `Enum(...)` / `Struct(...)` | → `Enum[3]` / `Struct[2]` | Variant and field counts; the full contents would not fit |
-| Any other dtype | `str(dtype)` unchanged | Already a bare identifier |
+| Any other dtype | The dtype class name | Already a bare identifier |
 
 Hyphens, dots, underscores and non-ASCII letters need no escaping in either
 slot.
