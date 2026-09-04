@@ -188,6 +188,34 @@ no rows, so it costs nothing:
 db.plot()
 ```
 
+For the retail database above, that gives:
+
+```mermaid
+erDiagram
+  "customers" ||--o{ "sessions" : customer_id
+  "sessions" ||--o{ "transactions" : session_id
+  "customers" {
+    Int64 id PK
+    Int64 age
+    Datetime[us] signed_up_at "row creation time"
+  }
+  "sessions" {
+    Int64 id PK
+    Int64 customer_id FK
+    Datetime[us] started_at "row creation time"
+  }
+  "transactions" {
+    Int64 id PK
+    Int64 session_id FK
+    Float64 amount
+    Datetime[us] occurred_at "row creation time"
+  }
+```
+
+Each attribute row is the column's dtype, its name, its key marker, and a
+comment. `PK` and `FK` are Mermaid's own markers; the `row_creation_time` gets
+a comment instead, because Mermaid has no marker for it.
+
 In a notebook the diagram renders inline. Elsewhere, `print(db.plot())` gives
 the Mermaid source, and `save()` writes a file:
 
