@@ -1,7 +1,7 @@
 import narwhals as nw
 import pytest
 
-from tusk.plotting import render_dtype
+from tusk.plotting import render_column_name, render_dtype, render_table_name
 
 
 @pytest.mark.parametrize(
@@ -33,3 +33,29 @@ def test_timezone_punctuation_is_replaced():
     # slot, so every character outside the safe set collapses to underscore.
     rendered = render_dtype(nw.Datetime(time_unit="ns", time_zone="UTC+02:00"))
     assert rendered == "Datetime[ns-UTC_02_00]"
+
+
+FIGURE_SPACE = " "
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("amount", "amount"),
+        ("total_2024", "total_2024"),
+        ("n-items", "n-items"),
+        ("a.b", "a.b"),
+        ("straße", "straße"),
+        ("unit price", f"unit{FIGURE_SPACE}price"),
+        ("2024_total", "_2024_total"),
+        ("2024 total", f"_2024{FIGURE_SPACE}total"),
+    ],
+)
+def test_column_name_is_made_parseable(name, expected):
+    assert render_column_name(name) == expected
+
+
+def test_table_name_is_quoted():
+    # Quoting is what lets a table name contain a space, which an attribute
+    # name cannot.
+    assert render_table_name("order items") == '"order items"'

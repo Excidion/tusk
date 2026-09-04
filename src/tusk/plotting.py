@@ -32,6 +32,41 @@ def render_dtype(dtype: Any) -> str:
     return f"{name}[{parameters}]" if parameters else name
 
 
+def render_table_name(name: str) -> str:
+    """Render a table name as a Mermaid entity name.
+
+    Args:
+        name: The table's name.
+
+    Returns:
+        The name in double quotes, which is what allows it to contain spaces.
+    """
+    return f'"{name}"'
+
+
+def render_column_name(name: str) -> str:
+    """Render a column name as a Mermaid attribute name.
+
+    Attribute names cannot be quoted, so a name Mermaid would reject is
+    rewritten rather than escaped. The rewrite is lossy: two columns differing
+    only by a space collapse to the same token. The diagram is for visual
+    inspection, so that is preferred to refusing to draw it.
+
+    Args:
+        name: The column's name.
+
+    Returns:
+        A name Mermaid's attribute slot parses, as close to the original as
+        the grammar allows.
+    """
+    # U+2007 FIGURE SPACE renders as a space but is not one to the parser,
+    # which rejects a real space in an attribute name.
+    parseable = name.replace(" ", " ")
+    if parseable[:1].isdigit():
+        return f"_{parseable}"
+    return parseable
+
+
 def _render_dtype_parameters(dtype: Any) -> str:
     """Render the parameters that distinguish one instance of a dtype from another.
 
