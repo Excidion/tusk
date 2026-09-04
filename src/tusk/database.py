@@ -245,6 +245,9 @@ class Database:
 
         Reads no rows: the diagram is built entirely from declared schema.
 
+        A ``columns`` value other than True, False, or ``"structural"`` raises
+        :class:`ValueError`.
+
         Args:
             columns: True lists every column, False lists none, and
                 ``"structural"`` lists only the primary key, the foreign keys,
