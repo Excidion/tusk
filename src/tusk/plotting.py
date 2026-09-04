@@ -19,7 +19,6 @@ import narwhals as nw
 if TYPE_CHECKING:
     from tusk.database import Database, Relationship, TableSchema
 
-_UNSAFE_IN_TOKEN = re.compile(r"[^A-Za-z0-9_-]")
 COLUMN_MODES = (True, False, "structural")
 
 
@@ -38,7 +37,10 @@ def build_schema_source(database: Database, columns: bool | str = True) -> str:
     Raises:
         ValueError: If ``columns`` is not True, False, or ``"structural"``.
     """
-    if columns not in COLUMN_MODES:
+    if not any(columns is mode for mode in COLUMN_MODES):
+        # `columns in COLUMN_MODES` would use `==`, under which `0 == False`
+        # and `1 == True` -- an identity check is the only way to admit
+        # exactly the three intended values.
         raise ValueError(
             f"columns must be True, False, or 'structural'; got {columns!r}",
         )
@@ -64,7 +66,11 @@ def _render_relationship(relationship: Relationship) -> str:
     """
     parent = render_table_name(relationship.parent)
     child = render_table_name(relationship.child)
-    return f"  {parent} ||--o{{ {child} : {relationship.foreign_key}"
+    # The edge label is a column name wearing a different hat, so it goes
+    # through the same sanitising -- that is also what keeps it matching the
+    # attribute rendered inside the child table's box.
+    label = render_column_name(relationship.foreign_key)
+    return f"  {parent} ||--o{{ {child} : {label}"
 
 
 def _render_table(database: Database, name: str, columns: bool | str) -> list[str]:
@@ -239,21 +245,41 @@ def render_dtype(dtype: Any) -> str:
     return f"{name}[{parameters}]" if parameters else name
 
 
+# A quoted entity name tolerates almost everything -- empirically, only a
+# backslash, a percent sign and a newline break it despite the quoting.
+# A literal double quote is handled separately, by dropping rather than
+# substituting, so an embedded quote cannot close the entity name early.
+_UNSAFE_IN_TABLE_NAME = re.compile(r"[\\%\n]")
+
+
 def render_table_name(name: str) -> str:
     """Render a table name as a Mermaid entity name.
 
     Any double quote in the name is dropped before quoting: an embedded quote
     would close the entity name early and break the whole diagram, not just
-    this one label.
+    this one label. A name left empty by that, or empty to start with, would
+    quote to `` "" ``, which Mermaid also rejects, so it falls back to `` "_" ``.
 
     Args:
         name: The table's name.
 
     Returns:
-        The name, quote-stripped and wrapped in double quotes, which is what
-        allows it to contain spaces.
+        The name, quote-stripped, unsafe-character-substituted and wrapped in
+        double quotes, which is what allows it to contain spaces.
     """
-    return f'"{name.replace(chr(34), "")}"'
+    quote_stripped = name.replace(chr(34), "")
+    safe = _UNSAFE_IN_TABLE_NAME.sub("_", quote_stripped)
+    return f'"{safe or "_"}"'
+
+
+# Unsafe in an attribute name and, since a foreign key's name is rendered
+# through the same function, in a relationship's edge label. Determined
+# empirically by rendering each candidate through mermaidx rather than reading
+# Mermaid's grammar: letters (including non-ASCII ones), digits, underscore,
+# hyphen and dot parse in both slots and are left alone; space is handled
+# separately below. Everything in this set is a parse error in at least one
+# of the two slots.
+_UNSAFE_IN_COLUMN_NAME = re.compile(r"""[:;#'|/\\<=>+&!?@$~^`{}%"\[\](),\t\n]""")
 
 
 def render_column_name(name: str) -> str:
@@ -261,8 +287,9 @@ def render_column_name(name: str) -> str:
 
     Attribute names cannot be quoted, so a name Mermaid would reject is
     rewritten rather than escaped. The rewrite is lossy: two columns differing
-    only by a space collapse to the same token. The diagram is for visual
-    inspection, so that is preferred to refusing to draw it.
+    only by a space, or only by an unsafe character, collapse to the same
+    token. The diagram is for visual inspection, so that is preferred to
+    refusing to draw it.
 
     Args:
         name: The column's name.
@@ -271,9 +298,19 @@ def render_column_name(name: str) -> str:
         A name Mermaid's attribute slot parses, as close to the original as
         the grammar allows.
     """
-    # U+2007 FIGURE SPACE renders as a space but is not one to the parser,
-    # which rejects a real space in an attribute name.
-    parseable = name.replace(" ", "\u2007")
+    # Unsafe characters go first, while a plain space can still pass through
+    # untouched; only then does the space become U+2007 FIGURE SPACE, which
+    # renders as a space but is not one to the parser, which rejects a real
+    # space in an attribute name. Running the passes in the other order would
+    # have the unsafe-character sub see U+2007 and, being unable to tell it
+    # from any other non-ASCII character, leave it alone anyway -- but doing
+    # the space conversion last keeps that from ever being a question.
+    safe = _UNSAFE_IN_COLUMN_NAME.sub("_", name)
+    parseable = safe.replace(" ", "\u2007")
+    if not parseable:
+        # An empty attribute name is a parse error even though no exception
+        # was raised getting here; "_" is the smallest token that parses.
+        return "_"
     if parseable[:1].isdigit():
         return f"_{parseable}"
     return parseable
@@ -299,6 +336,9 @@ def _render_dtype_parameters(dtype: Any) -> str:
     if isinstance(dtype, nw.Struct):
         return str(len(dtype.fields))
     return ""
+
+
+_UNSAFE_IN_TOKEN = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _render_time_parameters(time_unit: str, time_zone: str | None) -> str:

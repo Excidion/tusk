@@ -51,5 +51,11 @@ def test_entityset_module_is_gone():
 
 
 def test_schema_diagram_is_exported():
-    assert callable(tusk.Database("d").plot)
-    assert tusk.SchemaDiagram
+    # `tusk.SchemaDiagram` being truthy, and `db.plot` being callable, both
+    # hold even if the export is wired to the wrong object or `plot` returns
+    # nonsense; asserting identity and inspecting the actual return value is
+    # what exercises the export.
+    assert tusk.SchemaDiagram is tusk.plotting.SchemaDiagram
+    diagram = tusk.Database("d").plot()
+    assert isinstance(diagram, tusk.SchemaDiagram)
+    assert diagram.source.startswith("erDiagram")

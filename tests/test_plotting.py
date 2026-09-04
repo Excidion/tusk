@@ -60,10 +60,44 @@ FIGURE_SPACE = "\u2007"
         ("unit price", f"unit{FIGURE_SPACE}price"),
         ("2024_total", "_2024_total"),
         ("2024 total", f"_2024{FIGURE_SPACE}total"),
+        ("revenue %", f"revenue{FIGURE_SPACE}_"),
+        ("", "_"),
     ],
 )
 def test_column_name_is_made_parseable(name, expected):
     assert render_column_name(name) == expected
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        ":",
+        ";",
+        "#",
+        "'",
+        "|",
+        "/",
+        "\\",
+        "<",
+        "=",
+        "+",
+        "&",
+        "!",
+        "?",
+        "@",
+        "$",
+        "~",
+        "^",
+        "`",
+        "\t",
+        "{",
+        "}",
+    ],
+)
+def test_every_reported_unsafe_character_is_replaced_in_column_names(unsafe):
+    # Each of these was independently confirmed, by rendering through
+    # mermaidx, to make an attribute name unparseable.
+    assert unsafe not in render_column_name(f"a{unsafe}b")
 
 
 def test_table_name_is_quoted():
@@ -76,6 +110,20 @@ def test_a_quote_in_a_table_name_is_dropped():
     # An embedded quote would close the entity name early and break the whole
     # diagram, not just this one label.
     assert render_table_name('a"b') == '"ab"'
+
+
+def test_a_percent_in_a_table_name_is_replaced():
+    # Reported broken even though the entity name is quoted.
+    assert render_table_name("a%b") == '"a_b"'
+
+
+def test_a_newline_in_a_table_name_is_replaced():
+    assert render_table_name("a\nb") == '"a_b"'
+
+
+def test_an_empty_table_name_falls_back_to_a_placeholder():
+    # `""` quotes to `""`, which Mermaid also rejects.
+    assert render_table_name("") == '"_"'
 
 
 @pytest.fixture
@@ -115,6 +163,20 @@ def test_every_table_and_relationship_appears(two_table_db):
     assert '"customers" ||--o{ "orders" : customer_id' in source
     # A table with no relationships still has to be drawn.
     assert '"regions"' in source
+
+
+def test_entities_appear_in_insertion_order(two_table_db):
+    # A regression that reordered `Database.table_names` would pass every
+    # other test here, since all three assert membership rather than
+    # position. The entity block, not the relationship edge line, is what is
+    # searched for -- the edge line lists customers before orders regardless
+    # of table order, since a relationship's parent always comes first there.
+    source = build_schema_source(two_table_db, columns=True)
+    assert (
+        source.index('"customers" {')
+        < source.index('"orders" {')
+        < source.index('"regions" {')
+    )
 
 
 def test_columns_true_lists_every_column_with_markers(two_table_db):
@@ -164,6 +226,14 @@ def test_an_unknown_columns_value_is_rejected(two_table_db):
         build_schema_source(two_table_db, columns="all")
 
 
+@pytest.mark.parametrize("columns", [0, 1])
+def test_an_int_that_equals_a_bool_is_rejected(two_table_db, columns):
+    # `0 == False` and `1 == True`, so a membership check using `==` would
+    # silently accept these; only an identity check tells them apart.
+    with pytest.raises(ValueError, match="structural"):
+        build_schema_source(two_table_db, columns=columns)
+
+
 def test_generated_source_parses(two_table_db):
     # The golden-string tests above compare text and would happily accept
     # source Mermaid cannot parse. This is the test that catches an escaping
@@ -180,6 +250,90 @@ def test_hostile_names_still_parse():
     )
     mermaidx = pytest.importorskip("mermaidx")
     mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+def test_a_percent_sign_in_a_column_name_still_parses():
+    # The bug the finding opened with: an ordinary CSV header broke the whole
+    # diagram because the foreign-key edge label passed through no sanitising
+    # at all, and render_column_name only handled spaces and leading digits.
+    db = tusk.Database("d").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "revenue %": [1.0]}),
+        primary_key="id",
+    )
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+@pytest.fixture
+def parent_child_db():
+    """A parent and a child linked by a foreign key named after the column."""
+
+    def _make(foreign_key):
+        return (
+            tusk.Database("d")
+            .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
+            .add_table(
+                "orders",
+                pl.LazyFrame({"id": [1], foreign_key: [1]}),
+                primary_key="id",
+            )
+            .add_relationship(
+                parent="customers", child="orders", foreign_key=foreign_key
+            )
+        )
+
+    return _make
+
+
+def test_a_foreign_key_named_with_a_space_still_parses(parent_child_db):
+    mermaidx = pytest.importorskip("mermaidx")
+    db = parent_child_db("unit price")
+    mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+def test_a_foreign_key_containing_a_percent_sign_still_parses(parent_child_db):
+    mermaidx = pytest.importorskip("mermaidx")
+    db = parent_child_db("cust%id")
+    mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+def test_a_table_name_containing_a_percent_sign_still_parses():
+    mermaidx = pytest.importorskip("mermaidx")
+    db = tusk.Database("d").add_table(
+        "cust%omers",
+        pl.LazyFrame({"id": [1]}),
+        primary_key="id",
+    )
+    mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+def test_an_empty_table_name_still_parses():
+    mermaidx = pytest.importorskip("mermaidx")
+    db = tusk.Database("d").add_table("", pl.LazyFrame({"id": [1]}), primary_key="id")
+    mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+def test_an_empty_column_name_still_parses():
+    mermaidx = pytest.importorskip("mermaidx")
+    db = tusk.Database("d").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "": [1.0]}),
+        primary_key="id",
+    )
+    mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+def test_a_foreign_key_with_a_space_renders_the_same_on_the_edge_and_in_the_box(
+    parent_child_db,
+):
+    # Before the fix, an FK named "unit price" rendered raw on the edge label
+    # but sanitised inside the child table's box, so the same column showed
+    # up as two different tokens: one for the edge, one for the attribute.
+    # Both are now render_column_name's output, so the token appears twice.
+    source = build_schema_source(parent_child_db("unit price"), columns=True)
+    token = f"unit{FIGURE_SPACE}price"
+    assert source.count(token) == 2
 
 
 SOURCE = 'erDiagram\n  "t" {\n    Int64 id PK\n  }\n'
@@ -206,7 +360,7 @@ def test_saving_source_needs_no_renderer(tmp_path, suffix, monkeypatch):
     assert path.read_text(encoding="utf-8") == SOURCE
 
 
-@pytest.mark.parametrize("suffix", [".svg", ".png"])
+@pytest.mark.parametrize("suffix", [".svg", ".png", ".pdf"])
 def test_saving_an_image_writes_a_file(tmp_path, suffix):
     pytest.importorskip("mermaidx")
     path = tmp_path / f"schema{suffix}"
