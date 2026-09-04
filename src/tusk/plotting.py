@@ -184,7 +184,8 @@ class SchemaDiagram:
 
         The suffix selects the format. ``.mmd`` and ``.md`` write the source
         and need nothing installed; ``.svg``, ``.png`` and ``.pdf`` render the
-        diagram and need ``tusk-ml[plot]``.
+        diagram and need ``tusk-ml[plot]``, raising ``ImportError`` if it is
+        not installed.
 
         Args:
             path: Where to write, including the suffix.
