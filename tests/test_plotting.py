@@ -35,7 +35,7 @@ def test_timezone_punctuation_is_replaced():
     assert rendered == "Datetime[ns-UTC_02_00]"
 
 
-FIGURE_SPACE = " "
+FIGURE_SPACE = "\u2007"
 
 
 @pytest.mark.parametrize(

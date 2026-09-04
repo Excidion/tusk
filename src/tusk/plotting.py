@@ -61,7 +61,7 @@ def render_column_name(name: str) -> str:
     """
     # U+2007 FIGURE SPACE renders as a space but is not one to the parser,
     # which rejects a real space in an attribute name.
-    parseable = name.replace(" ", " ")
+    parseable = name.replace(" ", "\u2007")
     if parseable[:1].isdigit():
         return f"_{parseable}"
     return parseable
