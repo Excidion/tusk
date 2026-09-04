@@ -2630,6 +2630,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+plot = [
+    { name = "mermaidx" },
+]
 sklearn = [
     { name = "scikit-learn" },
 ]
@@ -2681,10 +2684,11 @@ validation = [
 
 [package.metadata]
 requires-dist = [
+    { name = "mermaidx", marker = "extra == 'plot'", specifier = ">=0.9.5" },
     { name = "narwhals", specifier = ">=2.24" },
     { name = "scikit-learn", marker = "extra == 'sklearn'", specifier = ">=1.4" },
 ]
-provides-extras = ["sklearn"]
+provides-extras = ["sklearn", "plot"]
 
 [package.metadata.requires-dev]
 benchmark = [{ name = "relbench", specifier = ">=2.1" }]

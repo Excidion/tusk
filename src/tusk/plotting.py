@@ -10,6 +10,8 @@ dataframe's column names.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import narwhals as nw
@@ -140,6 +142,85 @@ def _describe_role(column: str, schema: TableSchema, foreign_keys: set[str]) -> 
     if column == schema.row_creation_time:
         parts.append('"row creation time"')
     return " ".join(parts)
+
+
+SOURCE_SUFFIXES = (".mmd", ".md")
+IMAGE_SUFFIXES = (".svg", ".png", ".pdf")
+
+
+@dataclass(frozen=True)
+class SchemaDiagram:
+    """A Mermaid diagram of a database's schema.
+
+    Printing it, or reading :attr:`source`, gives the Mermaid source, which is
+    the escape hatch for any renderer: this class only knows how to display
+    itself and write a file.
+
+    Attributes:
+        source: The Mermaid ``erDiagram`` source.
+    """
+
+    source: str
+
+    def __str__(self) -> str:
+        """Return the Mermaid source.
+
+        Returns:
+            The diagram source.
+        """
+        return self.source
+
+    def _repr_markdown_(self) -> str:
+        """Return the source as a fenced block, for notebooks and docs.
+
+        Returns:
+            The source in a ``mermaid`` code fence, which Jupyter, GitHub and
+            the documentation site all render as a picture.
+        """
+        return f"```mermaid\n{self.source}```"
+
+    def save(self, path: str | Path) -> None:
+        """Write the diagram to a file.
+
+        The suffix selects the format. ``.mmd`` and ``.md`` write the source
+        and need nothing installed; ``.svg``, ``.png`` and ``.pdf`` render the
+        diagram and need ``tusk-ml[plot]``.
+
+        Args:
+            path: Where to write, including the suffix.
+
+        Raises:
+            ValueError: If the suffix names no supported format.
+        """
+        path = Path(path)
+        if path.suffix in SOURCE_SUFFIXES:
+            path.write_text(self.source, encoding="utf-8")
+        elif path.suffix in IMAGE_SUFFIXES:
+            _render_to_file(self.source, path)
+        else:
+            supported = ", ".join(SOURCE_SUFFIXES + IMAGE_SUFFIXES)
+            raise ValueError(
+                f"cannot save {path.suffix!r}; supported suffixes are {supported}",
+            )
+
+
+def _render_to_file(source: str, path: Path) -> None:
+    """Render Mermaid source to an image file.
+
+    Args:
+        source: The diagram source.
+        path: Where to write, including the suffix.
+
+    Raises:
+        ImportError: If the renderer is not installed.
+    """
+    try:
+        import mermaidx
+    except ImportError as error:
+        raise ImportError(
+            f"saving {path.suffix} needs a renderer: pip install tusk-ml[plot]",
+        ) from error
+    mermaidx.render(source).save(str(path))
 
 
 def render_dtype(dtype: Any) -> str:

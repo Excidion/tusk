@@ -16,6 +16,7 @@ dependencies = ["narwhals>=2.24"]
 
 [project.optional-dependencies]
 sklearn = ["scikit-learn>=1.4"]
+plot = ["mermaidx>=0.9.5"]
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13"]

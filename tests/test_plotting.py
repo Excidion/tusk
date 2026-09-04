@@ -1,4 +1,5 @@
 import datetime as dt
+import sys
 
 import narwhals as nw
 import polars as pl
@@ -6,6 +7,7 @@ import pytest
 
 import tusk
 from tusk.plotting import (
+    SchemaDiagram,
     build_schema_source,
     render_column_name,
     render_dtype,
@@ -178,3 +180,46 @@ def test_hostile_names_still_parse():
     )
     mermaidx = pytest.importorskip("mermaidx")
     mermaidx.render(build_schema_source(db, columns=True)).svg()
+
+
+SOURCE = 'erDiagram\n  "t" {\n    Int64 id PK\n  }\n'
+
+
+def test_str_is_the_source():
+    assert str(SchemaDiagram(SOURCE)) == SOURCE
+
+
+def test_markdown_repr_is_a_mermaid_block():
+    # Jupyter, GitHub and the docs site all render a fenced mermaid block.
+    rendered = SchemaDiagram(SOURCE)._repr_markdown_()
+    assert rendered.startswith("```mermaid\n")
+    assert rendered.endswith("```")
+    assert SOURCE in rendered
+
+
+@pytest.mark.parametrize("suffix", [".mmd", ".md"])
+def test_saving_source_needs_no_renderer(tmp_path, suffix, monkeypatch):
+    # Hiding mermaidx proves the text formats never reach for it.
+    monkeypatch.setitem(sys.modules, "mermaidx", None)
+    path = tmp_path / f"schema{suffix}"
+    SchemaDiagram(SOURCE).save(path)
+    assert path.read_text(encoding="utf-8") == SOURCE
+
+
+@pytest.mark.parametrize("suffix", [".svg", ".png"])
+def test_saving_an_image_writes_a_file(tmp_path, suffix):
+    pytest.importorskip("mermaidx")
+    path = tmp_path / f"schema{suffix}"
+    SchemaDiagram(SOURCE).save(path)
+    assert path.stat().st_size > 0
+
+
+def test_an_unsupported_suffix_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match=".mmd"):
+        SchemaDiagram(SOURCE).save(tmp_path / "schema.gif")
+
+
+def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "mermaidx", None)
+    with pytest.raises(ImportError, match=r"tusk-ml\[plot\]"):
+        SchemaDiagram(SOURCE).save(tmp_path / "schema.svg")
