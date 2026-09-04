@@ -1,7 +1,16 @@
+import datetime as dt
+
 import narwhals as nw
+import polars as pl
 import pytest
 
-from tusk.plotting import render_column_name, render_dtype, render_table_name
+import tusk
+from tusk.plotting import (
+    build_schema_source,
+    render_column_name,
+    render_dtype,
+    render_table_name,
+)
 
 
 @pytest.mark.parametrize(
@@ -59,3 +68,113 @@ def test_table_name_is_quoted():
     # Quoting is what lets a table name contain a space, which an attribute
     # name cannot.
     assert render_table_name("order items") == '"order items"'
+
+
+def test_a_quote_in_a_table_name_is_dropped():
+    # An embedded quote would close the entity name early and break the whole
+    # diagram, not just this one label.
+    assert render_table_name('a"b') == '"ab"'
+
+
+@pytest.fixture
+def two_table_db():
+    """A parent and a child, plus one table related to neither."""
+    return (
+        tusk.Database("shop")
+        .add_table(
+            "customers",
+            pl.LazyFrame(
+                {
+                    "id": [1],
+                    "signed_up_at": [dt.datetime(2024, 1, 1)],
+                    "region": ["eu"],
+                },
+            ),
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "customer_id": [1], "amount": [1.0]}),
+            primary_key="id",
+        )
+        .add_table(
+            "regions",
+            pl.LazyFrame({"code": ["eu"]}),
+            primary_key="code",
+        )
+        .add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+    )
+
+
+def test_every_table_and_relationship_appears(two_table_db):
+    source = build_schema_source(two_table_db, columns=True)
+    assert source.startswith("erDiagram\n")
+    assert '"customers" ||--o{ "orders" : customer_id' in source
+    # A table with no relationships still has to be drawn.
+    assert '"regions"' in source
+
+
+def test_columns_true_lists_every_column_with_markers(two_table_db):
+    source = build_schema_source(two_table_db, columns=True)
+    assert "Int64 id PK" in source
+    assert "Int64 customer_id FK" in source
+    assert 'Datetime[us] signed_up_at "row creation time"' in source
+    assert "Float64 amount" in source
+
+
+def test_columns_false_omits_every_attribute(two_table_db):
+    source = build_schema_source(two_table_db, columns=False)
+    assert "Float64" not in source
+    assert "amount" not in source
+    assert '"customers" ||--o{ "orders" : customer_id' in source
+
+
+def test_columns_structural_keeps_only_keys_and_the_time_index(two_table_db):
+    source = build_schema_source(two_table_db, columns="structural")
+    assert "Int64 customer_id FK" in source
+    assert 'Datetime[us] signed_up_at "row creation time"' in source
+    assert "String region" not in source
+    assert "amount" not in source
+
+
+def test_a_column_that_is_both_keys_gets_both_markers():
+    # orders.id is the primary key and also the foreign key to customers.
+    db = (
+        tusk.Database("d")
+        .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table("orders", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_relationship(parent="customers", child="orders", foreign_key="id")
+    )
+    assert "Int64 id PK, FK" in build_schema_source(db, columns=True)
+
+
+def test_a_table_without_a_primary_key_has_no_marker():
+    with pytest.warns(tusk.exceptions.MissingPrimaryKeyWarning):
+        db = tusk.Database("d").add_table("t", pl.LazyFrame({"a": [1]}))
+    source = build_schema_source(db, columns=True)
+    assert "Int64 a" in source
+    assert "PK" not in source
+
+
+def test_an_unknown_columns_value_is_rejected(two_table_db):
+    with pytest.raises(ValueError, match="structural"):
+        build_schema_source(two_table_db, columns="all")
+
+
+def test_generated_source_parses(two_table_db):
+    # The golden-string tests above compare text and would happily accept
+    # source Mermaid cannot parse. This is the test that catches an escaping
+    # regression, so it renders for real.
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(build_schema_source(two_table_db, columns=True)).svg()
+
+
+def test_hostile_names_still_parse():
+    db = tusk.Database("d").add_table(
+        'order "items"',
+        pl.LazyFrame({"id": [1], "unit price": [1.0], "2024 total": [2.0]}),
+        primary_key="id",
+    )
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(build_schema_source(db, columns=True)).svg()

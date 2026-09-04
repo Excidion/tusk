@@ -10,11 +10,136 @@ dataframe's column names.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import narwhals as nw
 
+if TYPE_CHECKING:
+    from tusk.database import Database, Relationship, TableSchema
+
 _UNSAFE_IN_TOKEN = re.compile(r"[^A-Za-z0-9_-]")
+COLUMN_MODES = (True, False, "structural")
+
+
+def build_schema_source(database: Database, columns: bool | str = True) -> str:
+    """Build Mermaid ``erDiagram`` source for a database's schema.
+
+    Args:
+        database: The database to draw.
+        columns: True lists every column, False lists none, and ``"structural"``
+            lists only the primary key, the foreign keys, and the
+            ``row_creation_time``.
+
+    Returns:
+        The diagram source.
+
+    Raises:
+        ValueError: If ``columns`` is not True, False, or ``"structural"``.
+    """
+    if columns not in COLUMN_MODES:
+        raise ValueError(
+            f"columns must be True, False, or 'structural'; got {columns!r}",
+        )
+    lines = ["erDiagram"]
+    lines.extend(_render_relationship(r) for r in database.relationships)
+    for name in database.table_names:
+        lines.extend(_render_table(database, name, columns))
+    return "\n".join(lines) + "\n"
+
+
+def _render_relationship(relationship: Relationship) -> str:
+    """Render one relationship as a Mermaid edge.
+
+    The cardinality is always one-to-many: a tusk relationship is one by
+    definition, and a nullable foreign key -- the only thing that would make
+    the parent side optional -- could not be detected without reading rows.
+
+    Args:
+        relationship: The relationship to draw.
+
+    Returns:
+        The edge line, indented.
+    """
+    parent = render_table_name(relationship.parent)
+    child = render_table_name(relationship.child)
+    return f"  {parent} ||--o{{ {child} : {relationship.foreign_key}"
+
+
+def _render_table(database: Database, name: str, columns: bool | str) -> list[str]:
+    """Render one table as a Mermaid entity.
+
+    Args:
+        database: The database the table belongs to.
+        name: The table's name.
+        columns: The column mode, as documented on :func:`build_schema_source`.
+
+    Returns:
+        The entity's lines. A bare name when no columns are shown, otherwise a
+        braced block.
+    """
+    entity = render_table_name(name)
+    if columns is False:
+        return [f"  {entity}"]
+    attributes = [
+        f"    {attribute}" for attribute in _render_attributes(database, name, columns)
+    ]
+    return [f"  {entity} {{", *attributes, "  }"]
+
+
+def _render_attributes(database: Database, name: str, columns: bool | str) -> list[str]:
+    """Render the attribute lines for one table.
+
+    Args:
+        database: The database the table belongs to.
+        name: The table's name.
+        columns: The column mode, as documented on :func:`build_schema_source`.
+
+    Returns:
+        One line per shown column, in schema order.
+    """
+    schema = database.schema(name)
+    foreign_keys = {r.foreign_key for r in database.parents_of(name)}
+    lines = []
+    for column, dtype in schema.dtypes.items():
+        role = _describe_role(column, schema, foreign_keys)
+        if columns == "structural" and not role:
+            continue
+        lines.append(
+            " ".join(
+                part
+                for part in (render_dtype(dtype), render_column_name(column), role)
+                if part
+            ),
+        )
+    return lines
+
+
+def _describe_role(column: str, schema: TableSchema, foreign_keys: set[str]) -> str:
+    """Describe what a column does structurally, as Mermaid markers and a comment.
+
+    ``row_creation_time`` gets a comment rather than a marker because Mermaid
+    has only PK, FK and UK, and its ``classDef`` styling cannot target an
+    individual attribute. The comment slot is where a secondary time index
+    will go too.
+
+    Args:
+        column: The column's name.
+        schema: The schema of the table it belongs to.
+        foreign_keys: Every foreign key column on that table.
+
+    Returns:
+        The marker and comment text, or an empty string for a column with no
+        structural role.
+    """
+    markers = []
+    if column == schema.primary_key:
+        markers.append("PK")
+    if column in foreign_keys:
+        markers.append("FK")
+    parts = [", ".join(markers)] if markers else []
+    if column == schema.row_creation_time:
+        parts.append('"row creation time"')
+    return " ".join(parts)
 
 
 def render_dtype(dtype: Any) -> str:
@@ -35,13 +160,18 @@ def render_dtype(dtype: Any) -> str:
 def render_table_name(name: str) -> str:
     """Render a table name as a Mermaid entity name.
 
+    Any double quote in the name is dropped before quoting: an embedded quote
+    would close the entity name early and break the whole diagram, not just
+    this one label.
+
     Args:
         name: The table's name.
 
     Returns:
-        The name in double quotes, which is what allows it to contain spaces.
+        The name, quote-stripped and wrapped in double quotes, which is what
+        allows it to contain spaces.
     """
-    return f'"{name}"'
+    return f'"{name.replace(chr(34), "")}"'
 
 
 def render_column_name(name: str) -> str:
