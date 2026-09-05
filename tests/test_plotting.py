@@ -8,9 +8,9 @@ import pytest
 import tusk
 from tusk.plotting import (
     SchemaDiagram,
-    _render_column_name,
-    _render_dtype,
-    _render_table_name,
+    render_column_name,
+    render_dtype,
+    render_table_name,
 )
 
 
@@ -35,13 +35,13 @@ from tusk.plotting import (
     ],
 )
 def test_dtype_renders_as_a_mermaid_safe_token(dtype, expected):
-    assert _render_dtype(dtype) == expected
+    assert render_dtype(dtype) == expected
 
 
 def test_timezone_punctuation_is_replaced():
     # Slashes, plus signs and colons are all parse errors in Mermaid's type
     # slot, so every character outside the safe set collapses to underscore.
-    rendered = _render_dtype(nw.Datetime(time_unit="ns", time_zone="UTC+02:00"))
+    rendered = render_dtype(nw.Datetime(time_unit="ns", time_zone="UTC+02:00"))
     assert rendered == "Datetime[ns-UTC_02_00]"
 
 
@@ -64,7 +64,7 @@ FIGURE_SPACE = "\u2007"
     ],
 )
 def test_column_name_is_made_parseable(name, expected):
-    assert _render_column_name(name) == expected
+    assert render_column_name(name) == expected
 
 
 @pytest.mark.parametrize(
@@ -99,33 +99,33 @@ def test_column_name_is_made_parseable(name, expected):
 def test_every_reported_unsafe_character_is_replaced_in_column_names(unsafe):
     # Each of these was independently confirmed, by rendering through
     # mermaidx, to make an attribute name unparseable.
-    assert unsafe not in _render_column_name(f"a{unsafe}b")
+    assert unsafe not in render_column_name(f"a{unsafe}b")
 
 
 def test_table_name_is_quoted():
     # Quoting is what lets a table name contain a space, which an attribute
     # name cannot.
-    assert _render_table_name("order items") == '"order items"'
+    assert render_table_name("order items") == '"order items"'
 
 
 def test_a_quote_in_a_table_name_is_dropped():
     # An embedded quote would close the entity name early and break the whole
     # diagram, not just this one label.
-    assert _render_table_name('a"b') == '"ab"'
+    assert render_table_name('a"b') == '"ab"'
 
 
 def test_a_percent_in_a_table_name_is_replaced():
     # Reported broken even though the entity name is quoted.
-    assert _render_table_name("a%b") == '"a_b"'
+    assert render_table_name("a%b") == '"a_b"'
 
 
 def test_a_newline_in_a_table_name_is_replaced():
-    assert _render_table_name("a\nb") == '"a_b"'
+    assert render_table_name("a\nb") == '"a_b"'
 
 
 def test_an_empty_table_name_falls_back_to_a_placeholder():
     # `""` quotes to `""`, which Mermaid also rejects.
-    assert _render_table_name("") == '"_"'
+    assert render_table_name("") == '"_"'
 
 
 @pytest.fixture
@@ -259,7 +259,7 @@ def test_hostile_names_still_parse():
 def test_a_percent_sign_in_a_column_name_still_parses():
     # The bug the finding opened with: an ordinary CSV header broke the whole
     # diagram because the foreign-key edge label passed through no sanitising
-    # at all, and _render_column_name only handled spaces and leading digits.
+    # at all, and render_column_name only handled spaces and leading digits.
     db = tusk.Database("d").add_table(
         "t",
         pl.LazyFrame({"id": [1], "revenue %": [1.0]}),

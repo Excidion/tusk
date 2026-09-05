@@ -117,12 +117,12 @@ def render_dtype(dtype: Any) -> str:
         The dtype's class name, with its parameters in square brackets when it
         has any.
     """
-    parameters = _render_dtype_parameters(dtype)
+    parameters = render_dtype_parameters(dtype)
     name = type(dtype).__name__
     return f"{name}[{parameters}]" if parameters else name
 
 
-def _render_dtype_parameters(dtype: Any) -> str:
+def render_dtype_parameters(dtype: Any) -> str:
     """Render the parameters that distinguish one instance of a dtype from another.
 
     Args:
@@ -132,9 +132,9 @@ def _render_dtype_parameters(dtype: Any) -> str:
         The parameter token, or an empty string for a dtype without parameters.
     """
     if isinstance(dtype, nw.Datetime):
-        return _render_time_parameters(dtype.time_unit, dtype.time_zone)
+        return render_time_parameters(dtype.time_unit, dtype.time_zone)
     if isinstance(dtype, nw.Duration):
-        return _render_time_parameters(dtype.time_unit, None)
+        return render_time_parameters(dtype.time_unit, None)
     if isinstance(dtype, nw.List):
         return render_dtype(dtype.inner)
     if isinstance(dtype, nw.Enum):
@@ -144,7 +144,7 @@ def _render_dtype_parameters(dtype: Any) -> str:
     return ""
 
 
-def _render_time_parameters(time_unit: str, time_zone: str | None) -> str:
+def render_time_parameters(time_unit: str, time_zone: str | None) -> str:
     """Render a temporal dtype's unit and zone as one token.
 
     Args:
@@ -230,7 +230,7 @@ Expected: FAIL — `ImportError: cannot import name 'render_column_name'`
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `src/tusk/plotting.py`, below `render_dtype` and above `_render_dtype_parameters`:
+Add to `src/tusk/plotting.py`, below `render_dtype` and above `render_dtype_parameters`:
 
 ```python
 def render_table_name(name: str) -> str:
@@ -417,13 +417,10 @@ def test_generated_source_parses(two_table_db):
 
 
 def test_hostile_names_still_parse():
-    db = (
-        tusk.Database("d")
-        .add_table(
-            "order items",
-            pl.LazyFrame({"id": [1], "unit price": [1.0], "2024 total": [2.0]}),
-            primary_key="id",
-        )
+    db = tusk.Database("d").add_table(
+        "order items",
+        pl.LazyFrame({"id": [1], "unit price": [1.0], "2024 total": [2.0]}),
+        primary_key="id",
     )
     mermaidx = pytest.importorskip("mermaidx")
     mermaidx.render(build_schema_source(db, columns=True)).svg()
@@ -462,13 +459,13 @@ def build_schema_source(database: Database, columns: bool | str = True) -> str:
             f"columns must be True, False, or 'structural'; got {columns!r}",
         )
     lines = ["erDiagram"]
-    lines.extend(_render_relationship(r) for r in database.relationships)
+    lines.extend(render_relationship(r) for r in database.relationships)
     for name in database.table_names:
-        lines.extend(_render_table(database, name, columns))
+        lines.extend(render_table(database, name, columns))
     return "\n".join(lines) + "\n"
 
 
-def _render_relationship(relationship: Relationship) -> str:
+def render_relationship(relationship: Relationship) -> str:
     """Render one relationship as a Mermaid edge.
 
     The cardinality is always one-to-many: a tusk relationship is one by
@@ -486,7 +483,7 @@ def _render_relationship(relationship: Relationship) -> str:
     return f"  {parent} ||--o{{ {child} : {relationship.foreign_key}"
 
 
-def _render_table(database: Database, name: str, columns: bool | str) -> list[str]:
+def render_table(database: Database, name: str, columns: bool | str) -> list[str]:
     """Render one table as a Mermaid entity.
 
     Args:
@@ -502,13 +499,12 @@ def _render_table(database: Database, name: str, columns: bool | str) -> list[st
     if columns is False:
         return [f"  {entity}"]
     attributes = [
-        f"    {attribute}"
-        for attribute in _render_attributes(database, name, columns)
+        f"    {attribute}" for attribute in render_attributes(database, name, columns)
     ]
     return [f"  {entity} {{", *attributes, "  }"]
 
 
-def _render_attributes(database: Database, name: str, columns: bool | str) -> list[str]:
+def render_attributes(database: Database, name: str, columns: bool | str) -> list[str]:
     """Render the attribute lines for one table.
 
     Args:
@@ -742,7 +738,7 @@ class SchemaDiagram:
         if path.suffix in SOURCE_SUFFIXES:
             path.write_text(self.source, encoding="utf-8")
         elif path.suffix in IMAGE_SUFFIXES:
-            _render_to_file(self.source, path)
+            render_to_file(self.source, path)
         else:
             supported = ", ".join(SOURCE_SUFFIXES + IMAGE_SUFFIXES)
             raise ValueError(
@@ -750,7 +746,7 @@ class SchemaDiagram:
             )
 
 
-def _render_to_file(source: str, path: Path) -> None:
+def render_to_file(source: str, path: Path) -> None:
     """Render Mermaid source to an image file.
 
     Args:

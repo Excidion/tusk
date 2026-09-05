@@ -62,9 +62,9 @@ class SchemaDiagram:
                 f"columns must be True, False, or 'structural'; got {columns!r}",
             )
         lines = ["erDiagram"]
-        lines.extend(_render_relationship(database, r) for r in database.relationships)
+        lines.extend(render_relationship(database, r) for r in database.relationships)
         for name in database.table_names:
-            lines.extend(_render_table(database, name, columns))
+            lines.extend(render_table(database, name, columns))
         return cls("\n".join(lines) + "\n")
 
     def __init__(self, source: str) -> None:
@@ -112,15 +112,32 @@ class SchemaDiagram:
         if path.suffix in source_suffixes:
             path.write_text(self.source, encoding="utf-8")
         elif path.suffix in image_suffixes:
-            _render_to_file(self.source, path)
+            self._render_image(path)
         else:
             supported = ", ".join(source_suffixes + image_suffixes)
             raise ValueError(
                 f"cannot save {path.suffix!r}; supported suffixes are {supported}",
             )
 
+    def _render_image(self, path: Path) -> None:
+        """Render the diagram to an image file.
 
-def _render_relationship(database: Database, relationship: Relationship) -> str:
+        Args:
+            path: Where to write, including the suffix.
+
+        Raises:
+            ImportError: If the renderer is not installed.
+        """
+        try:
+            import mermaidx
+        except ImportError as error:
+            raise ImportError(
+                f"saving {path.suffix} needs a renderer: pip install tusk-ml[plot]",
+            ) from error
+        mermaidx.render(self.source).save(str(path))
+
+
+def render_relationship(database: Database, relationship: Relationship) -> str:
     """Render one relationship as a Mermaid edge.
 
     Args:
@@ -130,11 +147,11 @@ def _render_relationship(database: Database, relationship: Relationship) -> str:
     Returns:
         The edge line, indented.
     """
-    parent = _render_table_name(relationship.parent)
-    child = _render_table_name(relationship.child)
+    parent = render_table_name(relationship.parent)
+    child = render_table_name(relationship.child)
     return (
         f"  {parent} 1 to {_count_of_children(database, relationship)} {child}"
-        f" : {_render_edge_label(relationship.foreign_key)}"
+        f" : {render_edge_label(relationship.foreign_key)}"
     )
 
 
@@ -156,7 +173,7 @@ def _count_of_children(database: Database, relationship: Relationship) -> str:
     return "0+"
 
 
-def _render_edge_label(foreign_key: str) -> str:
+def render_edge_label(foreign_key: str) -> str:
     """Render a foreign key as the label on a relationship's edge.
 
     Args:
@@ -171,7 +188,7 @@ def _render_edge_label(foreign_key: str) -> str:
     return f'"{foreign_key.replace(chr(34), "")}"'
 
 
-def _render_table(database: Database, name: str, columns: bool | str) -> list[str]:
+def render_table(database: Database, name: str, columns: bool | str) -> list[str]:
     """Render one table as a Mermaid entity.
 
     Args:
@@ -184,16 +201,16 @@ def _render_table(database: Database, name: str, columns: bool | str) -> list[st
         The entity's lines. A bare name when no columns are shown, otherwise a
         braced block.
     """
-    entity = _render_table_name(name)
+    entity = render_table_name(name)
     if columns is False:
         return [f"  {entity}"]
     attributes = [
-        f"    {attribute}" for attribute in _render_attributes(database, name, columns)
+        f"    {attribute}" for attribute in render_attributes(database, name, columns)
     ]
     return [f"  {entity} {{", *attributes, "  }"]
 
 
-def _render_attributes(database: Database, name: str, columns: bool | str) -> list[str]:
+def render_attributes(database: Database, name: str, columns: bool | str) -> list[str]:
     """Render the attribute lines for one table.
 
     Args:
@@ -215,7 +232,7 @@ def _render_attributes(database: Database, name: str, columns: bool | str) -> li
         lines.append(
             " ".join(
                 part
-                for part in (_render_dtype(dtype), _render_column_name(column), role)
+                for part in (render_dtype(dtype), render_column_name(column), role)
                 if part
             ),
         )
@@ -250,26 +267,7 @@ def _describe_role(column: str, schema: TableSchema, foreign_keys: set[str]) -> 
     return " ".join(parts)
 
 
-def _render_to_file(source: str, path: Path) -> None:
-    """Render Mermaid source to an image file.
-
-    Args:
-        source: The diagram source.
-        path: Where to write, including the suffix.
-
-    Raises:
-        ImportError: If the renderer is not installed.
-    """
-    try:
-        import mermaidx
-    except ImportError as error:
-        raise ImportError(
-            f"saving {path.suffix} needs a renderer: pip install tusk-ml[plot]",
-        ) from error
-    mermaidx.render(source).save(str(path))
-
-
-def _render_dtype(dtype: Any) -> str:
+def render_dtype(dtype: Any) -> str:
     """Render a narwhals dtype as a token Mermaid's type slot accepts.
 
     Args:
@@ -279,12 +277,12 @@ def _render_dtype(dtype: Any) -> str:
         The dtype's class name, with its parameters in square brackets when it
         has any.
     """
-    parameters = _render_dtype_parameters(dtype)
+    parameters = render_dtype_parameters(dtype)
     name = type(dtype).__name__
     return f"{name}[{parameters}]" if parameters else name
 
 
-def _render_table_name(name: str) -> str:
+def render_table_name(name: str) -> str:
     """Render a table name as a Mermaid entity name.
 
     Any double quote in the name is dropped before quoting: an embedded quote
@@ -305,7 +303,7 @@ def _render_table_name(name: str) -> str:
     return f'"{safe or "_"}"'
 
 
-def _render_column_name(name: str) -> str:
+def render_column_name(name: str) -> str:
     """Render a column name as a Mermaid attribute name.
 
     Attribute names cannot be quoted, so a name Mermaid would reject is
@@ -334,7 +332,7 @@ def _render_column_name(name: str) -> str:
     return parseable
 
 
-def _render_dtype_parameters(dtype: Any) -> str:
+def render_dtype_parameters(dtype: Any) -> str:
     """Render the parameters that distinguish one instance of a dtype from another.
 
     Args:
@@ -344,11 +342,11 @@ def _render_dtype_parameters(dtype: Any) -> str:
         The parameter token, or an empty string for a dtype without parameters.
     """
     if isinstance(dtype, nw.Datetime):
-        return _render_time_parameters(dtype.time_unit, dtype.time_zone)
+        return render_time_parameters(dtype.time_unit, dtype.time_zone)
     if isinstance(dtype, nw.Duration):
-        return _render_time_parameters(dtype.time_unit, None)
+        return render_time_parameters(dtype.time_unit, None)
     if isinstance(dtype, nw.List):
-        return _render_dtype(dtype.inner)
+        return render_dtype(dtype.inner)
     if isinstance(dtype, nw.Enum):
         return str(len(dtype.categories))
     if isinstance(dtype, nw.Struct):
@@ -356,7 +354,7 @@ def _render_dtype_parameters(dtype: Any) -> str:
     return ""
 
 
-def _render_time_parameters(time_unit: str, time_zone: str | None) -> str:
+def render_time_parameters(time_unit: str, time_zone: str | None) -> str:
     """Render a temporal dtype's unit and zone as one token.
 
     Args:
