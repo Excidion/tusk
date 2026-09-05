@@ -329,3 +329,43 @@ def test_null_primary_key_is_caught_on_duckdb(duck_db):
     with pytest.raises(tusk.exceptions.ValidationError, match="null"):
         db.add_table("nulls", con.table("nulls"), primary_key="id", validate=True)
     assert "nulls" not in db.table_names
+
+
+def test_boolean_transforms_hold_three_valued_logic_on_duckdb(duck_db):
+    """AND, OR and NOT translate to the SQL operators, nulls and all.
+
+    The divergence from featuretools is the whole point of the rows where one
+    input is null: SQL answers FALSE AND NULL with FALSE and TRUE OR NULL with
+    TRUE, because the unknown cannot change the outcome.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    _, con = duck_db
+    con.execute(
+        "CREATE TABLE accounts AS SELECT * FROM (VALUES "
+        "(1, TRUE, TRUE), (2, FALSE, NULL), (3, TRUE, NULL), (4, NULL, NULL)) "
+        "t(id, is_active, is_verified)",
+    )
+    database = tusk.Database("flags").add_table(
+        "accounts",
+        con.table("accounts"),
+        primary_key="id",
+    )
+    matrix = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="accounts",
+        max_depth=1,
+        agg_primitives=[],
+        trans_primitives=["and", "or", "not"],
+    )[0].pl()
+    row = {r["id"]: r for r in matrix.to_dicts()}
+    assert row[1]["AND__is_active__is_verified"] is True
+    assert row[2]["AND__is_active__is_verified"] is False
+    assert row[3]["AND__is_active__is_verified"] is None
+    assert row[4]["AND__is_active__is_verified"] is None
+    assert row[1]["OR__is_active__is_verified"] is True
+    assert row[2]["OR__is_active__is_verified"] is None
+    assert row[3]["OR__is_active__is_verified"] is True
+    assert row[4]["OR__is_active__is_verified"] is None
+    assert row[4]["NOT__is_active"] is None
