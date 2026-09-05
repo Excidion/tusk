@@ -74,13 +74,14 @@ class SchemaDiagram:
         """Start an empty diagram, holding only the header."""
         self.lines = ["erDiagram"]
 
-    def _add_lines(self, *new_lines: str) -> None:
+    def _add_lines(self, *new_lines: str, indent: int = 2) -> None:
         """Append lines to the diagram.
 
         Args:
-            *new_lines: The lines to append, already indented.
+            *new_lines: The lines to append
+            indent: Spaces to prepend to each line.
         """
-        self.lines.extend(new_lines)
+        self.lines.extend(" " * indent + line for line in new_lines)
 
     @property
     def source(self) -> str:
@@ -157,12 +158,12 @@ def render_relationship(database: Database, relationship: Relationship) -> str:
         relationship: The relationship to draw.
 
     Returns:
-        The edge line, indented.
+        The edge line, unindented.
     """
     parent = render_table_name(relationship.parent)
     child = render_table_name(relationship.child)
     return (
-        f"  {parent} 1 to {get_count_of_children(database, relationship)} {child}"
+        f"{parent} 1 to {get_count_of_children(database, relationship)} {child}"
         f" : {render_edge_label(relationship.foreign_key)}"
     )
 
@@ -207,16 +208,17 @@ def render_table(database: Database, name: str, columns: bool | str) -> list[str
             :meth:`SchemaDiagram.from_database`.
 
     Returns:
-        The entity's lines. A bare name when no columns are shown, otherwise a
+        The entity's lines, unindented apart from the attributes, which are
+        nested one level. A bare name when no columns are shown, otherwise a
         braced block.
     """
     entity = render_table_name(name)
     if columns is False:
-        return [f"  {entity}"]
+        return [entity]
     attributes = [
-        f"    {attribute}" for attribute in render_attributes(database, name, columns)
+        f"  {attribute}" for attribute in render_attributes(database, name, columns)
     ]
-    return [f"  {entity} {{", *attributes, "  }"]
+    return [f"{entity} {{", *attributes, "}"]
 
 
 def render_attributes(database: Database, name: str, columns: bool | str) -> list[str]:
