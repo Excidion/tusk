@@ -189,11 +189,11 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Natural-language transform | — | [`mean_characters_per_word`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MeanCharactersPerWord.html) | ⛔ |  |  |
 | Natural-language transform | — | [`median_word_length`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MedianWordLength.html) | ⛔ |  | Needs a per-row list reduction. |
 | Natural-language transform | — | [`num_characters`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumCharacters.html) | ❌ |  |  |
-| Natural-language transform | — | [`num_unique_separators`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumUniqueSeparators.html) | ❌ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`num_unique_separators`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumUniqueSeparators.html) | ⛔ |  | Needs a regex count; narwhals has none. |
 | Natural-language transform | — | [`num_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumWords.html) | ❌ |  |  |
 | Natural-language transform | — | [`number_of_common_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfCommonWords.html) | ⛔ |  | Needs tokenisation against a word list. |
 | Natural-language transform | — | [`number_of_hashtags`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfHashtags.html) | ⛔ |  | Needs a regex count; narwhals has none. |
-| Natural-language transform | — | [`number_of_mentions`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfMentions.html) | ❌ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`number_of_mentions`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfMentions.html) | ⛔ |  | Needs a regex count; narwhals has none. |
 | Natural-language transform | — | [`number_of_unique_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfUniqueWords.html) | ❌ |  | Needs a per-row list reduction. |
 | Natural-language transform | — | [`number_of_words_in_quotes`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfWordsInQuotes.html) | ⛔ |  | Needs a regex count; narwhals has none. |
 | Natural-language transform | — | [`punctuation_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PunctuationCount.html) | ⛔ |  | Needs a regex count; narwhals has none. |
