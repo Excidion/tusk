@@ -129,25 +129,25 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | [`weekday`][tusk.primitives.Weekday] | [`weekday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Weekday.html) | ⚠️ | [`test_row_wise_transforms`](https://github.com/Excidion/tusk/blob/main/tests/test_primitives_transform.py) | tusk is ISO 1-7 (Monday = 1); featuretools is 0-6 (Monday = 0). |
 | Datetime transform | [`year`][tusk.primitives.Year] | [`year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Year.html) | ❓ |  |  |
 | Datetime transform | — | [`age`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Age.html) | ❌ |  | Needs a reference clock. |
-| Datetime transform | — | [`date_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToHoliday.html) | ❌ |  | Needs the `holidays` package. |
+| Datetime transform | — | [`date_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToHoliday.html) | ❌ |  | Only with user supplied holidays. |
 | Datetime transform | — | [`date_to_time_zone`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToTimeZone.html) | ❌ |  |  |
 | Datetime transform | — | [`day_of_year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DayOfYear.html) | ❌ |  |  |
 | Datetime transform | — | [`days_in_month`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DaysInMonth.html) | ❌ |  |  |
-| Datetime transform | — | [`distance_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DistanceToHoliday.html) | ❌ |  | Needs the `holidays` package. |
-| Datetime transform | — | [`is_federal_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsFederalHoliday.html) | ❌ |  | Needs the `holidays` package. |
-| Datetime transform | — | `is_first_week_of_month` | ❌ |  |  |
+| Datetime transform | — | [`distance_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DistanceToHoliday.html) | ❌ |  | Only with user supplied holidays. |
+| Datetime transform | — | [`is_federal_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsFederalHoliday.html) | ❌ |  | Only with user supplied holidays. |
+| Datetime transform | — | `is_first_week_of_month` | ⛔ |  |  |
 | Datetime transform | — | [`is_leap_year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsLeapYear.html) | ❌ |  |  |
-| Datetime transform | — | [`is_lunch_time`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsLunchTime.html) | ❌ |  |  |
+| Datetime transform | — | [`is_lunch_time`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsLunchTime.html) | ⛔ |  |  |
 | Datetime transform | — | [`is_month_end`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsMonthEnd.html) | ❌ |  |  |
 | Datetime transform | — | [`is_month_start`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsMonthStart.html) | ❌ |  |  |
 | Datetime transform | — | [`is_quarter_end`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsQuarterEnd.html) | ❌ |  |  |
 | Datetime transform | — | [`is_quarter_start`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsQuarterStart.html) | ❌ |  |  |
-| Datetime transform | — | [`is_working_hours`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsWorkingHours.html) | ❌ |  |  |
+| Datetime transform | — | [`is_working_hours`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsWorkingHours.html) | ⛔ |  |  |
 | Datetime transform | — | [`is_year_end`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsYearEnd.html) | ❌ |  |  |
 | Datetime transform | — | [`is_year_start`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsYearStart.html) | ❌ |  |  |
 | Datetime transform | — | [`minute`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Minute.html) | ❌ |  |  |
-| Datetime transform | — | `nth_week_of_month` | ❌ |  | narwhals exposes no ISO week number. |
-| Datetime transform | — | [`part_of_day`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PartOfDay.html) | ❌ |  |  |
+| Datetime transform | — | `nth_week_of_month` | ⛔ |  | narwhals exposes no ISO week number. |
+| Datetime transform | — | [`part_of_day`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PartOfDay.html) | ⛔ |  |  |
 | Datetime transform | — | [`quarter`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Quarter.html) | ❌ |  |  |
 | Datetime transform | — | [`season`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Season.html) | ❌ |  |  |
 | Datetime transform | — | [`second`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Second.html) | ❌ |  |  |
