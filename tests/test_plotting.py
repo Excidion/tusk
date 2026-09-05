@@ -162,7 +162,7 @@ def two_table_db():
 def test_every_table_and_relationship_appears(two_table_db):
     source = SchemaDiagram.from_database(two_table_db, columns=True).source
     assert source.startswith("erDiagram\n")
-    assert '"customers" 1 to 0+ "orders" : "customer_id"' in source
+    assert '"customers" 1 to 0+ "orders" : ""' in source
     # A table with no relationships still has to be drawn.
     assert '"regions"' in source
 
@@ -188,7 +188,7 @@ def test_columns_false_omits_every_attribute(two_table_db):
     source = SchemaDiagram.from_database(two_table_db, columns=False).source
     assert "Float64" not in source
     assert "amount" not in source
-    assert '"customers" 1 to 0+ "orders" : "customer_id"' in source
+    assert '"customers" 1 to 0+ "orders" : ""' in source
 
 
 def test_columns_structural_keeps_only_keys_and_the_time_index(two_table_db):
@@ -323,15 +323,41 @@ def test_an_empty_column_name_still_parses():
     mermaidx.render(SchemaDiagram.from_database(db, columns=True).source).svg()
 
 
-def test_a_foreign_key_with_a_space_is_verbatim_on_the_edge(parent_child_db):
-    # The edge label is quoted, so it keeps the real space; the attribute slot
-    # cannot be quoted and uses U+2007, which renders as a space. The two
-    # differ in bytes and look identical in the picture.
+def test_a_foreign_key_names_the_table_it_points_at(parent_child_db):
+    source = SchemaDiagram.from_database(
+        parent_child_db("customer_id"), columns=True
+    ).source
+    assert 'customer_id FK "-> customers"' in source
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(source).svg()
+
+
+def test_a_foreign_key_with_a_space_still_marks_its_attribute(parent_child_db):
+    # The attribute slot cannot be quoted and uses U+2007, which renders as a
+    # space but is not one to the parser.
     source = SchemaDiagram.from_database(
         parent_child_db("unit price"), columns=True
     ).source
-    assert ': "unit price"' in source
     assert f"unit{FIGURE_SPACE}price FK" in source
+
+
+def test_a_foreign_key_pointing_at_two_tables_names_both():
+    db = (
+        tusk.Database("d")
+        .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table("vendors", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "party_id": [1]}),
+            primary_key="id",
+        )
+        .add_relationship(parent="customers", child="orders", foreign_key="party_id")
+        .add_relationship(parent="vendors", child="orders", foreign_key="party_id")
+    )
+    source = SchemaDiagram.from_database(db, columns=True).source
+    assert 'party_id FK "-> customers, vendors"' in source
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(source).svg()
 
 
 def test_a_child_keyed_by_the_link_can_hold_only_one_row():
@@ -349,7 +375,7 @@ def test_a_child_keyed_by_the_link_can_hold_only_one_row():
         )
     )
     source = SchemaDiagram.from_database(db, columns=True).source
-    assert '"customers" 1 to zero or one "profile" : "customer_id"' in source
+    assert '"customers" 1 to zero or one "profile" : ""' in source
     mermaidx = pytest.importorskip("mermaidx")
     mermaidx.render(source).svg()
 
@@ -369,10 +395,20 @@ def test_a_punctuated_column_name_keeps_its_punctuation(parent_child_db):
     mermaidx.render(source).svg()
 
 
-def test_a_quote_in_a_foreign_key_is_dropped_from_the_edge_label(parent_child_db):
-    # A literal quote would close the label early and break the diagram.
-    source = SchemaDiagram.from_database(parent_child_db('a"b'), columns=True).source
-    assert ': "ab"' in source
+def test_a_quote_in_a_parent_table_name_is_dropped_from_the_comment():
+    # A literal quote would close the comment early and break the diagram.
+    db = (
+        tusk.Database("d")
+        .add_table('a"b', pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "parent_id": [1]}),
+            primary_key="id",
+        )
+        .add_relationship(parent='a"b', child="orders", foreign_key="parent_id")
+    )
+    source = SchemaDiagram.from_database(db, columns=True).source
+    assert 'parent_id FK "-> ab"' in source
     mermaidx = pytest.importorskip("mermaidx")
     mermaidx.render(source).svg()
 
@@ -433,8 +469,8 @@ def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch, one_table_dia
 def test_plot_returns_a_diagram_of_the_database(db):
     diagram = db.plot()
     assert isinstance(diagram, SchemaDiagram)
-    assert '"customers" 1 to 0+ "sessions" : "customer_id"' in diagram.source
-    assert '"sessions" 1 to 0+ "transactions" : "session_id"' in diagram.source
+    assert '"customers" 1 to 0+ "sessions" : ""' in diagram.source
+    assert '"sessions" 1 to 0+ "transactions" : ""' in diagram.source
 
 
 def test_plot_passes_the_column_mode_through(db):

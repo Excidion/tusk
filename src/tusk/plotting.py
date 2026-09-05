@@ -162,10 +162,7 @@ def render_relationship(database: Database, relationship: Relationship) -> str:
     """
     parent = render_table_name(relationship.parent)
     child = render_table_name(relationship.child)
-    return (
-        f"{parent} 1 to {get_count_of_children(database, relationship)} {child}"
-        f" : {render_edge_label(relationship.foreign_key)}"
-    )
+    return f'{parent} 1 to {get_count_of_children(database, relationship)} {child} : ""'
 
 
 def get_count_of_children(database: Database, relationship: Relationship) -> str:
@@ -181,21 +178,6 @@ def get_count_of_children(database: Database, relationship: Relationship) -> str
     if relationship.foreign_key == database.schema(relationship.child).primary_key:
         return "zero or one"
     return "0+"
-
-
-def render_edge_label(foreign_key: str) -> str:
-    """Render a foreign key as the label on a relationship's edge.
-
-    Args:
-        foreign_key: The child's foreign key column.
-
-    Returns:
-        The name in double quotes, which lets it keep every character a
-        column name can hold except the quote itself.
-    """
-    # Quoting means only a literal quote, which would close the label early,
-    # has to go -- so the edge shows the column name as it is really spelled.
-    return f'"{foreign_key.replace(chr(34), "")}"'
 
 
 def render_table(database: Database, name: str, columns: bool | str) -> list[str]:
@@ -234,10 +216,10 @@ def render_attributes(database: Database, name: str, columns: bool | str) -> lis
         One line per shown column, in schema order.
     """
     schema = database.schema(name)
-    foreign_keys = {r.foreign_key for r in database.parents_of(name)}
+    parents = collect_parents_by_foreign_key(database, name)
     lines = []
     for column, dtype in schema.dtypes.items():
-        role = _describe_role(column, schema, foreign_keys)
+        role = describe_role(column, schema, parents)
         if columns == "structural" and not role:
             continue
         lines.append(
@@ -250,32 +232,108 @@ def render_attributes(database: Database, name: str, columns: bool | str) -> lis
     return lines
 
 
-def _describe_role(column: str, schema: TableSchema, foreign_keys: set[str]) -> str:
-    """Describe what a column does structurally, as Mermaid markers and a comment.
+def collect_parents_by_foreign_key(
+    database: Database, name: str
+) -> dict[str, list[str]]:
+    """Group a table's parents by the foreign key column pointing at them.
 
-    ``row_creation_time`` gets a comment rather than a marker because Mermaid
-    has only PK, FK and UK, and its ``classDef`` styling cannot target an
-    individual attribute. The comment slot is where a secondary time index
-    will go too.
+    Args:
+        database: The database the table belongs to.
+        name: The table's name.
+
+    Returns:
+        One entry per foreign key column, holding the parent tables it points
+        at, in insertion order.
+    """
+    parents: dict[str, list[str]] = {}
+    for relationship in database.parents_of(name):
+        parents.setdefault(relationship.foreign_key, []).append(relationship.parent)
+    return parents
+
+
+def describe_role(
+    column: str, schema: TableSchema, parents: dict[str, list[str]]
+) -> str:
+    """Describe what a column does structurally, as Mermaid markers and a comment.
 
     Args:
         column: The column's name.
         schema: The schema of the table it belongs to.
-        foreign_keys: Every foreign key column on that table.
+        parents: The table's parents, keyed by foreign key column.
 
     Returns:
         The marker and comment text, or an empty string for a column with no
         structural role.
     """
+    markers = describe_markers(column, schema, parents)
+    comment = render_comment(describe_comments(column, schema, parents))
+    return " ".join(part for part in (markers, comment) if part)
+
+
+def describe_markers(
+    column: str, schema: TableSchema, parents: dict[str, list[str]]
+) -> str:
+    """Render the key markers a column carries.
+
+    Args:
+        column: The column's name.
+        schema: The schema of the table it belongs to.
+        parents: The table's parents, keyed by foreign key column.
+
+    Returns:
+        The comma-separated markers, or an empty string for a column that is
+        neither a primary nor a foreign key.
+    """
     markers = []
     if column == schema.primary_key:
         markers.append("PK")
-    if column in foreign_keys:
+    if column in parents:
         markers.append("FK")
-    parts = [", ".join(markers)] if markers else []
+    return ", ".join(markers)
+
+
+def describe_comments(
+    column: str,
+    schema: TableSchema,
+    parents: dict[str, list[str]],
+) -> list[str]:
+    """Describe everything about a column that Mermaid has no marker for.
+
+    Mermaid knows only PK, FK and UK, and its ``classDef`` styling cannot
+    target an individual attribute, so the tables a foreign key points at and
+    the ``row_creation_time`` both have to travel in the comment slot.
+
+    Args:
+        column: The column's name.
+        schema: The schema of the table it belongs to.
+        parents: The table's parents, keyed by foreign key column.
+
+    Returns:
+        One phrase per role, in the order they should be shown.
+    """
+    comments = []
+    if column in parents:
+        comments.append("-> " + ", ".join(parents[column]))
     if column == schema.row_creation_time:
-        parts.append('"row creation time"')
-    return " ".join(parts)
+        comments.append("row creation time")
+    return comments
+
+
+def render_comment(comments: list[str]) -> str:
+    """Render a column's comment phrases as one Mermaid comment.
+
+    Args:
+        comments: The phrases to show, as built by :func:`describe_comments`.
+
+    Returns:
+        The phrases joined and double quoted, or an empty string when there
+        are none.
+    """
+    if not comments:
+        return ""
+    # A literal quote would close the comment early and break the diagram.
+    joined = "; ".join(comments).replace(chr(34), "")
+    return f'"{joined}"'
 
 
 def render_dtype(dtype: Any) -> str:

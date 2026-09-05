@@ -83,13 +83,13 @@ erDiagram
   }
   "orders" {
     Int64 id PK
-    Int64 customer_id FK
-    Int64 product_id FK
+    Int64 customer_id FK "-> customers"
+    Int64 product_id FK "-> products"
     Int64 quantity
     Datetime[us] placed_at "row creation time"
   }
-  "customers" 1 to 0+ "orders" : "customer_id"
-  "products" 1 to 0+ "orders" : "product_id"
+  "customers" 1 to 0+ "orders" : ""
+  "products" 1 to 0+ "orders" : ""
 ```
 
 In a notebook it renders inline; `print(db.plot())` gives the Mermaid source,
