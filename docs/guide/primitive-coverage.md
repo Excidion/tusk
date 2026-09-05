@@ -10,7 +10,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | ❓ | Implemented, but no test yet |
 | ⚠️ | Diverges on purpose |
 | ❌ | Diverges, or not implemented |
-| ⛔ | Out of scope |
+| ⛔ | Out of scope (for now) |
 
 
 | Group | tusk | featuretools | Status | Test | Comment |
@@ -84,29 +84,29 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Binary transform | [`divide_numeric`][tusk.primitives.DivideNumeric] | `divide_numeric` | ❓ |  |  |
 | Binary transform | [`multiply_numeric`][tusk.primitives.MultiplyNumeric] | `multiply_numeric` | ❓ |  |  |
 | Binary transform | [`subtract_numeric`][tusk.primitives.SubtractNumeric] | [`subtract_numeric`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SubtractNumeric.html) | ❓ |  |  |
-| Binary transform | — | [`add_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.AddNumericScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`divide_by_feature`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DivideByFeature.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`divide_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DivideNumericScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`add_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.AddNumericScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`divide_by_feature`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DivideByFeature.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`divide_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DivideNumericScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Binary transform | — | [`equal`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Equal.html) | ❌ |  |  |
-| Binary transform | — | [`equal_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.EqualScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`equal_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.EqualScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Binary transform | — | [`greater_than`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GreaterThan.html) | ❌ |  |  |
 | Binary transform | — | [`greater_than_equal_to`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GreaterThanEqualTo.html) | ❌ |  |  |
-| Binary transform | — | [`greater_than_equal_to_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GreaterThanEqualToScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`greater_than_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GreaterThanScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`greater_than_equal_to_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GreaterThanEqualToScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`greater_than_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GreaterThanScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Binary transform | — | [`less_than`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.LessThan.html) | ❌ |  |  |
 | Binary transform | — | [`less_than_equal_to`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.LessThanEqualTo.html) | ❌ |  |  |
-| Binary transform | — | [`less_than_equal_to_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.LessThanEqualToScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`less_than_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.LessThanScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`modulo_by_feature`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ModuloByFeature.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`less_than_equal_to_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.LessThanEqualToScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`less_than_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.LessThanScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`modulo_by_feature`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ModuloByFeature.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Binary transform | — | [`modulo_numeric`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ModuloNumeric.html) | ❌ |  |  |
-| Binary transform | — | [`modulo_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ModuloNumericScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`modulo_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ModuloNumericScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Binary transform | — | [`multiply_boolean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MultiplyBoolean.html) | ❌ |  |  |
 | Binary transform | — | [`multiply_numeric_boolean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MultiplyNumericBoolean.html) | ❌ |  |  |
-| Binary transform | — | [`multiply_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MultiplyNumericScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`multiply_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MultiplyNumericScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Binary transform | — | [`not_equal`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NotEqual.html) | ❌ |  |  |
-| Binary transform | — | [`not_equal_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NotEqualScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`scalar_subtract_numeric_feature`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ScalarSubtractNumericFeature.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
-| Binary transform | — | [`subtract_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SubtractNumericScalar.html) | ❌ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`not_equal_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NotEqualScalar.html) | ⛔ |  |  |
+| Binary transform | — | [`scalar_subtract_numeric_feature`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ScalarSubtractNumericFeature.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
+| Binary transform | — | [`subtract_numeric_scalar`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SubtractNumericScalar.html) | ⛔ |  | Scalar argument; tusk primitives take columns only. |
 | Boolean transform | — | [`and`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.And.html) | ❌ |  |  |
 | Boolean transform | — | [`isin`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsIn.html) | ❌ |  |  |
 | Boolean transform | — | [`not`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Not.html) | ❌ |  |  |
