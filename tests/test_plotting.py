@@ -167,18 +167,13 @@ def test_every_table_and_relationship_appears(two_table_db):
     assert '"regions"' in source
 
 
-def test_entities_appear_in_insertion_order(two_table_db):
-    # A regression that reordered `Database.table_names` would pass every
-    # other test here, since all three assert membership rather than
-    # position. The entity block, not the relationship edge line, is what is
-    # searched for -- the edge line lists customers before orders regardless
-    # of table order, since a relationship's parent always comes first there.
+def test_every_entity_is_drawn_exactly_once(two_table_db):
+    # Mermaid does not care what order entities and edges appear in, so this
+    # counts rather than positions them: a table drawn twice, or dropped, is
+    # the defect worth catching.
     source = SchemaDiagram.from_database(two_table_db, columns=True).source
-    assert (
-        source.index('"customers" {')
-        < source.index('"orders" {')
-        < source.index('"regions" {')
-    )
+    for table in ("customers", "orders", "regions"):
+        assert source.count(f'"{table}" {{') == 1
 
 
 def test_columns_true_lists_every_column_with_markers(two_table_db):
@@ -382,47 +377,57 @@ def test_a_quote_in_a_foreign_key_is_dropped_from_the_edge_label(parent_child_db
     mermaidx.render(source).svg()
 
 
-SOURCE = 'erDiagram\n  "t" {\n    Int64 id PK\n  }\n'
+@pytest.fixture
+def one_table_diagram():
+    """A diagram of the smallest database that draws anything."""
+    db = tusk.Database("d").add_table(
+        "t",
+        pl.LazyFrame({"id": [1]}),
+        primary_key="id",
+    )
+    return SchemaDiagram.from_database(db)
 
 
-def test_str_is_the_source():
-    assert str(SchemaDiagram(SOURCE)) == SOURCE
+def test_str_is_the_source(one_table_diagram):
+    assert str(one_table_diagram) == one_table_diagram.source
 
 
-def test_markdown_repr_is_a_mermaid_block():
+def test_markdown_repr_is_a_mermaid_block(one_table_diagram):
     # Jupyter, GitHub and the docs site all render a fenced mermaid block.
-    rendered = SchemaDiagram(SOURCE)._repr_markdown_()
+    rendered = one_table_diagram._repr_markdown_()
     assert rendered.startswith("```mermaid\n")
     assert rendered.endswith("```")
-    assert SOURCE in rendered
+    assert one_table_diagram.source in rendered
 
 
 @pytest.mark.parametrize("suffix", [".mmd", ".md"])
-def test_saving_source_needs_no_renderer(tmp_path, suffix, monkeypatch):
+def test_saving_source_needs_no_renderer(
+    tmp_path, suffix, monkeypatch, one_table_diagram
+):
     # Hiding mermaidx proves the text formats never reach for it.
     monkeypatch.setitem(sys.modules, "mermaidx", None)
     path = tmp_path / f"schema{suffix}"
-    SchemaDiagram(SOURCE).save(path)
-    assert path.read_text(encoding="utf-8") == SOURCE
+    one_table_diagram.save(path)
+    assert path.read_text(encoding="utf-8") == one_table_diagram.source
 
 
 @pytest.mark.parametrize("suffix", [".svg", ".png", ".pdf"])
-def test_saving_an_image_writes_a_file(tmp_path, suffix):
+def test_saving_an_image_writes_a_file(tmp_path, suffix, one_table_diagram):
     pytest.importorskip("mermaidx")
     path = tmp_path / f"schema{suffix}"
-    SchemaDiagram(SOURCE).save(path)
+    one_table_diagram.save(path)
     assert path.stat().st_size > 0
 
 
-def test_an_unsupported_suffix_is_rejected(tmp_path):
+def test_an_unsupported_suffix_is_rejected(tmp_path, one_table_diagram):
     with pytest.raises(ValueError, match=".mmd"):
-        SchemaDiagram(SOURCE).save(tmp_path / "schema.gif")
+        one_table_diagram.save(tmp_path / "schema.gif")
 
 
-def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch):
+def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch, one_table_diagram):
     monkeypatch.setitem(sys.modules, "mermaidx", None)
     with pytest.raises(ImportError, match=r"tusk-ml\[plot\]"):
-        SchemaDiagram(SOURCE).save(tmp_path / "schema.svg")
+        one_table_diagram.save(tmp_path / "schema.svg")
 
 
 def test_plot_returns_a_diagram_of_the_database(db):

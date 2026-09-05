@@ -90,7 +90,6 @@ a new `docs/api/plotting.md`.
 
 ```
 erDiagram
-  "customers" 1 to 0+ "transactions" : "customer_id"
   "customers" {
     Int64            customer_id  PK
     Datetime[ns-UTC] signed_up_at    "row creation time"
@@ -102,10 +101,16 @@ erDiagram
     Datetime[ns-UTC] placed_at       "row creation time"
     Float64          amount
   }
+  "customers" 1 to 0+ "transactions" : "customer_id"
 ```
 
-One entity per table, in insertion order. One relationship line per
-`Relationship`, labelled with the foreign key column.
+One entity per table, one relationship line per `Relationship`, labelled with
+the foreign key column.
+
+The order of lines is not a guarantee and is not tested. Mermaid lays the
+diagram out itself and treats entities and edges as a set, so the order they
+are emitted in changes nothing a reader sees. What the tests check instead is
+that each table is drawn exactly once and that the source renders.
 
 Mermaid's word and digit aliases are used rather than the `||--o{` symbols,
 because `print(db.plot())` and the `.mmd` format are first-class outputs that

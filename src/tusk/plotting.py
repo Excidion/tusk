@@ -31,10 +31,11 @@ class SchemaDiagram:
     itself, display itself, and write a file.
 
     Attributes:
-        source: The Mermaid ``erDiagram`` source.
+        lines: The diagram's Mermaid lines, starting with the ``erDiagram``
+            header. :attr:`source` joins them.
     """
 
-    source: str
+    lines: list[str]
 
     @classmethod
     def from_database(
@@ -61,19 +62,30 @@ class SchemaDiagram:
             raise ValueError(
                 f"columns must be True, False, or 'structural'; got {columns!r}",
             )
-        lines = ["erDiagram"]
-        lines.extend(render_relationship(database, r) for r in database.relationships)
-        for name in database.table_names:
-            lines.extend(render_table(database, name, columns))
-        return cls("\n".join(lines) + "\n")
 
-    def __init__(self, source: str) -> None:
-        """Wrap already-built Mermaid source.
+        diagram = cls()
+        for name in database.table_names:
+            diagram._add_lines(*render_table(database, name, columns))
+        for relationship in database.relationships:
+            diagram._add_lines(render_relationship(database, relationship))
+        return diagram
+
+    def __init__(self) -> None:
+        """Start an empty diagram, holding only the header."""
+        self.lines = ["erDiagram"]
+
+    def _add_lines(self, *new_lines: str) -> None:
+        """Append lines to the diagram.
 
         Args:
-            source: The Mermaid ``erDiagram`` source.
+            *new_lines: The lines to append, already indented.
         """
-        self.source = source
+        self.lines.extend(new_lines)
+
+    @property
+    def source(self) -> str:
+        """The Mermaid ``erDiagram`` source, as one newline-terminated string."""
+        return "\n".join(self.lines) + "\n"
 
     def __str__(self) -> str:
         """Return the Mermaid source.
@@ -150,12 +162,12 @@ def render_relationship(database: Database, relationship: Relationship) -> str:
     parent = render_table_name(relationship.parent)
     child = render_table_name(relationship.child)
     return (
-        f"  {parent} 1 to {_count_of_children(database, relationship)} {child}"
+        f"  {parent} 1 to {get_count_of_children(database, relationship)} {child}"
         f" : {render_edge_label(relationship.foreign_key)}"
     )
 
 
-def _count_of_children(database: Database, relationship: Relationship) -> str:
+def get_count_of_children(database: Database, relationship: Relationship) -> str:
     """Describe how many child rows one parent row can have.
 
     Args:
@@ -165,9 +177,6 @@ def _count_of_children(database: Database, relationship: Relationship) -> str:
     Returns:
         The Mermaid cardinality for the child end.
     """
-    # A foreign key that is also the child's primary key is unique there, so
-    # one parent can match at most one child. Both keys are declared, so this
-    # costs no query.
     if relationship.foreign_key == database.schema(relationship.child).primary_key:
         return "zero or one"
     return "0+"
@@ -319,8 +328,7 @@ def render_column_name(name: str) -> str:
         A name Mermaid's attribute slot parses, as close to the original as
         the grammar allows.
     """
-    # Found empirically. Brackets, parens and commas are safe here even though
-    # they are not everywhere, so a name like count(*) survives intact.
+    # Found empirically
     safe = re.sub(r"""[:;#'|/\\<=>+&!?@$~^`{}%"\t\n]""", "_", name)
     # U+2007 renders as a space but is not one to the parser.
     parseable = safe.replace(" ", "\u2007")

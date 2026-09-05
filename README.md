@@ -70,8 +70,6 @@ db.plot()
 
 ```mermaid
 erDiagram
-  "customers" 1 to 0+ "orders" : "customer_id"
-  "products" 1 to 0+ "orders" : "product_id"
   "customers" {
     Int64 id PK
     String region
@@ -90,6 +88,8 @@ erDiagram
     Int64 quantity
     Datetime[us] placed_at "row creation time"
   }
+  "customers" 1 to 0+ "orders" : "customer_id"
+  "products" 1 to 0+ "orders" : "product_id"
 ```
 
 In a notebook it renders inline; `print(db.plot())` gives the Mermaid source,

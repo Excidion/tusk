@@ -193,8 +193,6 @@ For the shop database above, that gives:
 
 ```mermaid
 erDiagram
-  "customers" 1 to 0+ "orders" : "customer_id"
-  "products" 1 to 0+ "orders" : "product_id"
   "customers" {
     Int64 id PK
     String region
@@ -213,6 +211,8 @@ erDiagram
     Int64 quantity
     Datetime[us] placed_at "row creation time"
   }
+  "customers" 1 to 0+ "orders" : "customer_id"
+  "products" 1 to 0+ "orders" : "product_id"
 ```
 
 Each attribute row is the column's dtype, its name, its key marker, and a
