@@ -192,8 +192,8 @@ For the retail database above, that gives:
 
 ```mermaid
 erDiagram
-  "customers" ||--o{ "sessions" : customer_id
-  "sessions" ||--o{ "transactions" : session_id
+  "customers" 1 to 0+ "sessions" : "customer_id"
+  "sessions" 1 to 0+ "transactions" : "session_id"
   "customers" {
     Int64 id PK
     Int64 age
@@ -215,6 +215,11 @@ erDiagram
 Each attribute row is the column's dtype, its name, its key marker, and a
 comment. `PK` and `FK` are Mermaid's own markers; the `row_creation_time` gets
 a comment instead, because Mermaid has no marker for it.
+
+`1 to 0+` reads as one parent row to zero or more child rows. A child whose
+`primary_key` *is* the foreign key can only ever match one parent row, and
+that link reads `1 to zero or one` instead. Both come from the declared keys,
+so neither costs a query.
 
 In a notebook the diagram renders inline. Elsewhere, `print(db.plot())` gives
 the Mermaid source, and `save()` writes a file:

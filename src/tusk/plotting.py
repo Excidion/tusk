@@ -44,20 +44,17 @@ def build_schema_source(database: Database, columns: bool | str = True) -> str:
             f"columns must be True, False, or 'structural'; got {columns!r}",
         )
     lines = ["erDiagram"]
-    lines.extend(_render_relationship(r) for r in database.relationships)
+    lines.extend(_render_relationship(database, r) for r in database.relationships)
     for name in database.table_names:
         lines.extend(_render_table(database, name, columns))
     return "\n".join(lines) + "\n"
 
 
-def _render_relationship(relationship: Relationship) -> str:
+def _render_relationship(database: Database, relationship: Relationship) -> str:
     """Render one relationship as a Mermaid edge.
 
-    The cardinality is always one-to-many: a tusk relationship is one by
-    definition, and a nullable foreign key -- the only thing that would make
-    the parent side optional -- could not be detected without reading rows.
-
     Args:
+        database: The database the relationship belongs to.
         relationship: The relationship to draw.
 
     Returns:
@@ -65,9 +62,43 @@ def _render_relationship(relationship: Relationship) -> str:
     """
     parent = render_table_name(relationship.parent)
     child = render_table_name(relationship.child)
-    # Same sanitising as the attribute, so the two always match.
-    label = render_column_name(relationship.foreign_key)
-    return f"  {parent} ||--o{{ {child} : {label}"
+    return (
+        f"  {parent} 1 to {_count_of_children(database, relationship)} {child}"
+        f" : {_render_edge_label(relationship.foreign_key)}"
+    )
+
+
+def _count_of_children(database: Database, relationship: Relationship) -> str:
+    """Describe how many child rows one parent row can have.
+
+    Args:
+        database: The database the relationship belongs to.
+        relationship: The relationship to describe.
+
+    Returns:
+        The Mermaid cardinality for the child end.
+    """
+    # A foreign key that is also the child's primary key is unique there, so
+    # one parent can match at most one child. Both keys are declared, so this
+    # costs no query.
+    if relationship.foreign_key == database.schema(relationship.child).primary_key:
+        return "zero or one"
+    return "0+"
+
+
+def _render_edge_label(foreign_key: str) -> str:
+    """Render a foreign key as the label on a relationship's edge.
+
+    Args:
+        foreign_key: The child's foreign key column.
+
+    Returns:
+        The name in double quotes, which lets it keep every character a
+        column name can hold except the quote itself.
+    """
+    # Quoting means only a literal quote, which would close the label early,
+    # has to go -- so the edge shows the column name as it is really spelled.
+    return f'"{foreign_key.replace(chr(34), "")}"'
 
 
 def _render_table(database: Database, name: str, columns: bool | str) -> list[str]:
@@ -275,8 +306,9 @@ def render_column_name(name: str) -> str:
         A name Mermaid's attribute slot parses, as close to the original as
         the grammar allows.
     """
-    # Found empirically; letters, digits, underscore, hyphen and dot are safe.
-    safe = re.sub(r"""[:;#'|/\\<=>+&!?@$~^`{}%"\[\](),\t\n]""", "_", name)
+    # Found empirically. Brackets, parens and commas are safe here even though
+    # they are not everywhere, so a name like count(*) survives intact.
+    safe = re.sub(r"""[:;#'|/\\<=>+&!?@$~^`{}%"\t\n]""", "_", name)
     # U+2007 renders as a space but is not one to the parser.
     parseable = safe.replace(" ", "\u2007")
     if not parseable:

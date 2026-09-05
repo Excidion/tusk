@@ -92,6 +92,9 @@ def test_column_name_is_made_parseable(name, expected):
         "\t",
         "{",
         "}",
+        ">",
+        "%",
+        '"',
     ],
 )
 def test_every_reported_unsafe_character_is_replaced_in_column_names(unsafe):
@@ -160,7 +163,7 @@ def two_table_db():
 def test_every_table_and_relationship_appears(two_table_db):
     source = build_schema_source(two_table_db, columns=True)
     assert source.startswith("erDiagram\n")
-    assert '"customers" ||--o{ "orders" : customer_id' in source
+    assert '"customers" 1 to 0+ "orders" : "customer_id"' in source
     # A table with no relationships still has to be drawn.
     assert '"regions"' in source
 
@@ -191,7 +194,7 @@ def test_columns_false_omits_every_attribute(two_table_db):
     source = build_schema_source(two_table_db, columns=False)
     assert "Float64" not in source
     assert "amount" not in source
-    assert '"customers" ||--o{ "orders" : customer_id' in source
+    assert '"customers" 1 to 0+ "orders" : "customer_id"' in source
 
 
 def test_columns_structural_keeps_only_keys_and_the_time_index(two_table_db):
@@ -324,16 +327,56 @@ def test_an_empty_column_name_still_parses():
     mermaidx.render(build_schema_source(db, columns=True)).svg()
 
 
-def test_a_foreign_key_with_a_space_renders_the_same_on_the_edge_and_in_the_box(
-    parent_child_db,
-):
-    # Before the fix, an FK named "unit price" rendered raw on the edge label
-    # but sanitised inside the child table's box, so the same column showed
-    # up as two different tokens: one for the edge, one for the attribute.
-    # Both are now render_column_name's output, so the token appears twice.
+def test_a_foreign_key_with_a_space_is_verbatim_on_the_edge(parent_child_db):
+    # The edge label is quoted, so it keeps the real space; the attribute slot
+    # cannot be quoted and uses U+2007, which renders as a space. The two
+    # differ in bytes and look identical in the picture.
     source = build_schema_source(parent_child_db("unit price"), columns=True)
-    token = f"unit{FIGURE_SPACE}price"
-    assert source.count(token) == 2
+    assert ': "unit price"' in source
+    assert f"unit{FIGURE_SPACE}price FK" in source
+
+
+def test_a_child_keyed_by_the_link_can_hold_only_one_row():
+    # profile's primary key IS the foreign key, so it is unique there and one
+    # customer matches at most one profile. Both keys are declared, so the
+    # narrower cardinality costs no query.
+    db = (
+        tusk.Database("d")
+        .add_table("customers", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "profile", pl.LazyFrame({"customer_id": [1]}), primary_key="customer_id"
+        )
+        .add_relationship(
+            parent="customers", child="profile", foreign_key="customer_id"
+        )
+    )
+    source = build_schema_source(db, columns=True)
+    assert '"customers" 1 to zero or one "profile" : "customer_id"' in source
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(source).svg()
+
+
+def test_a_punctuated_column_name_keeps_its_punctuation(parent_child_db):
+    # Brackets, parens and commas parse in the attribute slot. They were
+    # stripped only while the edge label shared this cleaner.
+    db = tusk.Database("d").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "count(*)": [1], "a,b": [1], "x[0]": [1]}),
+        primary_key="id",
+    )
+    source = build_schema_source(db, columns=True)
+    for name in ("count(*)", "a,b", "x[0]"):
+        assert name in source
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(source).svg()
+
+
+def test_a_quote_in_a_foreign_key_is_dropped_from_the_edge_label(parent_child_db):
+    # A literal quote would close the label early and break the diagram.
+    source = build_schema_source(parent_child_db('a"b'), columns=True)
+    assert ': "ab"' in source
+    mermaidx = pytest.importorskip("mermaidx")
+    mermaidx.render(source).svg()
 
 
 SOURCE = 'erDiagram\n  "t" {\n    Int64 id PK\n  }\n'
@@ -382,8 +425,8 @@ def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch):
 def test_plot_returns_a_diagram_of_the_database(db):
     diagram = db.plot()
     assert isinstance(diagram, SchemaDiagram)
-    assert '"customers" ||--o{ "sessions" : customer_id' in diagram.source
-    assert '"sessions" ||--o{ "transactions" : session_id' in diagram.source
+    assert '"customers" 1 to 0+ "sessions" : "customer_id"' in diagram.source
+    assert '"sessions" 1 to 0+ "transactions" : "session_id"' in diagram.source
 
 
 def test_plot_passes_the_column_mode_through(db):

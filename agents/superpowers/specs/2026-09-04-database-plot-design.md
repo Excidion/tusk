@@ -82,7 +82,7 @@ a new `docs/api/plotting.md`.
 
 ```
 erDiagram
-  "customers" ||--o{ "transactions" : customer_id
+  "customers" 1 to 0+ "transactions" : "customer_id"
   "customers" {
     Int64            customer_id  PK
     Datetime[ns-UTC] signed_up_at    "row creation time"
@@ -99,11 +99,33 @@ erDiagram
 One entity per table, in insertion order. One relationship line per
 `Relationship`, labelled with the foreign key column.
 
+Mermaid's word and digit aliases are used rather than the `||--o{` symbols,
+because `print(db.plot())` and the `.mmd` format are first-class outputs that
+people read. `1` and `0+` are aliases for `||` and `o{`; `zero or one` has no
+short alias, so it is spelled out.
+
 ### Cardinality
 
-Always `||--o{` — exactly one parent to zero or more children. A `Relationship`
-is one-to-many by definition, and a nullable foreign key, which would make the
-parent side `|o`, is only discoverable by reading rows.
+The parent end is always `1`. That is what the schema declares; a null foreign
+key or an orphan row, which would make it `zero or one`, is only discoverable
+by reading rows.
+
+The child end is `0+`, except when the foreign key **is** the child's
+`primary_key`, where it is `zero or one`. A primary key is unique, so one
+parent matches at most one such child. Both keys are declared, so the narrower
+cardinality costs no query.
+
+The line is always solid (`to`, never `optionally to`). Mermaid's
+`optionally to` selects a dashed line and says nothing about nullability, but
+it reads as though it does — a misleading word in generated source that people
+read.
+
+### Edge label
+
+The foreign key's name, in double quotes. A quoted label accepts every
+character except a literal `"`, which would close it early and is dropped. The
+label is therefore verbatim, and does **not** share the attribute slot's
+substitutions — which is why a column named `count(*)` keeps its punctuation.
 
 ### Key markers
 
@@ -128,6 +150,10 @@ verified by rendering through mermaidx.
 | Table name | Always quoted | Lets names contain spaces |
 | Column name containing a space | Space → U+2007 FIGURE SPACE | A real space is a parse error and attribute names cannot be quoted; U+2007 renders identically |
 | Column name starting with a digit | Prefix `_` | `2024_total` is a parse error; `_2024_total` parses |
+| Column name containing `:;#'\|/\<=>+&!?@$~^`{}%"`, tab or newline | → `_` | Each confirmed by rendering to make an attribute name unparseable |
+| Column name containing `()[],` | Left alone | These parse in the attribute slot; only the edge label rejected them, and it is quoted separately |
+| Empty column name | → `_` | An empty attribute name is a parse error |
+| Foreign key in the edge label | Quoted, `"` dropped | A quoted label accepts everything but a literal quote, which would close it early |
 | `Datetime(time_unit='ns', time_zone='UTC')` | → `Datetime[ns-UTC]` | Quotes, commas and `=` are illegal in the type slot |
 | `Datetime(time_unit='us', time_zone=None)` | → `Datetime[us]` | A naive datetime shows no zone |
 | `Datetime(..., time_zone='America/New_York')` | → `Datetime[ns-America_New_York]` | `/`, `+` and `:` are all parse errors; every character outside `[A-Za-z0-9_-]` becomes `_` |
