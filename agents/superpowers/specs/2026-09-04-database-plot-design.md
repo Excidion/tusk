@@ -37,7 +37,8 @@ These were settled with the maintainer.
 ### Public API
 
 ```python
-db.plot(columns=True) -> SchemaDiagram
+SchemaDiagram.from_database(database, columns=True) -> SchemaDiagram
+db.plot(columns=True) -> SchemaDiagram          # shortcut for the above
 ```
 
 | `columns` | Shows |
@@ -54,10 +55,11 @@ worth looking at are the ones that define its structure.
 
 ### SchemaDiagram
 
-A frozen dataclass with a single field, `source: str`.
+A plain class holding one attribute, `source: str`.
 
 | Member | Returns | Notes |
 | --- | --- | --- |
+| `from_database(database, columns)` | `SchemaDiagram` | The named constructor; builds the source |
 | `__str__` | The Mermaid source | |
 | `_repr_markdown_` | A fenced ` ```mermaid ` block | Renders inline in Jupyter, GitHub, and the zensical docs |
 | `save(path)` | `None` | Suffix selects the format |
@@ -66,14 +68,20 @@ A frozen dataclass with a single field, `source: str`.
 no dependency. `.svg`, `.png`, and `.pdf` go through `mermaidx`. Any other
 suffix raises `ValueError` listing the supported ones.
 
-The type stays minimal deliberately: it holds Mermaid source, and the only
-thing it knows how to do beyond displaying itself is write a file.
+The class is not a dataclass. `frozen=True` would supply `__eq__`, `__hash__`
+and `__repr__` that nothing uses, and its generated `__repr__` would dump an
+entire diagram. What earns the class its place is `_repr_markdown_`: a plain
+`str` cannot render itself in a notebook.
+
+The suffix tuples are locals inside `save()`, its only reader.
 
 ### Module layout
 
-New module `src/tusk/plotting.py` holding `SchemaDiagram` and the source
-builder. `Database.plot()` is a thin delegate, so `database.py` does not
-acquire a second responsibility.
+New module `src/tusk/plotting.py`. `SchemaDiagram` is its only public name;
+every renderer and escaper below it is private, so the module surface matches
+the documented API rather than exceeding it. `Database.plot()` is a one-line
+delegate, mirroring how `Database.validate()` delegates to `validation.py` —
+including the same `TYPE_CHECKING` import-cycle guard.
 
 `SchemaDiagram` is exported from `tusk` for type annotations and documented in
 a new `docs/api/plotting.md`.

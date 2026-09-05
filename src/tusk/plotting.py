@@ -1,16 +1,16 @@
 """Draws a database's schema as a Mermaid entity-relationship diagram.
 
-:meth:`tusk.Database.plot` builds the diagram source here and returns it as a
-:class:`SchemaDiagram`, which displays itself in a notebook and writes itself
-to a file. The rest of the module is the escaping that keeps generated source
-parseable: Mermaid's grammar is narrower than narwhals' dtypes and a
-dataframe's column names.
+:class:`SchemaDiagram` is the whole public surface: it builds itself from a
+:class:`tusk.Database`, displays itself in a notebook, and writes itself to a
+file. :meth:`tusk.Database.plot` is a shortcut for its constructor. Everything
+below it is the escaping that keeps generated source parseable, because
+Mermaid's grammar is narrower than narwhals' dtypes and a dataframe's column
+names.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,35 +19,105 @@ import narwhals as nw
 if TYPE_CHECKING:
     from tusk.database import Database, Relationship, TableSchema
 
-SOURCE_SUFFIXES = (".mmd", ".md")
-IMAGE_SUFFIXES = (".svg", ".png", ".pdf")
 
+class SchemaDiagram:
+    """A Mermaid diagram of a database's schema.
 
-def build_schema_source(database: Database, columns: bool | str = True) -> str:
-    """Build Mermaid ``erDiagram`` source for a database's schema.
+    Build one with :meth:`from_database`, or with
+    :meth:`tusk.Database.plot`, which is a shortcut for it.
 
-    Args:
-        database: The database to draw.
-        columns: True lists every column, False lists none, and ``"structural"``
-            lists only the primary key, the foreign keys, and the
-            ``row_creation_time``.
+    Printing it, or reading :attr:`source`, gives the Mermaid source, which is
+    the escape hatch for any renderer: this class only knows how to build
+    itself, display itself, and write a file.
 
-    Returns:
-        The diagram source.
-
-    Raises:
-        ValueError: If ``columns`` is not True, False, or ``"structural"``.
+    Attributes:
+        source: The Mermaid ``erDiagram`` source.
     """
-    # Identity, not equality: `0 == False` and `1 == True`.
-    if not any(columns is mode for mode in (True, False, "structural")):
-        raise ValueError(
-            f"columns must be True, False, or 'structural'; got {columns!r}",
-        )
-    lines = ["erDiagram"]
-    lines.extend(_render_relationship(database, r) for r in database.relationships)
-    for name in database.table_names:
-        lines.extend(_render_table(database, name, columns))
-    return "\n".join(lines) + "\n"
+
+    source: str
+
+    @classmethod
+    def from_database(
+        cls,
+        database: Database,
+        columns: bool | str = True,
+    ) -> SchemaDiagram:
+        """Draw a database's schema.
+
+        Args:
+            database: The database to draw.
+            columns: True lists every column, False lists none, and
+                ``"structural"`` lists only the primary key, the foreign keys,
+                and the ``row_creation_time``.
+
+        Returns:
+            The diagram.
+
+        Raises:
+            ValueError: If ``columns`` is not True, False, or ``"structural"``.
+        """
+        # Identity, not equality: `0 == False` and `1 == True`.
+        if not any(columns is mode for mode in (True, False, "structural")):
+            raise ValueError(
+                f"columns must be True, False, or 'structural'; got {columns!r}",
+            )
+        lines = ["erDiagram"]
+        lines.extend(_render_relationship(database, r) for r in database.relationships)
+        for name in database.table_names:
+            lines.extend(_render_table(database, name, columns))
+        return cls("\n".join(lines) + "\n")
+
+    def __init__(self, source: str) -> None:
+        """Wrap already-built Mermaid source.
+
+        Args:
+            source: The Mermaid ``erDiagram`` source.
+        """
+        self.source = source
+
+    def __str__(self) -> str:
+        """Return the Mermaid source.
+
+        Returns:
+            The diagram source.
+        """
+        return self.source
+
+    def _repr_markdown_(self) -> str:
+        """Return the source as a fenced block, for notebooks and docs.
+
+        Returns:
+            The source in a ``mermaid`` code fence, which Jupyter, GitHub and
+            the documentation site all render as a picture.
+        """
+        return f"```mermaid\n{self.source}```"
+
+    def save(self, path: str | Path) -> None:
+        """Write the diagram to a file.
+
+        The suffix selects the format. ``.mmd`` and ``.md`` write the source
+        and need nothing installed; ``.svg``, ``.png`` and ``.pdf`` render the
+        diagram and need ``tusk-ml[plot]``, raising ``ImportError`` if it is
+        not installed.
+
+        Args:
+            path: Where to write, including the suffix.
+
+        Raises:
+            ValueError: If the suffix names no supported format.
+        """
+        source_suffixes = (".mmd", ".md")
+        image_suffixes = (".svg", ".png", ".pdf")
+        path = Path(path)
+        if path.suffix in source_suffixes:
+            path.write_text(self.source, encoding="utf-8")
+        elif path.suffix in image_suffixes:
+            _render_to_file(self.source, path)
+        else:
+            supported = ", ".join(source_suffixes + image_suffixes)
+            raise ValueError(
+                f"cannot save {path.suffix!r}; supported suffixes are {supported}",
+            )
 
 
 def _render_relationship(database: Database, relationship: Relationship) -> str:
@@ -60,8 +130,8 @@ def _render_relationship(database: Database, relationship: Relationship) -> str:
     Returns:
         The edge line, indented.
     """
-    parent = render_table_name(relationship.parent)
-    child = render_table_name(relationship.child)
+    parent = _render_table_name(relationship.parent)
+    child = _render_table_name(relationship.child)
     return (
         f"  {parent} 1 to {_count_of_children(database, relationship)} {child}"
         f" : {_render_edge_label(relationship.foreign_key)}"
@@ -107,13 +177,14 @@ def _render_table(database: Database, name: str, columns: bool | str) -> list[st
     Args:
         database: The database the table belongs to.
         name: The table's name.
-        columns: The column mode, as documented on :func:`build_schema_source`.
+        columns: The column mode, as documented on
+            :meth:`SchemaDiagram.from_database`.
 
     Returns:
         The entity's lines. A bare name when no columns are shown, otherwise a
         braced block.
     """
-    entity = render_table_name(name)
+    entity = _render_table_name(name)
     if columns is False:
         return [f"  {entity}"]
     attributes = [
@@ -128,7 +199,8 @@ def _render_attributes(database: Database, name: str, columns: bool | str) -> li
     Args:
         database: The database the table belongs to.
         name: The table's name.
-        columns: The column mode, as documented on :func:`build_schema_source`.
+        columns: The column mode, as documented on
+            :meth:`SchemaDiagram.from_database`.
 
     Returns:
         One line per shown column, in schema order.
@@ -143,7 +215,7 @@ def _render_attributes(database: Database, name: str, columns: bool | str) -> li
         lines.append(
             " ".join(
                 part
-                for part in (render_dtype(dtype), render_column_name(column), role)
+                for part in (_render_dtype(dtype), _render_column_name(column), role)
                 if part
             ),
         )
@@ -178,63 +250,6 @@ def _describe_role(column: str, schema: TableSchema, foreign_keys: set[str]) -> 
     return " ".join(parts)
 
 
-@dataclass(frozen=True)
-class SchemaDiagram:
-    """A Mermaid diagram of a database's schema.
-
-    Printing it, or reading :attr:`source`, gives the Mermaid source, which is
-    the escape hatch for any renderer: this class only knows how to display
-    itself and write a file.
-
-    Attributes:
-        source: The Mermaid ``erDiagram`` source.
-    """
-
-    source: str
-
-    def __str__(self) -> str:
-        """Return the Mermaid source.
-
-        Returns:
-            The diagram source.
-        """
-        return self.source
-
-    def _repr_markdown_(self) -> str:
-        """Return the source as a fenced block, for notebooks and docs.
-
-        Returns:
-            The source in a ``mermaid`` code fence, which Jupyter, GitHub and
-            the documentation site all render as a picture.
-        """
-        return f"```mermaid\n{self.source}```"
-
-    def save(self, path: str | Path) -> None:
-        """Write the diagram to a file.
-
-        The suffix selects the format. ``.mmd`` and ``.md`` write the source
-        and need nothing installed; ``.svg``, ``.png`` and ``.pdf`` render the
-        diagram and need ``tusk-ml[plot]``, raising ``ImportError`` if it is
-        not installed.
-
-        Args:
-            path: Where to write, including the suffix.
-
-        Raises:
-            ValueError: If the suffix names no supported format.
-        """
-        path = Path(path)
-        if path.suffix in SOURCE_SUFFIXES:
-            path.write_text(self.source, encoding="utf-8")
-        elif path.suffix in IMAGE_SUFFIXES:
-            _render_to_file(self.source, path)
-        else:
-            supported = ", ".join(SOURCE_SUFFIXES + IMAGE_SUFFIXES)
-            raise ValueError(
-                f"cannot save {path.suffix!r}; supported suffixes are {supported}",
-            )
-
-
 def _render_to_file(source: str, path: Path) -> None:
     """Render Mermaid source to an image file.
 
@@ -254,7 +269,7 @@ def _render_to_file(source: str, path: Path) -> None:
     mermaidx.render(source).save(str(path))
 
 
-def render_dtype(dtype: Any) -> str:
+def _render_dtype(dtype: Any) -> str:
     """Render a narwhals dtype as a token Mermaid's type slot accepts.
 
     Args:
@@ -269,7 +284,7 @@ def render_dtype(dtype: Any) -> str:
     return f"{name}[{parameters}]" if parameters else name
 
 
-def render_table_name(name: str) -> str:
+def _render_table_name(name: str) -> str:
     """Render a table name as a Mermaid entity name.
 
     Any double quote in the name is dropped before quoting: an embedded quote
@@ -290,7 +305,7 @@ def render_table_name(name: str) -> str:
     return f'"{safe or "_"}"'
 
 
-def render_column_name(name: str) -> str:
+def _render_column_name(name: str) -> str:
     """Render a column name as a Mermaid attribute name.
 
     Attribute names cannot be quoted, so a name Mermaid would reject is
@@ -333,7 +348,7 @@ def _render_dtype_parameters(dtype: Any) -> str:
     if isinstance(dtype, nw.Duration):
         return _render_time_parameters(dtype.time_unit, None)
     if isinstance(dtype, nw.List):
-        return render_dtype(dtype.inner)
+        return _render_dtype(dtype.inner)
     if isinstance(dtype, nw.Enum):
         return str(len(dtype.categories))
     if isinstance(dtype, nw.Struct):

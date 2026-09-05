@@ -10,7 +10,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
-from tusk.plotting import SchemaDiagram, build_schema_source
+from tusk.plotting import SchemaDiagram
 from tusk.validation import validate_database, validate_relationship, validate_table
 
 
@@ -257,7 +257,7 @@ class Database:
             The diagram, which renders itself in a notebook and writes itself
             to a file with :meth:`~tusk.SchemaDiagram.save`.
         """
-        return SchemaDiagram(build_schema_source(self, columns))
+        return SchemaDiagram.from_database(self, columns)
 
     def schema(self, name: str) -> TableSchema:
         """Return a table's schema.
