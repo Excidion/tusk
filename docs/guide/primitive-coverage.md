@@ -166,14 +166,14 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | General transform | — | [`cosine`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Cosine.html) | ❌ |  |  |
 | General transform | — | [`is_null`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsNull.html) | ❌ |  |  |
 | General transform | — | [`negate`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Negate.html) | ❌ |  |  |
-| General transform | — | `percent_change` | ❌ |  |  |
+| General transform | — | [`percent_change`](https://docs.featuretools.com/en/latest/generated/featuretools.primitives.PercentChange.html) | ❌ |  |  |
 | General transform | — | [`percentile`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Percentile.html) | ❌ |  |  |
-| General transform | — | [`rate_of_change`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.RateOfChange.html) | ❌ |  |  |
+| General transform | — | [`rate_of_change`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.RateOfChange.html) | ⛔ |  |  |
 | General transform | — | [`same_as_previous`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SameAsPrevious.html) | ❌ |  |  |
-| General transform | — | `savgol_filter` | ❌ |  | Needs SciPy. |
+| General transform | — | [`savgol_filter`](https://docs.featuretools.com/en/latest/generated/featuretools.primitives.SavgolFilter.html) | ⛔ |  |  |
 | General transform | — | [`sine`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Sine.html) | ❌ |  |  |
 | General transform | — | [`square_root`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SquareRoot.html) | ❌ |  |  |
-| General transform | — | [`tangent`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Tangent.html) | ❌ |  | narwhals exposes no `tan`. |
+| General transform | — | [`tangent`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Tangent.html) | ⛔ |  | narwhals exposes no `tan`. |
 | General transform | — | [`variance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Variance.html) | ❌ |  |  |
 | Location transform | — | [`cityblock_distance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CityblockDistance.html) | ⛔ |  |   |
 | Location transform | — | [`geomidpoint`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GeoMidpoint.html) | ⛔ |  |   |
