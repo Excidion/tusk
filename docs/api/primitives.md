@@ -46,6 +46,14 @@
 
 ::: tusk.primitives.Quantiles
 
+::: tusk.primitives.TimeSinceFirst
+
+::: tusk.primitives.TimeSinceLast
+
+::: tusk.primitives.TimeSinceLastTrue
+
+::: tusk.primitives.TimeSinceLastFalse
+
 ## Transform primitives
 
 ::: tusk.primitives.transform.TRANS_DEFAULTS

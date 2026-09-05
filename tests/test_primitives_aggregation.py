@@ -1,8 +1,16 @@
+from datetime import datetime, timedelta
+
 import narwhals as nw
 import polars as pl
 import pytest
 
-from tusk.primitives.aggregation import AGG_DEFAULTS, Count, Quantiles
+from tusk.primitives.aggregation import (
+    AGG_DEFAULTS,
+    Count,
+    Quantiles,
+    TimeSinceLast,
+)
+from tusk.primitives.base import NeedsCutoffTime
 from tusk.primitives.registry import resolve
 
 
@@ -111,3 +119,82 @@ def test_quantiles_defaults_to_the_quartiles():
 
 def test_defaults_are_the_documented_set():
     assert AGG_DEFAULTS == ("count", "sum", "mean", "min", "max", "std", "n_unique")
+
+
+@pytest.fixture
+def timed_lf():
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "g": [1, 1, 1, 2],
+                "t": [
+                    datetime(2024, 1, 1),
+                    datetime(2024, 1, 5),
+                    datetime(2024, 1, 9),
+                    datetime(2024, 2, 1),
+                ],
+                "b": [True, False, None, False],
+            },
+        ),
+    )
+
+
+CUTOFF = datetime(2024, 1, 10)
+
+
+def _agg_against_cutoff(lf, primitive, *columns):
+    exprs = primitive.outputs(*[nw.col(c) for c in columns], cutoff_time=CUTOFF)
+    named = [e.alias(f"o{i}") for i, e in enumerate(exprs)]
+    return lf.group_by("g").agg(*named).sort("g").collect().to_native()
+
+
+@pytest.mark.parametrize(
+    ("name", "columns", "expected"),
+    [
+        ("time_since_first", ("t",), timedelta(days=9)),
+        ("time_since_last", ("t",), timedelta(days=1)),
+        ("time_since_last_true", ("t", "b"), timedelta(days=9)),
+        ("time_since_last_false", ("t", "b"), timedelta(days=5)),
+    ],
+)
+def test_time_since_aggregations_measure_against_the_cutoff(
+    timed_lf,
+    name,
+    columns,
+    expected,
+):
+    got = _agg_against_cutoff(timed_lf, resolve(name), *columns)
+    assert got["o0"][0] == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "columns"),
+    [
+        ("time_since_last_true", ("t", "b")),
+        ("time_since_last_false", ("t", "b")),
+    ],
+)
+def test_time_since_last_flag_is_null_without_a_matching_row(name, columns):
+    lf = nw.from_native(
+        pl.LazyFrame(
+            {"g": [1, 1], "t": [datetime(2024, 1, 1)] * 2, "b": [None, None]},
+            schema_overrides={"b": pl.Boolean},
+        ),
+    )
+    got = _agg_against_cutoff(lf, resolve(name), *columns)
+    assert got["o0"][0] is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["time_since_first", "time_since_last", "time_since_last_true"],
+)
+def test_time_since_aggregations_need_a_cutoff_time(name):
+    assert isinstance(resolve(name), NeedsCutoffTime)
+
+
+def test_time_since_aggregations_return_a_duration(timed_lf):
+    got = timed_lf.group_by("g").agg(
+        TimeSinceLast().outputs(nw.col("t"), cutoff_time=CUTOFF)[0].alias("d"),
+    )
+    assert got.collect_schema()["d"] == nw.Duration

@@ -19,6 +19,7 @@ import pytest
 import tusk
 
 duckdb = pytest.importorskip("duckdb")
+pd = pytest.importorskip("pandas")
 
 
 @pytest.fixture
@@ -207,6 +208,45 @@ def test_time_since_holds_the_elapsed_time_on_duckdb(duck_db):
     assert rows_by_id.loc[101, column] == dt.timedelta(days=1, hours=22)
     assert rows_by_id.loc[102, column] == dt.timedelta(hours=23)
     assert rows_by_id.loc[103, column] == dt.timedelta(hours=22)
+
+
+def test_time_since_aggregations_hold_the_elapsed_time_on_duckdb(duck_db):
+    """The cutoff-measuring aggregations survive translation to SQL.
+
+    TIME_SINCE_LAST_TRUE is the one that constrains the implementation: a SQL
+    backend rejects an aggregate nested inside another aggregate, so the
+    selected row has to be picked with a blanking ``when`` rather than by
+    comparing against the group's own maximum.
+
+    ``occurred_at`` is ``transactions``' own ``row_creation_time``, so
+    ``cutoff_time`` is chosen after every transaction; see
+    ``test_time_since_holds_the_elapsed_time_on_duckdb`` for why the matrix is
+    materialized with ``.df()``.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    database, _ = duck_db
+    cutoff_time = dt.datetime(2024, 3, 6)
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="sessions",
+        max_depth=1,
+        agg_primitives=["time_since_last", "time_since_last_true"],
+        trans_primitives=[],
+        features_only=True,
+    )
+    matrix = tusk.apply_features(features, database, cutoff_time=cutoff_time).df()
+    rows_by_id = matrix.set_index("id")
+    latest = "TIME_SINCE_LAST__transactions__occurred_at"
+    latest_true = (
+        "TIME_SINCE_LAST_TRUE__transactions__occurred_at__transactions__is_completed"
+    )
+    assert rows_by_id.loc[10, latest] == dt.timedelta(days=1, hours=22)
+    assert rows_by_id.loc[20, latest] == dt.timedelta(hours=22)
+    assert rows_by_id.loc[30, latest] is pd.NaT
+    assert rows_by_id.loc[10, latest_true] == dt.timedelta(days=1, hours=23)
+    assert rows_by_id.loc[20, latest_true] is pd.NaT
 
 
 def test_quantiles_interpolates_linearly_on_duckdb(duck_db):

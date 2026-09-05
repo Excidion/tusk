@@ -7,15 +7,16 @@ everything pushed down to the backend.
 ## What ships with tusk
 
 **Aggregation** — `count`, `sum`, `mean`, `min`, `max`, `std`, `median`,
-`n_unique`, `percent_true`, `quantiles`.
+`n_unique`, `percent_true`, `quantiles`, `time_since_first`, `time_since_last`,
+`time_since_last_true`, `time_since_last_false`.
 
 **Transform** — `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
 `time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric`.
 
-`time_since` is the one transform that needs more than its input column: it
-requires a `cutoff_time` at apply time, since its value is measured against
-that moment rather than derived from the row alone.
+`time_since` and the four `time_since_*` aggregations need more than their
+input columns: they require a `cutoff_time` at apply time, since their values
+are measured against that moment rather than derived from the rows alone.
 
 **Order-dependent** (require a `row_creation_time` on the table) — `cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`.
