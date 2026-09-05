@@ -84,6 +84,12 @@
 
 ::: tusk.primitives.DivideNumeric
 
+::: tusk.primitives.Not
+
+::: tusk.primitives.And
+
+::: tusk.primitives.Or
+
 ## Order-dependent transform primitives
 
 ::: tusk.primitives.CumSum

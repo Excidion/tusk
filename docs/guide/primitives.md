@@ -12,7 +12,7 @@ everything pushed down to the backend.
 
 **Transform** — `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
 `time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
-`multiply_numeric`, `divide_numeric`.
+`multiply_numeric`, `divide_numeric`, `not`, `and`, `or`.
 
 `time_since`, and every other `time_since_*` primitive, needs more than its
 input columns: it requires a `cutoff_time` at apply time, since its value is
@@ -68,6 +68,27 @@ primitive as `default_value` rather than as a special case in the compiler.
 featuretools agrees on `COUNT` and `SUM`, and also leaves `MEAN`/`MIN`/`MAX`
 null. It differs on `N_UNIQUE`, which it leaves as `NaN`; tusk reports `0` for
 the reason above.
+
+## Nulls in `and` and `or`
+
+A null is an unknown value, not a third truth value, so an unknown input only
+makes the answer unknown when it could have changed it:
+
+| | `true` | `false` | `null` |
+|---|---|---|---|
+| **`AND`** `true` | `true` | `false` | `null` |
+| **`AND`** `false` | `false` | `false` | `false` |
+| **`AND`** `null` | `null` | `false` | `null` |
+| **`OR`** `true` | `true` | `true` | `true` |
+| **`OR`** `false` | `true` | `false` | `null` |
+| **`OR`** `null` | `true` | `null` | `null` |
+
+`false AND null` is `false` because nothing the unknown turns out to be makes
+the conjunction true. This is what polars, duckdb and every SQL engine answer,
+and tusk builds the operator rather than working around it.
+
+featuretools instead propagates the null in every one of those cells. `NOT`
+agrees on both sides: the negation of an unknown is unknown.
 
 ## What can go in `groupby_trans_primitives`
 

@@ -209,3 +209,106 @@ def test_deep_feature_synthesis_computes_time_since_with_a_cutoff_time(db):
     got = matrix.collect().sort("id")
     # customers.signed_up_at is 2024-01-01 for all three rows (tests/conftest.py)
     assert got["TIME_SINCE__signed_up_at"].to_list() == [dt.timedelta(days=60)] * 3
+
+
+@pytest.fixture
+def booleans():
+    """Every pairing of True, False and null, so the truth table is complete."""
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "a": [True, True, True, False, False, False, None, None, None],
+                "b": [True, False, None, True, False, None, True, False, None],
+            },
+        ),
+    )
+
+
+def test_and_follows_three_valued_logic(booleans):
+    """A null is unknown, not a third value: False AND unknown is still False.
+
+    featuretools propagates the null here; every SQL backend tusk pushes down
+    to does not.
+    """
+    assert _apply(booleans, "and", "a", "b") == [
+        True,
+        False,
+        None,
+        False,
+        False,
+        False,
+        None,
+        False,
+        None,
+    ]
+
+
+def test_or_follows_three_valued_logic(booleans):
+    """True OR unknown is True, whatever the unknown turns out to be."""
+    assert _apply(booleans, "or", "a", "b") == [
+        True,
+        True,
+        True,
+        True,
+        False,
+        None,
+        True,
+        None,
+        None,
+    ]
+
+
+def test_not_leaves_a_null_null(booleans):
+    assert _apply(booleans, "not", "a") == [
+        False,
+        False,
+        False,
+        True,
+        True,
+        True,
+        None,
+        None,
+        None,
+    ]
+
+
+def test_boolean_primitives_take_and_return_booleans():
+    assert resolve("and").input_dtypes == (DtypeFamily.BOOLEAN, DtypeFamily.BOOLEAN)
+    assert resolve("or").input_dtypes == (DtypeFamily.BOOLEAN, DtypeFamily.BOOLEAN)
+    assert resolve("not").input_dtypes == (DtypeFamily.BOOLEAN,)
+    for name in ("and", "or", "not"):
+        assert resolve(name).output_dtype == nw.Boolean
+
+
+def test_and_and_or_are_commutative_but_not_is_not_stacked_on_itself():
+    """NOT(NOT(x)) is x, so synthesizing it would only cost a column."""
+    assert resolve("and").commutative is True
+    assert resolve("or").commutative is True
+    assert resolve("not").stack_on_self is False
+
+
+def test_deep_feature_synthesis_builds_the_boolean_transforms():
+    """AND and OR are commutative, so each pair of columns is generated once."""
+    db = tusk.Database("flags").add_table(
+        "accounts",
+        pl.LazyFrame(
+            {
+                "id": [1, 2, 3],
+                "is_active": [True, False, None],
+                "is_verified": [True, True, False],
+            },
+        ),
+        primary_key="id",
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="accounts",
+        agg_primitives=[],
+        trans_primitives=["and", "or", "not"],
+        max_depth=1,
+    )
+    got = matrix.collect().sort("id")
+    assert got["AND__is_active__is_verified"].to_list() == [True, False, False]
+    assert got["OR__is_active__is_verified"].to_list() == [True, True, None]
+    assert got["NOT__is_active"].to_list() == [False, True, None]
+    assert "AND__is_verified__is_active" not in got.columns

@@ -275,6 +275,74 @@ class MultiplyNumeric(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class Not(TransformPrimitive):
+    """Logical negation. A null stays null."""
+
+    name = "not"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Boolean
+    stack_on_self = False
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the negation expression.
+
+        Args:
+            expr: A boolean expression.
+
+        Returns:
+            A narwhals expression of the negated values.
+        """
+        return ~expr
+
+
+@register
+@dataclass(frozen=True)
+class And(TransformPrimitive):
+    """Logical conjunction of two boolean columns."""
+
+    name = "and"
+    input_dtypes = (F.BOOLEAN, F.BOOLEAN)
+    output_dtype = nw.Boolean
+    commutative = True
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the conjunction expression.
+
+        Args:
+            left: First boolean expression.
+            right: Second boolean expression.
+
+        Returns:
+            A narwhals expression that is true where both are true.
+        """
+        return left & right
+
+
+@register
+@dataclass(frozen=True)
+class Or(TransformPrimitive):
+    """Logical disjunction of two boolean columns."""
+
+    name = "or"
+    input_dtypes = (F.BOOLEAN, F.BOOLEAN)
+    output_dtype = nw.Boolean
+    commutative = True
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the disjunction expression.
+
+        Args:
+            left: First boolean expression.
+            right: Second boolean expression.
+
+        Returns:
+            A narwhals expression that is true where either is true.
+        """
+        return left | right
+
+
+@register
+@dataclass(frozen=True)
 class CumSum(TransformPrimitive):
     """Running total in row-creation order."""
 
