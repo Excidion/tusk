@@ -153,7 +153,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | — | [`second`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Second.html) | ❌ |  |  |
 | Datetime transform | — | [`week`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Week.html) | ❌ |  | narwhals exposes no ISO week number. |
 | Email and URL transform | — | [`email_address_to_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.EmailAddressToDomain.html) | ❌ |  |  |
-| Email and URL transform | — | [`is_free_email_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsFreeEmailDomain.html) | ❌ |  | Needs a bundled domain list. |
+| Email and URL transform | — | [`is_free_email_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsFreeEmailDomain.html) | ⛔ |  |  |
 | Email and URL transform | — | [`url_to_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.URLToDomain.html) | ❌ |  | Needs URL parsing. |
 | Email and URL transform | — | [`url_to_protocol`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.URLToProtocol.html) | ❌ |  | Needs URL parsing. |
 | Email and URL transform | — | [`url_to_tld`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.URLToTLD.html) | ❌ |  | Needs URL parsing. |
