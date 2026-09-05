@@ -14,9 +14,9 @@ everything pushed down to the backend.
 `time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric`.
 
-`time_since` and the four `time_since_*` aggregations need more than their
-input columns: they require a `cutoff_time` at apply time, since their values
-are measured against that moment rather than derived from the rows alone.
+`time_since`, and every other `time_since_*` primitive, needs more than its
+input columns: it requires a `cutoff_time` at apply time, since its value is
+measured against that moment rather than derived from the rows alone.
 
 **Order-dependent** (require a `row_creation_time` on the table) — `cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`.
