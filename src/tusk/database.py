@@ -10,6 +10,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
+from tusk.plotting import SchemaDiagram
 from tusk.validation import validate_database, validate_relationship, validate_table
 
 
@@ -238,6 +239,25 @@ class Database:
             relationship_checks=relationships,
         )
         return self
+
+    def plot(self, columns: bool | str = True) -> SchemaDiagram:
+        """Draw the database's schema as an entity-relationship diagram.
+
+        Reads no rows: the diagram is built entirely from declared schema.
+
+        A ``columns`` value other than True, False, or ``"structural"`` raises
+        :class:`ValueError`.
+
+        Args:
+            columns: True lists every column, False lists none, and
+                ``"structural"`` lists only the primary key, the foreign keys,
+                and the ``row_creation_time``.
+
+        Returns:
+            The diagram, which renders itself in a notebook and writes itself
+            to a file with :meth:`~tusk.SchemaDiagram.save`.
+        """
+        return SchemaDiagram.from_database(self, columns)
 
     def schema(self, name: str) -> TableSchema:
         """Return a table's schema.

@@ -24,6 +24,7 @@ nav = [
         "api/index.md",
         "api/tusk.md",
         "api/database.md",
+        "api/plotting.md",
         "api/validation.md",
         "api/sklearn.md",
         "api/primitives.md",

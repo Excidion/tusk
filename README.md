@@ -1,10 +1,9 @@
 # tusk
 
 In nature, narwhals use their tusk to find mates.
+In data science, you can use tusk to connect dataframes via [narwhals](https://narwhals-dev.github.io/narwhals/).
 
-In data science, you can use tusk to connect [narwhals](https://narwhals-dev.github.io/narwhals/) dataframes.
-
-This package implements deep feature synthesis to automate feature engineering with the power of your favorite dataframe library.
+This package helps to automate feature engineering with [Deep Feature Synthesis](https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf) for (almost) any dataframe library.
 Powered by [narwhals](https://narwhals-dev.github.io/narwhals/), inspired by [featuretools](https://featuretools.alteryx.com/).
 
 ## Install
@@ -21,13 +20,18 @@ from datetime import datetime
 import tusk
 from tusk.primitives import Quantiles
 
-db = tusk.Database("retail")
-db.add_table("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
-db.add_table("sessions", sessions_lf, primary_key="id", row_creation_time="started_at")
-db.add_table("transactions", tx_lf, primary_key="id", row_creation_time="occurred_at")
+db = tusk.Database("shop")
+db.add_table(
+    "customers",
+    customers_lf,
+    primary_key="id",
+    row_creation_time="signed_up_at",
+)
+db.add_table("products", products_lf, primary_key="id", row_creation_time="listed_at")
+db.add_table("orders", orders_lf, primary_key="id", row_creation_time="placed_at")
 
-db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
-db.add_relationship(parent="sessions", child="transactions", foreign_key="session_id")
+db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+db.add_relationship(parent="products", child="orders", foreign_key="product_id")
 
 db.validate()  # optional: confirm the keys really are keys, before you trust the numbers
 
@@ -56,22 +60,46 @@ knows its target table and can re-apply itself to new data:
 matrix = features.apply(db_new)
 ```
 
+## Looking at the schema
+
+`plot()` draws the database you just built. It runs no query against the data.
+
+```python
+db.plot()
+```
+
+```mermaid
+erDiagram
+  "customers" {
+    Int64 id PK
+    String region
+    Datetime[us] signed_up_at "row creation time"
+  }
+  "products" {
+    Int64 id PK
+    String category
+    Float64 price
+    Datetime[us] listed_at "row creation time"
+  }
+  "orders" {
+    Int64 id PK
+    Int64 customer_id FK
+    Int64 product_id FK
+    Int64 quantity
+    Datetime[us] placed_at "row creation time"
+  }
+  "customers" 1 to 0+ "orders" : "customer_id"
+  "products" 1 to 0+ "orders" : "product_id"
+```
+
+In a notebook it renders inline; `print(db.plot())` gives the Mermaid source,
+and `db.plot().save("schema.svg")` writes an image with `tusk-ml[plot]`
+installed.
+
 ## Documentation
 
-Full documentation lives in [`docs/`](docs/index.md):
-
-- [Databases](docs/guide/databases.md) — tables, keys, relationships, and
-  [validating](docs/guide/databases.md#validation) them against the data.
-- [Running DFS](docs/guide/deep-feature-synthesis.md) — depth, cutoff times, and the column naming scheme.
-- [Primitives](docs/guide/primitives.md) — what ships with tusk and how it behaves.
-- [Custom primitives](docs/guide/custom-primitives.md) — the extension point.
-- [scikit-learn pipelines](docs/guide/sklearn.md) — DFS as a pipeline step, and
-  computing only the features you keep.
-- [Differences from featuretools](docs/guide/featuretools.md) — if you are porting.
-- [API reference](docs/api/index.md) — every public symbol.
-
-Build the site locally with:
-
+Full documentation lives [here](https://excidion.github.io/tusk/).
+Or build the site locally with:
 ```bash
-uv run --group docs zensical serve
+just docs-test
 ```
