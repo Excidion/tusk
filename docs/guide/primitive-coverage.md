@@ -6,10 +6,12 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | | Meaning |
 | --- | --- |
 | ✅ | Same values, covered by a test |
-| ❓ | Both implement it, but no test yet |
+| ➕ | tusk only |
+| ❓ | Implemented, but no test yet |
 | ⚠️ | Diverges on purpose |
 | ❌ | Diverges, or not implemented |
-| ➕ | tusk only |
+| ⛔ | Out of scope |
+
 
 | Group | tusk | featuretools | Status | Test | Comment |
 | --- | --- | --- | --- | --- | --- |
@@ -173,32 +175,32 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | General transform | — | [`square_root`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SquareRoot.html) | ❌ |  |  |
 | General transform | — | [`tangent`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Tangent.html) | ❌ |  | narwhals exposes no `tan`. |
 | General transform | — | [`variance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Variance.html) | ❌ |  |  |
-| Location transform | — | [`cityblock_distance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CityblockDistance.html) | ❌ |  | featuretools' `LatLong` column has no narwhals equivalent. |
-| Location transform | — | [`geomidpoint`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GeoMidpoint.html) | ❌ |  | featuretools' `LatLong` column has no narwhals equivalent. |
-| Location transform | — | [`haversine`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Haversine.html) | ❌ |  | featuretools' `LatLong` column has no narwhals equivalent. |
-| Location transform | — | [`is_in_geobox`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsInGeoBox.html) | ❌ |  | featuretools' `LatLong` column has no narwhals equivalent. |
-| Location transform | — | [`latitude`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Latitude.html) | ❌ |  | featuretools' `LatLong` column has no narwhals equivalent. |
-| Location transform | — | [`longitude`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Longitude.html) | ❌ |  | featuretools' `LatLong` column has no narwhals equivalent. |
-| Natural-language transform | — | [`count_string`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountString.html) | ❌ |  |  |
-| Natural-language transform | — | `file_extension` | ❌ |  |  |
-| Natural-language transform | — | `full_name_to_first_name` | ❌ |  | Needs name parsing. |
-| Natural-language transform | — | `full_name_to_last_name` | ❌ |  | Needs name parsing. |
-| Natural-language transform | — | `full_name_to_title` | ❌ |  | Needs name parsing. |
-| Natural-language transform | — | [`mean_characters_per_word`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MeanCharactersPerWord.html) | ❌ |  |  |
-| Natural-language transform | — | [`median_word_length`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MedianWordLength.html) | ❌ |  | Needs a per-row list reduction. |
+| Location transform | — | [`cityblock_distance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CityblockDistance.html) | ⛔ |  |   |
+| Location transform | — | [`geomidpoint`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GeoMidpoint.html) | ⛔ |  |   |
+| Location transform | — | [`haversine`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Haversine.html) | ⛔ |  |   |
+| Location transform | — | [`is_in_geobox`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.IsInGeoBox.html) | ⛔ |  |   |
+| Location transform | — | [`latitude`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Latitude.html) | ⛔ |  |   |
+| Location transform | — | [`longitude`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Longitude.html) | ⛔ |  |   |
+| Natural-language transform | — | [`count_string`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountString.html) | ⛔ |  |  |
+| Natural-language transform | — | `file_extension` | ⛔ |  |  |
+| Natural-language transform | — | `full_name_to_first_name` | ⛔ |  |  |
+| Natural-language transform | — | `full_name_to_last_name` | ⛔ |  |  |
+| Natural-language transform | — | `full_name_to_title` | ⛔ |  |  |
+| Natural-language transform | — | [`mean_characters_per_word`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MeanCharactersPerWord.html) | ⛔ |  |  |
+| Natural-language transform | — | [`median_word_length`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MedianWordLength.html) | ⛔ |  | Needs a per-row list reduction. |
 | Natural-language transform | — | [`num_characters`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumCharacters.html) | ❌ |  |  |
 | Natural-language transform | — | [`num_unique_separators`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumUniqueSeparators.html) | ❌ |  | Needs a regex count; narwhals has none. |
 | Natural-language transform | — | [`num_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumWords.html) | ❌ |  |  |
-| Natural-language transform | — | [`number_of_common_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfCommonWords.html) | ❌ |  | Needs tokenisation against a word list. |
-| Natural-language transform | — | [`number_of_hashtags`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfHashtags.html) | ❌ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`number_of_common_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfCommonWords.html) | ⛔ |  | Needs tokenisation against a word list. |
+| Natural-language transform | — | [`number_of_hashtags`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfHashtags.html) | ⛔ |  | Needs a regex count; narwhals has none. |
 | Natural-language transform | — | [`number_of_mentions`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfMentions.html) | ❌ |  | Needs a regex count; narwhals has none. |
 | Natural-language transform | — | [`number_of_unique_words`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfUniqueWords.html) | ❌ |  | Needs a per-row list reduction. |
-| Natural-language transform | — | [`number_of_words_in_quotes`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfWordsInQuotes.html) | ❌ |  | Needs a regex count; narwhals has none. |
-| Natural-language transform | — | [`punctuation_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PunctuationCount.html) | ❌ |  | Needs a regex count; narwhals has none. |
-| Natural-language transform | — | [`title_word_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TitleWordCount.html) | ❌ |  | Needs a regex count; narwhals has none. |
-| Natural-language transform | — | [`total_word_length`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TotalWordLength.html) | ❌ |  |  |
-| Natural-language transform | — | [`upper_case_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.UpperCaseCount.html) | ❌ |  | Needs a regex count; narwhals has none. |
-| Natural-language transform | — | [`upper_case_word_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.UpperCaseWordCount.html) | ❌ |  | Needs a regex count; narwhals has none. |
-| Natural-language transform | — | [`whitespace_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.WhitespaceCount.html) | ❌ |  | Needs a regex count; narwhals has none. |
-| Postal-code transform | — | [`one_digit_postal_code`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.OneDigitPostalCode.html) | ❌ |  |  |
-| Postal-code transform | — | [`two_digit_postal_code`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TwoDigitPostalCode.html) | ❌ |  |  |
+| Natural-language transform | — | [`number_of_words_in_quotes`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumberOfWordsInQuotes.html) | ⛔ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`punctuation_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PunctuationCount.html) | ⛔ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`title_word_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TitleWordCount.html) | ⛔ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`total_word_length`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TotalWordLength.html) | ⛔ |  |  |
+| Natural-language transform | — | [`upper_case_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.UpperCaseCount.html) | ⛔ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`upper_case_word_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.UpperCaseWordCount.html) | ⛔ |  | Needs a regex count; narwhals has none. |
+| Natural-language transform | — | [`whitespace_count`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.WhitespaceCount.html) | ⛔ |  | Needs a regex count; narwhals has none. |
+| Postal-code transform | — | [`one_digit_postal_code`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.OneDigitPostalCode.html) | ⛔ |  |  |
+| Postal-code transform | — | [`two_digit_postal_code`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TwoDigitPostalCode.html) | ⛔ |  |  |
