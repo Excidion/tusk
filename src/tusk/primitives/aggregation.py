@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import AggregationPrimitive
+from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
 from tusk.primitives.registry import register
 
 AGG_DEFAULTS: tuple[str, ...] = (
@@ -269,3 +270,128 @@ class Quantiles(AggregationPrimitive):
             One narwhals expression per quantile.
         """
         return [expr.quantile(q, interpolation="linear") for q in self.qs]
+
+
+@register
+@dataclass(frozen=True)
+class TimeSinceFirst(NeedsCutoffTime, AggregationPrimitive):
+    """Time elapsed from the group's earliest datetime to the cutoff time."""
+
+    name = "time_since_first"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Duration
+
+    def build(self, expr: nw.Expr, *, cutoff_time: datetime) -> nw.Expr:
+        """Build the elapsed-time expression.
+
+        Args:
+            expr: The datetime column to reduce.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            A narwhals expression.
+        """
+        return nw.lit(cutoff_time) - expr.min()
+
+
+@register
+@dataclass(frozen=True)
+class TimeSinceLast(NeedsCutoffTime, AggregationPrimitive):
+    """Time elapsed from the group's latest datetime to the cutoff time."""
+
+    name = "time_since_last"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Duration
+
+    def build(self, expr: nw.Expr, *, cutoff_time: datetime) -> nw.Expr:
+        """Build the elapsed-time expression.
+
+        Args:
+            expr: The datetime column to reduce.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            A narwhals expression.
+        """
+        return nw.lit(cutoff_time) - expr.max()
+
+
+@register
+@dataclass(frozen=True)
+class TimeSinceLastTrue(NeedsCutoffTime, AggregationPrimitive):
+    """Time elapsed from the group's latest true row to the cutoff time."""
+
+    name = "time_since_last_true"
+    input_dtypes = (F.HAS_DATE, F.BOOLEAN)
+    output_dtype = nw.Duration
+
+    def build(
+        self,
+        timestamps: nw.Expr,
+        flags: nw.Expr,
+        *,
+        cutoff_time: datetime,
+    ) -> nw.Expr:
+        """Build the elapsed-time expression.
+
+        Args:
+            timestamps: The datetime column the elapsed time is measured from.
+            flags: The boolean column selecting which rows count.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _time_since_last_selected(timestamps, flags, cutoff_time)
+
+
+@register
+@dataclass(frozen=True)
+class TimeSinceLastFalse(NeedsCutoffTime, AggregationPrimitive):
+    """Time elapsed from the group's latest false row to the cutoff time."""
+
+    name = "time_since_last_false"
+    input_dtypes = (F.HAS_DATE, F.BOOLEAN)
+    output_dtype = nw.Duration
+
+    def build(
+        self,
+        timestamps: nw.Expr,
+        flags: nw.Expr,
+        *,
+        cutoff_time: datetime,
+    ) -> nw.Expr:
+        """Build the elapsed-time expression.
+
+        Args:
+            timestamps: The datetime column the elapsed time is measured from.
+            flags: The boolean column selecting which rows count.
+            cutoff_time: The moment the values are measured against.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _time_since_last_selected(timestamps, ~flags, cutoff_time)
+
+
+def _time_since_last_selected(
+    timestamps: nw.Expr,
+    selected: nw.Expr,
+    cutoff_time: datetime,
+) -> nw.Expr:
+    """Build the time from the latest selected row's datetime to the cutoff.
+
+    Rows are blanked rather than filtered out because ``expr.filter()`` is a
+    length-changing expression, which narwhals rejects inside a lazy
+    ``group_by().agg()``. A null flag selects no row, so a group without a
+    selected row reduces to null.
+
+    Args:
+        timestamps: The datetime column the elapsed time is measured from.
+        selected: The boolean column marking which rows count.
+        cutoff_time: The moment the values are measured against.
+
+    Returns:
+        A narwhals expression.
+    """
+    return nw.lit(cutoff_time) - nw.when(selected).then(timestamps).max()

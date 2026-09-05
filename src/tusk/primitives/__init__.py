@@ -14,6 +14,10 @@ from tusk.primitives.aggregation import (
     Quantiles,
     Std,
     Sum,
+    TimeSinceFirst,
+    TimeSinceLast,
+    TimeSinceLastFalse,
+    TimeSinceLastTrue,
 )
 from tusk.primitives.base import (
     AggregationPrimitive,
@@ -77,6 +81,10 @@ __all__ = [
     "Sum",
     "TRANS_DEFAULTS",
     "TimeSince",
+    "TimeSinceFirst",
+    "TimeSinceLast",
+    "TimeSinceLastFalse",
+    "TimeSinceLastTrue",
     "TimeSincePrevious",
     "TransformPrimitive",
     "Weekday",
