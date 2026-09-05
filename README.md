@@ -98,7 +98,7 @@ installed.
 
 ## Documentation
 
-Full documentation lives [here](excidion.github.io/tusk/).
+Full documentation lives [here](https://excidion.github.io/tusk/).
 Or build the site locally with:
 ```bash
 just docs-test
