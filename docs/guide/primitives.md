@@ -40,7 +40,7 @@ hundreds of features on wide tables.
 ## Multi-output primitives
 
 A multi-output primitive such as `quantiles` produces indexed columns —
-`QUANTILES__transactions__amount__0`, `__1`, `__2` — and nothing else stacks on
+`QUANTILES__orders__quantity__0`, `__1`, `__2` — and nothing else stacks on
 it: there is no single column for another primitive to read. It is a valid
 output at any depth, just never an input.
 
@@ -48,7 +48,7 @@ output at any depth, just never an input.
 
 Aggregating a group with no rows is the most surprising correct behaviour in
 the library, so it is worth stating plainly. After the left join, a customer
-with no sessions gets:
+with no orders gets:
 
 | Primitive | Value | Why |
 |---|---|---|

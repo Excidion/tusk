@@ -8,10 +8,10 @@ its column names and dtypes, nothing else. No row is read unless you ask for
 ```python
 import tusk
 
-db = tusk.Database("retail")
+db = tusk.Database("shop")
 db.add_table("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
-db.add_table("sessions", sessions_lf, primary_key="id", row_creation_time="started_at")
-db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
+db.add_table("orders", orders_lf, primary_key="id", row_creation_time="placed_at")
+db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
 ```
 
 Both `add_table` and `add_relationship` return the database, so they chain.
@@ -42,12 +42,13 @@ two pairs. The parent side is always the parent's `primary_key`, so only the
 child's column needs naming.
 
 ```python
-db.add_relationship(parent="sessions", child="transactions", foreign_key="session_id")
+db.add_relationship(parent="products", child="orders", foreign_key="product_id")
 ```
 
-A relationship is one parent to many children. Chaining them is what gives DFS
-depth: with `customers → sessions → transactions`, a depth-2 walk from
-`customers` reaches transaction columns through sessions.
+A relationship is one parent to many children. A table can be the child of
+several parents, which is what gives DFS depth: `orders` hangs off both
+`customers` and `products`, so a depth-2 walk from `customers` reaches product
+columns by going down to orders and back up.
 
 ## Backends
 
@@ -116,8 +117,8 @@ rows — it costs nothing, and a key dtype mismatch is worth hearing about at
 the point you declare the link rather than at the join:
 
 ```python
-db.add_relationship(parent="customers", child="sessions", foreign_key="customer_id")
-# ValidationError: foreign_key 'customer_id' of 'sessions' is String,
+db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+# ValidationError: foreign_key 'customer_id' of 'orders' is String,
 # but primary_key 'id' of 'customers' is Int64
 
 db.add_relationship(..., validate=True)   # also checks the keys overlap
@@ -188,27 +189,29 @@ no rows, so it costs nothing:
 db.plot()
 ```
 
-For the retail database above, that gives:
+For the shop database above, that gives:
 
 ```mermaid
 erDiagram
-  "customers" 1 to 0+ "sessions" : "customer_id"
-  "sessions" 1 to 0+ "transactions" : "session_id"
+  "customers" 1 to 0+ "orders" : "customer_id"
+  "products" 1 to 0+ "orders" : "product_id"
   "customers" {
     Int64 id PK
-    Int64 age
+    String region
     Datetime[us] signed_up_at "row creation time"
   }
-  "sessions" {
+  "products" {
+    Int64 id PK
+    String category
+    Float64 price
+    Datetime[us] listed_at "row creation time"
+  }
+  "orders" {
     Int64 id PK
     Int64 customer_id FK
-    Datetime[us] started_at "row creation time"
-  }
-  "transactions" {
-    Int64 id PK
-    Int64 session_id FK
-    Float64 amount
-    Datetime[us] occurred_at "row creation time"
+    Int64 product_id FK
+    Int64 quantity
+    Datetime[us] placed_at "row creation time"
   }
 ```
 

@@ -125,7 +125,7 @@ selector.fit(keys, y_train, database=db)
 After fitting, `features_` holds the kept feature definitions as a
 [`FeatureList`][tusk.FeatureList], and
 `get_feature_names_out()` gives the encoded column names with tusk's names
-substituted back, such as `categories__MODE__transactions__category_a`.
+substituted back, such as `categories__MODE__orders__products__category_a`.
 
 Two cases change what you get:
 

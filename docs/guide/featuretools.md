@@ -28,7 +28,7 @@ different answer.
 - **Any narwhals backend**, not just pandas. One database uses one backend.
 
 - **Feature names are SQL identifiers.** Featuretools writes
-  `MEAN(transactions.amount)`; tusk writes `MEAN__transactions__amount`. On a
+  `MEAN(orders.quantity)`; tusk writes `MEAN__orders__quantity`. On a
   backend that generates SQL, dots and parentheses parse as table qualifiers
   and function calls rather than as part of a name, so the conventional form is
   unusable there. See [the full naming
