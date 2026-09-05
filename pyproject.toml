@@ -1,6 +1,6 @@
 [project]
 name = "tusk-ml"
-version = "0.1.4"
+version = "0.1.5"
 description = "Automated feature engineering for narwhals dataframes"
 authors = [
     {name="Excidion", email="excidion@proton.me"}
