@@ -499,3 +499,59 @@ def test_modulo_and_masking_declare_their_inputs():
     assert resolve("multiply_numeric_boolean").signatures == (
         (DtypeFamily.NUMERIC, DtypeFamily.BOOLEAN),
     )
+
+
+@pytest.fixture
+def labels():
+    """Two Enum columns whose member lists differ.
+
+    That difference is the case the cast exists for: polars raises
+    ``SchemaError: Enum mismatch`` on a direct comparison of these two.
+    """
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "status": pl.Series(
+                    ["open", "closed", "open"],
+                    dtype=pl.Enum(["open", "closed", "pending"]),
+                ),
+                "tier": pl.Series(
+                    ["open", "open", None],
+                    dtype=pl.Enum(["open", "closed"]),
+                ),
+            },
+        ),
+    )
+
+
+def test_categorical_equality_compares_enums_with_different_members(labels):
+    assert _apply(labels, "equal_categorical", "status", "tier") == [
+        True,
+        False,
+        None,
+    ]
+
+
+def test_categorical_inequality_compares_enums_with_different_members(labels):
+    assert _apply(labels, "not_equal_categorical", "status", "tier") == [
+        False,
+        True,
+        None,
+    ]
+
+
+def test_comparing_the_enums_without_the_cast_would_raise(labels):
+    """Guards the reason the primitive casts at all."""
+    with pytest.raises(Exception, match="Enum"):
+        labels.with_columns(
+            (nw.col("status") == nw.col("tier")).alias("o"),
+        ).collect()
+
+
+def test_categorical_equality_takes_categorical_pairs():
+    for name in ("equal_categorical", "not_equal_categorical"):
+        assert resolve(name).signatures == (
+            (DtypeFamily.CATEGORICAL, DtypeFamily.CATEGORICAL),
+        )
+        assert resolve(name).output_dtype == nw.Boolean
+        assert resolve(name).commutative is True

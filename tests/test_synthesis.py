@@ -1026,3 +1026,27 @@ def test_overlapping_signatures_generate_one_feature():
         )
     ]
     assert names.count("TWICE__started_at") == 1
+
+
+def test_the_categorical_warning_names_the_primitive_that_handles_labels():
+    from tusk.exceptions import CategoricalDtypeWarning
+
+    db = tusk.Database("labelled").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "status": pl.Series(["a", "b"], dtype=pl.Categorical),
+                "note": ["x", "y"],
+            },
+        ),
+        primary_key="id",
+    )
+    with pytest.warns(CategoricalDtypeWarning, match="equal_categorical"):
+        synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=["equal"],
+            max_depth=1,
+        )

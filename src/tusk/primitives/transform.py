@@ -464,6 +464,58 @@ class NotEqual(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class EqualCategorical(TransformPrimitive):
+    """Whether two label columns carry the same label."""
+
+    name = "equal_categorical"
+    input_dtypes = (F.CATEGORICAL, F.CATEGORICAL)
+    output_dtype = nw.Boolean
+    commutative = True
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the label-equality expression.
+
+        Args:
+            left: First categorical expression.
+            right: Second categorical expression.
+
+        Returns:
+            A narwhals expression that is true where the labels match.
+        """
+        # Compared as text because two Enum columns with different member
+        # lists cannot be compared directly on polars, though duckdb allows
+        # it. The label is the value; its encoding is not.
+        return left.cast(nw.String) == right.cast(nw.String)
+
+
+@register
+@dataclass(frozen=True)
+class NotEqualCategorical(TransformPrimitive):
+    """Whether two label columns carry different labels."""
+
+    name = "not_equal_categorical"
+    input_dtypes = (F.CATEGORICAL, F.CATEGORICAL)
+    output_dtype = nw.Boolean
+    commutative = True
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the label-inequality expression.
+
+        Args:
+            left: First categorical expression.
+            right: Second categorical expression.
+
+        Returns:
+            A narwhals expression that is true where the labels differ.
+        """
+        # Compared as text because two Enum columns with different member
+        # lists cannot be compared directly on polars, though duckdb allows
+        # it. The label is the value; its encoding is not.
+        return left.cast(nw.String) != right.cast(nw.String)
+
+
+@register
+@dataclass(frozen=True)
 class Not(TransformPrimitive):
     """Logical negation. A null stays null."""
 

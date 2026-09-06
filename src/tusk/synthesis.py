@@ -81,7 +81,8 @@ def synthesize(
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
-            because a requested primitive requires a string input.
+            because a requested primitive's text inputs require a String
+            column.
         UnmatchedPrimitiveWarning: If a requested primitive matched no column
             of its input dtypes anywhere in the walk.
     """
@@ -372,7 +373,9 @@ class _Context:
                 f"column {feature.name!r} on {feature.table!r} has dtype "
                 f"{feature.dtype}, so primitive {primitive.name!r} (whose text "
                 f"inputs require a String column) will not be applied to it. Cast "
-                f"the column to String if you want text primitives to use it.",
+                f"the column to String if you want text primitives to use it, or "
+                f"use 'equal_categorical' / 'not_equal_categorical' to compare "
+                f"labels directly.",
                 CategoricalDtypeWarning,
                 stacklevel=2,
             )
