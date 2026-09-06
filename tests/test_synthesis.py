@@ -1,10 +1,13 @@
 import datetime as dt
 from dataclasses import dataclass
 
+import narwhals as nw
 import polars as pl
 import pytest
 
 import tusk
+from tusk.dtypes import DtypeFamily as F
+from tusk.primitives.base import TransformPrimitive
 from tusk.synthesis import synthesize
 
 
@@ -876,3 +879,102 @@ def test_no_frames_are_touched(db, monkeypatch):
         groupby_trans_primitives=[],
         max_depth=2,
     )
+
+
+@dataclass(frozen=True)
+class Comparable(TransformPrimitive):
+    """A two-slot primitive accepting a numeric pair or a datetime pair."""
+
+    name = "comparable"
+    input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+    output_dtype = nw.Boolean
+
+    def build(self, left, right):
+        return left > right
+
+
+def test_each_signature_contributes_its_own_combinations():
+    db = tusk.Database("mixed").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "amount": [1.0, 2.0],
+                "quantity": [3, 4],
+                "started_at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)],
+                "ended_at": [dt.datetime(2024, 1, 3), dt.datetime(2024, 1, 4)],
+            },
+        ),
+        primary_key="id",
+    )
+    names = {
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=[Comparable()],
+            max_depth=1,
+        )
+    }
+    assert "COMPARABLE__amount__quantity" in names
+    assert "COMPARABLE__started_at__ended_at" in names
+
+
+def test_a_signature_never_pairs_across_its_slots():
+    """The whole point: amount > started_at is not a feature anyone can run."""
+    db = tusk.Database("mixed").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "amount": [1.0, 2.0],
+                "started_at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)],
+            },
+        ),
+        primary_key="id",
+    )
+    names = {
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=[Comparable()],
+            max_depth=1,
+        )
+    }
+    assert not any("amount__started_at" in name for name in names)
+    assert not any("started_at__amount" in name for name in names)
+
+
+def test_overlapping_signatures_generate_one_feature():
+    """A Datetime column matches HAS_DATE and TEMPORAL both."""
+
+    @dataclass(frozen=True)
+    class Twice(TransformPrimitive):
+        name = "twice"
+        input_dtypes = ((F.HAS_DATE,), (F.TEMPORAL,))
+        output_dtype = nw.Int32
+
+        def build(self, expr):
+            return expr.dt.year()
+
+    db = tusk.Database("times").add_table(
+        "events",
+        pl.LazyFrame(
+            {"id": [1], "started_at": [dt.datetime(2024, 1, 1)]},
+        ),
+        primary_key="id",
+    )
+    names = [
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=[Twice()],
+            max_depth=1,
+        )
+    ]
+    assert names.count("TWICE__started_at") == 1
