@@ -286,7 +286,11 @@ class MultiplyNumeric(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class ModuloNumeric(TransformPrimitive):
-    """Remainder after division, taking the sign of the divisor."""
+    """Remainder after division, taking the sign of the divisor.
+
+    A zero divisor is backend-defined: duckdb nulls it for every numeric
+    dtype, polars nulls it for integers but produces NaN for floats.
+    """
 
     name = "modulo_numeric"
     input_dtypes = (F.NUMERIC, F.NUMERIC)
@@ -301,10 +305,21 @@ class ModuloNumeric(TransformPrimitive):
         Returns:
             A narwhals expression of the remainder.
         """
-        # Doubled rather than a plain %, because polars floors and duckdb
-        # truncates: -7 % 2 is 1 on one and -1 on the other. This forces the
-        # floored answer everywhere.
-        return ((left % right) + right) % right
+        # `%` alone truncates on duckdb but floors on polars: -7 % 2 is -1 on
+        # one and 1 on the other. Adding the divisor back turns a truncated
+        # remainder into a floored one, but only when the signs disagree —
+        # that's the one case where |remainder| < |right| already guarantees
+        # the sum can't overflow the input's dtype. Doing it unconditionally
+        # (as an earlier version did) overflows narrow integer types even
+        # though the true remainder fits, e.g. Int16 20000 % 30000.
+        remainder = left % right
+        return (
+            nw.when((remainder != 0) & ((remainder < 0) != (right < 0)))
+            .then(
+                remainder + right,
+            )
+            .otherwise(remainder)
+        )
 
 
 @register

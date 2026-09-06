@@ -477,9 +477,33 @@ def test_modulo_floors_rather_than_truncating(signed):
     assert _apply(signed, "modulo_numeric", "v", "w")[:4] == [1.0, 1.0, -1.0, -1.0]
 
 
-def test_modulo_by_zero_is_not_a_number(signed):
+def test_modulo_by_zero_is_a_polars_float_artefact(signed):
+    """`% 0` has no floored answer, and the backends do not even agree on
+    dtype: duckdb nulls it for both ints and floats, polars nulls it for
+    ints but produces NaN for floats. This only pins the float case, which
+    is what `signed` supplies; see `ModuloNumeric`'s docstring for the rest.
+    """
     result = _apply(signed, "modulo_numeric", "v", "w")[4]
     assert result != result  # NaN
+
+
+@pytest.fixture
+def narrow_integers():
+    return nw.from_native(
+        pl.LazyFrame(
+            {"v": [20000], "w": [30000]},
+            schema={"v": pl.Int16, "w": pl.Int16},
+        ),
+    )
+
+
+def test_modulo_does_not_overflow_the_input_width(narrow_integers):
+    """20000 % 30000 is 20000 either way, but 20000 + 30000 overflows Int16.
+
+    A correction that runs even when the remainder already agrees with the
+    divisor's sign would force this overflow for no reason.
+    """
+    assert _apply(narrow_integers, "modulo_numeric", "v", "w") == [20000]
 
 
 def test_multiply_numeric_boolean_masks_the_number(signed):
