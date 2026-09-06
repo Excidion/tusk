@@ -259,7 +259,6 @@ def test_aggregations_can_reach_a_temporal_column(db):
     columns, which is a property of that primitive's declared family, not of
     the key-exclusion rule this test is about.
     """
-    from tusk.dtypes import DtypeFamily as F
     from tusk.primitives.base import AggregationPrimitive
     from tusk.primitives.registry import register
 
@@ -428,6 +427,57 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
     assert "SUBTRACT_NUMERIC__b__b" not in n
 
 
+def test_commutative_dedup_collapses_across_heterogeneous_signatures():
+    """A commutative primitive with two alternative shapes still emits one order.
+
+    ``input_dtypes = ((F.NUMERIC, F.ANY), (F.ANY, F.NUMERIC))`` is the natural
+    way to declare "a number and anything, either way round". If the
+    commutative collapse only ran within one signature, the first shape would
+    contribute ``(amount, label)`` and the second ``(label, amount)``, and the
+    cross-signature union -- which dedups by exact tuple -- would let both
+    through.
+    """
+    from tusk.primitives.registry import register
+
+    @register
+    @dataclass(frozen=True)
+    class SameEitherOrder(TransformPrimitive):
+        """Compare two values for equality, in either argument order."""
+
+        name = "same_either_order"
+        input_dtypes = ((F.NUMERIC, F.ANY), (F.ANY, F.NUMERIC))
+        commutative = True
+
+        def build(self, left, right):
+            """Build the equality expression.
+
+            Args:
+                left: One value.
+                right: The other value.
+
+            Returns:
+                A narwhals expression.
+            """
+            return left == right
+
+    db = tusk.Database("het").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "amount": [1.0], "label": ["a"]}),
+        primary_key="id",
+    )
+    got = synthesize(
+        db,
+        "t",
+        agg_primitives=[],
+        trans_primitives=["same_either_order"],
+        groupby_trans_primitives=[],
+        max_depth=1,
+    )
+    n = names(got)
+    orders = {"SAME_EITHER_ORDER__amount__label", "SAME_EITHER_ORDER__label__amount"}
+    assert len(n & orders) == 1
+
+
 def test_self_referential_schema_terminates():
     db = (
         tusk.Database("hr")
@@ -504,9 +554,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     """A Categorical column skipped by a STRING primitive must say so."""
     import pyarrow  # noqa: F401  (dev dep; polars Categorical is enough here)
 
-    from tusk.dtypes import DtypeFamily as F
     from tusk.exceptions import CategoricalDtypeWarning
-    from tusk.primitives.base import TransformPrimitive
     from tusk.primitives.registry import register
 
     @register

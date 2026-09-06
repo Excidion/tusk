@@ -448,18 +448,28 @@ class _Context:
         self._warn_categorical(primitive, candidates)
 
         # Dtype families overlap -- a Datetime column matches both HAS_DATE
-        # and TEMPORAL -- so two shapes can yield the same combination.
-        combos = list(
-            dict.fromkeys(
-                combo
-                for signature in primitive.signatures
-                for combo in self._combinations_for_signature(
-                    primitive,
-                    candidates,
-                    signature,
-                )
-            ),
+        # and TEMPORAL -- so two shapes can yield the same combination. A
+        # commutative primitive can also have its two argument orders land in
+        # *different* signatures (e.g. (NUMERIC, ANY) and (ANY, NUMERIC)), so
+        # the commutative collapse has to run once here, over the union, not
+        # per signature.
+        all_combos = (
+            combo
+            for signature in primitive.signatures
+            for combo in self._combinations_for_signature(
+                primitive,
+                candidates,
+                signature,
+            )
         )
+        dedup_key = frozenset if primitive.commutative else tuple
+        seen: set[frozenset[Feature] | tuple[Feature, ...]] = set()
+        combos: list[tuple[Feature, ...]] = []
+        for combo in all_combos:
+            key = dedup_key(combo)
+            if key not in seen:
+                seen.add(key)
+                combos.append(combo)
 
         # Only a primitive that actually produced a feature here counts as
         # matched: dtype-compatible slots are not enough on their own (e.g. a
@@ -500,15 +510,6 @@ class _Context:
             combos = [(f,) for f in per_slot[0]]
         else:
             combos = [c for c in itertools.product(*per_slot) if len(set(c)) == len(c)]
-            if primitive.commutative:
-                seen: set[frozenset[Feature]] = set()
-                deduped = []
-                for combo in combos:
-                    key = frozenset(combo)
-                    if key not in seen:
-                        seen.add(key)
-                        deduped.append(combo)
-                combos = deduped
 
         if not primitive.stack_on_self:
             combos = [c for c in combos if not any(_uses(f, primitive) for f in c)]
