@@ -9,12 +9,17 @@ is asserted explicitly by
 
 ``modulo_numeric`` is built floored rather than as a plain ``%`` (polars
 floors, duckdb truncates), which is also what featuretools' pandas
-implementation does, so the two agree on negative operands. A zero divisor is
-excluded from that agreement and asserted separately: it is backend-defined
-per the primitive's own docstring, and tusk's float NaN and featuretools'
-concrete 0 are two more entries in that same backend-defined set, not a bug
-on either side. featuretools reaches 0 because ``pandas.arrays.IntegerArray``
-does not raise or null out ``%`` by zero the way it does for ``/``.
+implementation does, so the two agree on negative operands -- on both a
+negative dividend (``-7 % 2``) and a negative divisor (``7 % -2``), the two
+directions the sign-asymmetric floor correction distinguishes. A zero divisor
+is excluded from that agreement and asserted separately: it is
+backend-defined per the primitive's own docstring, and tusk's float NaN and
+featuretools' concrete 0 are two more entries in that same backend-defined
+set, not a bug on either side. featuretools reaches 0 because woodwork infers
+the whole-number ``left``/``right`` columns as ``IntegerNullable``, so its
+``%`` runs on pandas nullable ``Int64`` columns, where a zero divisor gives 0
+rather than a null; tusk keeps the columns float64 the whole way, where ``%``
+by zero is NaN.
 
 featuretools names every one of these features with an infix operator
 between the base feature names (``left > right``, ``left % right``), not
@@ -78,8 +83,8 @@ _FEATURETOOLS_OPERATOR = {
 @pytest.fixture
 def rows():
     """Numbers covering both signs, a zero divisor, equality, and nulls."""
-    left = [7.0, -7.0, 2.0, 2.0, 1.0, None, 3.0]
-    right = [2.0, 2.0, 2.0, -2.0, 0.0, 4.0, None]
+    left = [7.0, -7.0, 2.0, 2.0, 1.0, None, 3.0, 7.0]
+    right = [2.0, 2.0, 2.0, -2.0, 0.0, 4.0, None, -2.0]
     frame = pd.DataFrame(
         {
             "id": np.arange(1, len(left) + 1),
@@ -94,7 +99,12 @@ def rows():
 def _assert_rows_invariants(frame):
     """Guard the cases ``rows`` is built to cover.
 
-    Losing any one of these would leave a test passing over nothing.
+    Losing any one of these would leave a test passing over nothing. The
+    negative-divisor and nonzero-remainder pair guards against a fixture
+    where every negative-divisor row happens to floor to a remainder of 0
+    (as the pre-existing ``(2.0, -2.0)`` row does) — floor and truncation
+    agree on 0, so such a fixture would discriminate nothing about
+    ``ModuloNumeric``'s sign-asymmetric floor correction.
 
     Args:
         frame: The table built by ``rows``.
@@ -104,7 +114,10 @@ def _assert_rows_invariants(frame):
     assert (~both_known).any()
     assert (frame["left"] < 0).any()
     assert (frame["right"] == 0).any()
+    assert (frame["right"] < 0).any()
     assert (frame["left"] == frame["right"]).any()
+    remainder = frame["left"] % frame["right"]
+    assert (remainder[frame["right"] < 0] != 0).any()
 
 
 @pytest.mark.parametrize("primitive_name", ARITHMETIC)
@@ -145,12 +158,12 @@ def test_modulo_matches_featuretools_on_negative_operands(rows):
     """
     ours, theirs = _both_matrices(rows, "modulo_numeric")
     operands = rows.set_index("id")[["left", "right"]]
-    known_nonzero_divisor = operands.notna().all(axis=1) & (operands["right"] != 0)
-    assert (~known_nonzero_divisor).any()
+    nonzero_divisor = operands.notna().all(axis=1) & (operands["right"] != 0)
+    assert (~nonzero_divisor).any()
     assert _numbers(
-        ours[_tusk_column("modulo_numeric")][known_nonzero_divisor],
+        ours[_tusk_column("modulo_numeric")][nonzero_divisor],
     ) == _numbers(
-        theirs[_featuretools_column("modulo_numeric")][known_nonzero_divisor],
+        theirs[_featuretools_column("modulo_numeric")][nonzero_divisor],
     )
 
 
@@ -218,17 +231,39 @@ def _featuretools_column_for_multiply_numeric_boolean(theirs):
 def test_modulo_diverges_on_a_zero_divisor(rows):
     """A zero divisor is backend-defined, per ``ModuloNumeric``'s own docstring.
 
-    tusk floors a float remainder of NaN back to NaN, the value plain ``%``
-    already gives on polars; featuretools' pandas nullable-Int64 columns
-    give 0 instead, because ``IntegerArray.__mod__`` does not propagate a
-    zero divisor into a null the way ``__truediv__`` does. Neither engine is
+    tusk keeps ``left``/``right`` as float64 the whole way, where ``%`` by
+    zero is NaN. featuretools' woodwork layer instead infers a whole-number
+    float column with nulls as ``IntegerNullable``, so its ``%`` runs on
+    pandas nullable ``Int64`` columns, where a zero divisor gives 0 rather
+    than a null (matching numpy's own int-mod-by-zero, `0`, not the
+    divide-by-zero `inf`/`nan` a true division would give). Neither engine is
     wrong; they are simply two more entries in the same backend-defined set.
+    The dtype assertion below pins that inference so a future fixture edit
+    that stops it (e.g. a fractional value) fails here instead of silently
+    invalidating this explanation.
     """
     ours, theirs = _both_matrices(rows, "modulo_numeric")
+    assert pd.api.types.is_integer_dtype(_featuretools_input_dtype(rows, "right"))
     zero_divisor = rows.set_index("id")["right"] == 0
     assert zero_divisor.any()
     assert ours[_tusk_column("modulo_numeric")][zero_divisor].isna().all()
     assert (theirs[_featuretools_column("modulo_numeric")][zero_divisor] == 0).all()
+
+
+def _featuretools_input_dtype(frame, column_name):
+    """Read the pandas dtype woodwork assigns one input column.
+
+    Args:
+        frame: The table featuretools will run features over.
+        column_name: The column to inspect.
+
+    Returns:
+        The dtype of that column once featuretools' woodwork layer has
+        inferred its logical type.
+    """
+    es = featuretools.EntitySet("rows")
+    es = es.add_dataframe(dataframe_name="rows", dataframe=frame.copy(), index="id")
+    return es["rows"][column_name].dtype
 
 
 def _tusk_column(primitive_name):
