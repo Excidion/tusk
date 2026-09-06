@@ -84,6 +84,26 @@
 
 ::: tusk.primitives.DivideNumeric
 
+::: tusk.primitives.ModuloNumeric
+
+::: tusk.primitives.MultiplyNumericBoolean
+
+::: tusk.primitives.GreaterThan
+
+::: tusk.primitives.GreaterThanEqualTo
+
+::: tusk.primitives.LessThan
+
+::: tusk.primitives.LessThanEqualTo
+
+::: tusk.primitives.Equal
+
+::: tusk.primitives.NotEqual
+
+::: tusk.primitives.EqualCategorical
+
+::: tusk.primitives.NotEqualCategorical
+
 ::: tusk.primitives.Not
 
 ::: tusk.primitives.And

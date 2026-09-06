@@ -90,6 +90,46 @@ and tusk builds the operator rather than working around it.
 featuretools instead propagates the null in every one of those cells. `NOT`
 agrees on both sides: the negation of an unknown is unknown.
 
+## Comparing two columns
+
+The comparison primitives accept a pair of numbers or a pair of datetimes,
+never one of each — a primitive may declare several input shapes, and each
+shape is matched as a whole:
+
+```py
+input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+```
+
+`equal` and `not_equal` also accept a pair of booleans or a pair of strings.
+A null on either side gives a null answer, as in SQL: an unknown value cannot
+be shown equal to anything, nor greater than it. Measured directly against
+featuretools, the two agree on every one of these null-operand cases; there
+is no divergence to document.
+
+Labels are a separate case. `Categorical` and `Enum` columns are compared with
+`equal_categorical` and `not_equal_categorical`, which compare the labels
+themselves rather than their encodings — two `Enum` columns with different
+member lists cannot be compared directly on polars at all.
+
+`(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column regardless of its time
+zone, so a table holding one tz-aware and one tz-naive `Datetime` column will
+happily synthesize a comparison between them. Nothing in tusk rejects this:
+`consistent_time_zones` is an opt-in check, not a default one. The mismatch
+surfaces at collect time — polars raises a backend error, while duckdb
+implicitly casts and hands back an answer that silently depends on which side
+it cast.
+
+`modulo_numeric` takes the sign of the divisor, so `MODULO_NUMERIC(-7, 2)` is
+`1`. That is Python's rule and featuretools' rule, but not every SQL engine's:
+duckdb's `%` truncates toward zero and would answer `-1`. tusk builds the
+floored form explicitly so the feature means one thing on every backend. A
+zero divisor is backend-defined regardless: duckdb nulls it, and polars nulls
+it for integers but answers NaN for floats — tusk's float columns take the
+NaN branch of that split.
+
+There is no `multiply_boolean`. Multiplying two booleans is `and`, which
+already ships under the name that says what it does.
+
 ## What can go in `groupby_trans_primitives`
 
 Only **group-aware** primitives — ones whose expression reduces or scans across
