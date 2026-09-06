@@ -570,11 +570,17 @@ def test_comparing_the_enums_without_the_cast_would_raise(labels):
     Collected through narwhals, polars' ``SchemaError`` gets rewrapped into
     the generic ``narwhals.exceptions.NarwhalsError`` (no dedicated subclass
     exists for it), so this goes through native polars instead to pin the
-    concrete exception the cast rationale depends on.
+    concrete exception the cast rationale depends on. The narwhals-mediated
+    comparison is asserted too, since that is the layer an uncast ``build()``
+    would actually run through.
     """
     with pytest.raises(pl.exceptions.SchemaError, match="Enum mismatch"):
         labels.to_native().with_columns(
             (pl.col("status") == pl.col("tier")).alias("o"),
+        ).collect()
+    with pytest.raises(nw.exceptions.NarwhalsError, match="Enum mismatch"):
+        labels.with_columns(
+            (nw.col("status") == nw.col("tier")).alias("o"),
         ).collect()
 
 
