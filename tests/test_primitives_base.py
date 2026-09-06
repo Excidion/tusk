@@ -255,3 +255,53 @@ def test_signatures_of_differing_arity_are_rejected():
 
     with pytest.raises(PrimitiveError, match="same number of inputs"):
         _ = Ragged().signatures
+
+
+def test_a_family_stranded_beside_a_nested_alternative_is_rejected():
+    """A stray family must not be read as a one-family flat shape.
+
+    ``input_dtypes[0]`` being a ``DtypeFamily`` used to be enough to call the
+    whole declaration flat, so a tuple sitting in a later slot escaped
+    validation and only failed much later inside dtype matching.
+    """
+
+    @dataclass(frozen=True)
+    class Mistyped(TransformPrimitive):
+        name = "mistyped"
+        input_dtypes = (F.NUMERIC, (F.NUMERIC, F.NUMERIC))
+
+        def build(self, left, right):
+            return left
+
+    with pytest.raises(PrimitiveError, match="mistyped"):
+        _ = Mistyped().signatures
+
+
+def test_a_bare_family_among_alternatives_is_rejected():
+    """The mirror-image typo must not reach ``len()`` on a ``DtypeFamily``."""
+
+    @dataclass(frozen=True)
+    class AlsoMistyped(TransformPrimitive):
+        name = "also_mistyped"
+        input_dtypes = ((F.NUMERIC,), F.NUMERIC)
+
+        def build(self, left, right):
+            return left
+
+    with pytest.raises(PrimitiveError, match="also_mistyped"):
+        _ = AlsoMistyped().signatures
+
+
+def test_an_empty_alternative_is_rejected():
+    """``((),)`` is not ``()`` and must not silently take its no-input path."""
+
+    @dataclass(frozen=True)
+    class EmptyAlternative(TransformPrimitive):
+        name = "empty_alternative"
+        input_dtypes = ((),)
+
+        def build(self):
+            return nw.lit(1)
+
+    with pytest.raises(PrimitiveError, match="empty_alternative"):
+        _ = EmptyAlternative().signatures
