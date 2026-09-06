@@ -207,3 +207,51 @@ def test_the_rejection_reaches_a_user_through_the_public_entry_point(db):
             trans_primitives=[PlainClassPrimitive(3.0)],
             features_only=True,
         )
+
+
+def test_a_flat_input_dtypes_is_one_signature():
+    """The 25 primitives written before alternatives existed keep working."""
+    assert Doubled().signatures == ((F.NUMERIC,),)
+
+
+def test_a_tuple_of_tuples_is_read_as_alternatives():
+    @dataclass(frozen=True)
+    class Comparable(TransformPrimitive):
+        name = "comparable"
+        input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+
+        def build(self, left, right):
+            return left > right
+
+    assert Comparable().signatures == (
+        (F.NUMERIC, F.NUMERIC),
+        (F.HAS_DATE, F.HAS_DATE),
+    )
+
+
+def test_no_input_dtypes_is_no_signatures():
+    """A zero-arity aggregation such as COUNT declares nothing."""
+
+    @dataclass(frozen=True)
+    class Tally(AggregationPrimitive):
+        name = "tally"
+
+        def build(self):
+            return nw.len()
+
+    assert Tally().signatures == ()
+
+
+def test_signatures_of_differing_arity_are_rejected():
+    """build() has a fixed parameter list, so a mixed arity cannot run."""
+
+    @dataclass(frozen=True)
+    class Ragged(TransformPrimitive):
+        name = "ragged"
+        input_dtypes = ((F.NUMERIC,), (F.NUMERIC, F.NUMERIC))
+
+        def build(self, expr):
+            return expr
+
+    with pytest.raises(PrimitiveError, match="same number of inputs"):
+        _ = Ragged().signatures
