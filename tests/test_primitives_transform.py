@@ -565,10 +565,16 @@ def test_categorical_inequality_compares_enums_with_different_members(labels):
 
 
 def test_comparing_the_enums_without_the_cast_would_raise(labels):
-    """Guards the reason the primitive casts at all."""
-    with pytest.raises(Exception, match="Enum"):
-        labels.with_columns(
-            (nw.col("status") == nw.col("tier")).alias("o"),
+    """Guards the reason the primitive casts at all.
+
+    Collected through narwhals, polars' ``SchemaError`` gets rewrapped into
+    the generic ``narwhals.exceptions.NarwhalsError`` (no dedicated subclass
+    exists for it), so this goes through native polars instead to pin the
+    concrete exception the cast rationale depends on.
+    """
+    with pytest.raises(pl.exceptions.SchemaError, match="Enum mismatch"):
+        labels.to_native().with_columns(
+            (pl.col("status") == pl.col("tier")).alias("o"),
         ).collect()
 
 
@@ -579,3 +585,40 @@ def test_categorical_equality_takes_categorical_pairs():
         )
         assert resolve(name).output_dtype == nw.Boolean
         assert resolve(name).commutative is True
+
+
+def test_deep_feature_synthesis_builds_the_categorical_equality_transform():
+    """EQUAL_CATEGORICAL is commutative, so each pair of columns is generated once.
+
+    Also exercises a Boolean primitive output landing in a matrix that still
+    carries its Categorical inputs as passthrough columns.
+    """
+    db = tusk.Database("labelled").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2, 3],
+                "status": pl.Series(
+                    ["open", "closed", "open"],
+                    dtype=pl.Enum(["open", "closed"]),
+                ),
+                "tier": pl.Series(
+                    ["open", "open", "closed"],
+                    dtype=pl.Enum(["open", "closed"]),
+                ),
+            },
+        ),
+        primary_key="id",
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="events",
+        agg_primitives=[],
+        trans_primitives=["equal_categorical"],
+        max_depth=1,
+    )
+    got = matrix.collect().sort("id")
+    assert got["EQUAL_CATEGORICAL__status__tier"].to_list() == [True, False, False]
+    assert "EQUAL_CATEGORICAL__tier__status" not in got.columns
+    assert got["status"].to_list() == ["open", "closed", "open"]
+    assert got["tier"].to_list() == ["open", "open", "closed"]
