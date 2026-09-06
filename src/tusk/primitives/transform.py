@@ -285,6 +285,51 @@ class MultiplyNumeric(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class ModuloNumeric(TransformPrimitive):
+    """Remainder after division, taking the sign of the divisor."""
+
+    name = "modulo_numeric"
+    input_dtypes = (F.NUMERIC, F.NUMERIC)
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the floored-modulo expression.
+
+        Args:
+            left: The dividend.
+            right: The divisor.
+
+        Returns:
+            A narwhals expression of the remainder.
+        """
+        # Doubled rather than a plain %, because polars floors and duckdb
+        # truncates: -7 % 2 is 1 on one and -1 on the other. This forces the
+        # floored answer everywhere.
+        return ((left % right) + right) % right
+
+
+@register
+@dataclass(frozen=True)
+class MultiplyNumericBoolean(TransformPrimitive):
+    """A number where the flag is true, zero where it is false."""
+
+    name = "multiply_numeric_boolean"
+    input_dtypes = (F.NUMERIC, F.BOOLEAN)
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the masking expression.
+
+        Args:
+            left: A numeric expression.
+            right: A boolean expression.
+
+        Returns:
+            A narwhals expression of the number masked by the flag.
+        """
+        return left * right.cast(nw.Int8)
+
+
+@register
+@dataclass(frozen=True)
 class GreaterThan(TransformPrimitive):
     """Whether the first value exceeds the second. A null gives a null."""
 

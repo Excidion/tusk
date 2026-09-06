@@ -453,3 +453,49 @@ def test_comparing_a_number_with_a_string_is_never_synthesized():
     }
     assert "GREATER_THAN__amount__quantity" in names
     assert not any("GREATER_THAN" in name and "label" in name for name in names)
+
+
+@pytest.fixture
+def signed():
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "v": [7.0, -7.0, 7.0, -7.0, 1.0],
+                "w": [2.0, 2.0, -2.0, -2.0, 0.0],
+                "flag": [True, False, None, True, False],
+            },
+        ),
+    )
+
+
+def test_modulo_floors_rather_than_truncating(signed):
+    """Python's rule, not C's: the result takes the divisor's sign.
+
+    polars floors and duckdb truncates, so a plain % would mean two different
+    things depending on the backend.
+    """
+    assert _apply(signed, "modulo_numeric", "v", "w")[:4] == [1.0, 1.0, -1.0, -1.0]
+
+
+def test_modulo_by_zero_is_not_a_number(signed):
+    result = _apply(signed, "modulo_numeric", "v", "w")[4]
+    assert result != result  # NaN
+
+
+def test_multiply_numeric_boolean_masks_the_number(signed):
+    assert _apply(signed, "multiply_numeric_boolean", "v", "flag") == [
+        7.0,
+        -0.0,
+        None,
+        -7.0,
+        0.0,
+    ]
+
+
+def test_modulo_and_masking_declare_their_inputs():
+    assert resolve("modulo_numeric").signatures == (
+        (DtypeFamily.NUMERIC, DtypeFamily.NUMERIC),
+    )
+    assert resolve("multiply_numeric_boolean").signatures == (
+        (DtypeFamily.NUMERIC, DtypeFamily.BOOLEAN),
+    )
