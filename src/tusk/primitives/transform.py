@@ -18,6 +18,16 @@ from tusk.primitives.registry import register
 
 TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "weekday")
 
+_COMPARABLE_PAIRS: tuple[tuple[F, ...], ...] = (
+    (F.NUMERIC, F.NUMERIC),
+    (F.HAS_DATE, F.HAS_DATE),
+)
+_EQUATABLE_PAIRS: tuple[tuple[F, ...], ...] = (
+    *_COMPARABLE_PAIRS,
+    (F.BOOLEAN, F.BOOLEAN),
+    (F.STRING, F.STRING),
+)
+
 
 @register
 @dataclass(frozen=True)
@@ -271,6 +281,140 @@ class MultiplyNumeric(TransformPrimitive):
             A narwhals expression.
         """
         return left * right
+
+
+@register
+@dataclass(frozen=True)
+class GreaterThan(TransformPrimitive):
+    """Whether the first value exceeds the second. A null gives a null."""
+
+    name = "greater_than"
+    input_dtypes = _COMPARABLE_PAIRS
+    output_dtype = nw.Boolean
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the greater-than expression.
+
+        Args:
+            left: First comparable expression.
+            right: Second comparable expression.
+
+        Returns:
+            A narwhals expression that is true where left exceeds right.
+        """
+        return left > right
+
+
+@register
+@dataclass(frozen=True)
+class GreaterThanEqualTo(TransformPrimitive):
+    """Whether the first value is at least the second. A null gives a null."""
+
+    name = "greater_than_equal_to"
+    input_dtypes = _COMPARABLE_PAIRS
+    output_dtype = nw.Boolean
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the greater-than-or-equal expression.
+
+        Args:
+            left: First comparable expression.
+            right: Second comparable expression.
+
+        Returns:
+            A narwhals expression that is true where left is at least right.
+        """
+        return left >= right
+
+
+@register
+@dataclass(frozen=True)
+class LessThan(TransformPrimitive):
+    """Whether the first value is less than the second. A null gives a null."""
+
+    name = "less_than"
+    input_dtypes = _COMPARABLE_PAIRS
+    output_dtype = nw.Boolean
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the less-than expression.
+
+        Args:
+            left: First comparable expression.
+            right: Second comparable expression.
+
+        Returns:
+            A narwhals expression that is true where left is less than right.
+        """
+        return left < right
+
+
+@register
+@dataclass(frozen=True)
+class LessThanEqualTo(TransformPrimitive):
+    """Whether the first value is at most the second. A null gives a null."""
+
+    name = "less_than_equal_to"
+    input_dtypes = _COMPARABLE_PAIRS
+    output_dtype = nw.Boolean
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the less-than-or-equal expression.
+
+        Args:
+            left: First comparable expression.
+            right: Second comparable expression.
+
+        Returns:
+            A narwhals expression that is true where left is at most right.
+        """
+        return left <= right
+
+
+@register
+@dataclass(frozen=True)
+class Equal(TransformPrimitive):
+    """Whether two values are equal. A null gives a null."""
+
+    name = "equal"
+    input_dtypes = _EQUATABLE_PAIRS
+    output_dtype = nw.Boolean
+    commutative = True
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the equality expression.
+
+        Args:
+            left: First comparable expression.
+            right: Second comparable expression.
+
+        Returns:
+            A narwhals expression that is true where left equals right.
+        """
+        return left == right
+
+
+@register
+@dataclass(frozen=True)
+class NotEqual(TransformPrimitive):
+    """Whether two values differ. A null gives a null."""
+
+    name = "not_equal"
+    input_dtypes = _EQUATABLE_PAIRS
+    output_dtype = nw.Boolean
+    commutative = True
+
+    def build(self, left: nw.Expr, right: nw.Expr) -> nw.Expr:
+        """Build the inequality expression.
+
+        Args:
+            left: First comparable expression.
+            right: Second comparable expression.
+
+        Returns:
+            A narwhals expression that is true where left differs from right.
+        """
+        return left != right
 
 
 @register

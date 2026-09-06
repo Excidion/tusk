@@ -11,6 +11,7 @@ from tusk.exceptions import ValidationError
 from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import resolve
 from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
+from tusk.synthesis import synthesize
 
 
 @pytest.fixture
@@ -312,3 +313,107 @@ def test_deep_feature_synthesis_builds_the_boolean_transforms():
     assert got["OR__is_active__is_verified"].to_list() == [True, True, None]
     assert got["NOT__is_active"].to_list() == [False, True, None]
     assert "AND__is_verified__is_active" not in got.columns
+
+
+@pytest.fixture
+def comparable():
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "left": [1.0, 2.0, 3.0, None],
+                "right": [3.0, 2.0, 1.0, 1.0],
+                "earlier": [
+                    dt.datetime(2024, 1, 1),
+                    dt.datetime(2024, 1, 2),
+                    dt.datetime(2024, 1, 3),
+                    None,
+                ],
+                "later": [
+                    dt.datetime(2024, 1, 2),
+                    dt.datetime(2024, 1, 2),
+                    dt.datetime(2024, 1, 1),
+                    dt.datetime(2024, 1, 1),
+                ],
+            },
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("greater_than", [False, False, True, None]),
+        ("greater_than_equal_to", [False, True, True, None]),
+        ("less_than", [True, False, False, None]),
+        ("less_than_equal_to", [True, True, False, None]),
+        ("equal", [False, True, False, None]),
+        ("not_equal", [True, False, True, None]),
+    ],
+)
+def test_comparisons_compare_numbers(comparable, name, expected):
+    assert _apply(comparable, name, "left", "right") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("greater_than", [False, False, True, None]),
+        ("less_than", [True, False, False, None]),
+        ("equal", [False, True, False, None]),
+    ],
+)
+def test_comparisons_compare_datetimes(comparable, name, expected):
+    assert _apply(comparable, name, "earlier", "later") == expected
+
+
+def test_comparisons_take_numeric_or_datetime_pairs():
+    for name in (
+        "greater_than",
+        "greater_than_equal_to",
+        "less_than",
+        "less_than_equal_to",
+    ):
+        assert resolve(name).signatures == (
+            (DtypeFamily.NUMERIC, DtypeFamily.NUMERIC),
+            (DtypeFamily.HAS_DATE, DtypeFamily.HAS_DATE),
+        )
+        assert resolve(name).output_dtype == nw.Boolean
+        assert resolve(name).commutative is False
+
+
+def test_equality_also_takes_booleans_and_strings():
+    """Equality is meaningful for every type that compares on both backends."""
+    for name in ("equal", "not_equal"):
+        assert resolve(name).signatures == (
+            (DtypeFamily.NUMERIC, DtypeFamily.NUMERIC),
+            (DtypeFamily.HAS_DATE, DtypeFamily.HAS_DATE),
+            (DtypeFamily.BOOLEAN, DtypeFamily.BOOLEAN),
+            (DtypeFamily.STRING, DtypeFamily.STRING),
+        )
+        assert resolve(name).commutative is True
+
+
+def test_comparing_a_number_with_a_string_is_never_synthesized():
+    """greater_than has no (NUMERIC, STRING) shape, so amount and label never pair.
+
+    A plain ``"label" in name`` check would also match the identity feature
+    named ``label`` itself, which synthesize always includes regardless of
+    the requested transforms -- so the assertion targets GREATER_THAN
+    features specifically.
+    """
+    db = tusk.Database("mixed").add_table(
+        "events",
+        pl.LazyFrame({"id": [1], "amount": [1.0], "label": ["x"]}),
+        primary_key="id",
+    )
+    names = {
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=["greater_than"],
+            max_depth=1,
+        )
+    }
+    assert not any("GREATER_THAN" in name and "label" in name for name in names)
