@@ -1,11 +1,11 @@
 """Cross-check tusk's binary transform primitives against featuretools.
 
 The arithmetic four agree everywhere. The comparisons agree wherever both
-inputs are known; a null input is not exercised here because SQL's
-three-valued comparisons are already covered for boolean AND/OR in
-``test_boolean_transforms.py``, and the comparison primitives carry the same
-"a null gives a null" contract on both sides -- there is no divergence to
-assert.
+inputs are known, and also on the two rows where one input is null: measured
+directly (not assumed), both sides answer null there for all six comparison
+primitives, the same "a null gives a null" contract SQL uses. That agreement
+is asserted explicitly by
+``test_comparisons_agree_where_an_input_is_null`` rather than taken on faith.
 
 ``modulo_numeric`` is built floored rather than as a plain ``%`` (polars
 floors, duckdb truncates), which is also what featuretools' pandas
@@ -20,7 +20,11 @@ featuretools names every one of these features with an infix operator
 between the base feature names (``left > right``, ``left % right``), not
 with ``PRIMITIVE_NAME(left, right)`` as the other differential files'
 aggregation and unary features are named; ``_featuretools_column`` reads that
-convention off ``theirs.columns`` rather than assuming it.
+convention off ``theirs.columns`` rather than assuming it. This file does not
+consume ``differential._as_tusk``, unlike the other differential files: that
+helper translates featuretools' ``NAME(a, b)`` form, and these primitives are
+named infix on the featuretools side, so there is no parenthesized name for
+it to translate.
 
 ``multiply_numeric_boolean`` is exercised too, over its own fixture, since it
 takes ``(NUMERIC, BOOLEAN)`` rather than two numeric columns.
@@ -122,17 +126,31 @@ def test_comparisons_match_featuretools_where_nothing_is_null(rows, primitive_na
     )
 
 
+@pytest.mark.parametrize("primitive_name", COMPARISONS)
+def test_comparisons_agree_where_an_input_is_null(rows, primitive_name):
+    """A null operand gives a null answer on both sides, for every comparison."""
+    ours, theirs = _both_matrices(rows, primitive_name)
+    unknown = ~rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert unknown.any()
+    assert ours[_tusk_column(primitive_name)][unknown].isna().all()
+    assert theirs[_featuretools_column(primitive_name)][unknown].isna().all()
+
+
 def test_modulo_matches_featuretools_on_negative_operands(rows):
     """Both floor, so -7 % 2 is 1 and 7 % -2 is -1 on each side.
 
     The zero-divisor row is excluded here and asserted on its own in
-    ``test_modulo_diverges_on_a_zero_divisor`` instead.
+    ``test_modulo_diverges_on_a_zero_divisor`` instead; the null-operand row
+    is excluded too, since it has no operand sign to compare.
     """
     ours, theirs = _both_matrices(rows, "modulo_numeric")
-    known_divisor = rows.set_index("id")["right"] != 0
-    assert (~known_divisor).any()
-    assert _numbers(ours[_tusk_column("modulo_numeric")][known_divisor]) == _numbers(
-        theirs[_featuretools_column("modulo_numeric")][known_divisor],
+    operands = rows.set_index("id")[["left", "right"]]
+    known_nonzero_divisor = operands.notna().all(axis=1) & (operands["right"] != 0)
+    assert (~known_nonzero_divisor).any()
+    assert _numbers(
+        ours[_tusk_column("modulo_numeric")][known_nonzero_divisor],
+    ) == _numbers(
+        theirs[_featuretools_column("modulo_numeric")][known_nonzero_divisor],
     )
 
 
