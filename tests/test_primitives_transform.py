@@ -334,6 +334,10 @@ def comparable():
                     dt.datetime(2024, 1, 1),
                     dt.datetime(2024, 1, 1),
                 ],
+                "word_left": ["a", "b", "a", None],
+                "word_right": ["b", "b", "a", "a"],
+                "flag_left": [True, True, False, None],
+                "flag_right": [False, True, False, True],
             },
         ),
     )
@@ -366,6 +370,28 @@ def test_comparisons_compare_datetimes(comparable, name, expected):
     assert _apply(comparable, name, "earlier", "later") == expected
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("equal", [False, True, True, None]),
+        ("not_equal", [True, False, False, None]),
+    ],
+)
+def test_equal_and_not_equal_compare_strings(comparable, name, expected):
+    assert _apply(comparable, name, "word_left", "word_right") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("equal", [False, True, True, None]),
+        ("not_equal", [True, False, False, None]),
+    ],
+)
+def test_equal_and_not_equal_compare_booleans(comparable, name, expected):
+    assert _apply(comparable, name, "flag_left", "flag_right") == expected
+
+
 def test_comparisons_take_numeric_or_datetime_pairs():
     for name in (
         "greater_than",
@@ -396,14 +422,23 @@ def test_equality_also_takes_booleans_and_strings():
 def test_comparing_a_number_with_a_string_is_never_synthesized():
     """greater_than has no (NUMERIC, STRING) shape, so amount and label never pair.
 
+    A schema needs two numeric columns for this to be a meaningful check:
+    with only one, ``greater_than`` would generate nothing at all, and the
+    negative assertion would hold vacuously regardless of whether pairing
+    across families were actually prevented. ``quantity`` gives it a
+    numeric partner so a GREATER_THAN feature is proven to exist before its
+    absence with ``label`` is proven.
+
     A plain ``"label" in name`` check would also match the identity feature
     named ``label`` itself, which synthesize always includes regardless of
-    the requested transforms -- so the assertion targets GREATER_THAN
-    features specifically.
+    the requested transforms -- so the negative assertion targets
+    GREATER_THAN features specifically.
     """
     db = tusk.Database("mixed").add_table(
         "events",
-        pl.LazyFrame({"id": [1], "amount": [1.0], "label": ["x"]}),
+        pl.LazyFrame(
+            {"id": [1], "amount": [1.0], "quantity": [2.0], "label": ["x"]},
+        ),
         primary_key="id",
     )
     names = {
@@ -416,4 +451,5 @@ def test_comparing_a_number_with_a_string_is_never_synthesized():
             max_depth=1,
         )
     }
+    assert "GREATER_THAN__amount__quantity" in names
     assert not any("GREATER_THAN" in name and "label" in name for name in names)

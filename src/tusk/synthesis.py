@@ -370,9 +370,9 @@ class _Context:
             self._categorical_warned.add(key)
             warnings.warn(
                 f"column {feature.name!r} on {feature.table!r} has dtype "
-                f"{feature.dtype}, so primitive {primitive.name!r} (which requires "
-                f"a string input) will not be applied to it. Cast the column to "
-                f"String if you want text primitives to use it.",
+                f"{feature.dtype}, so primitive {primitive.name!r} (whose text "
+                f"inputs require a String column) will not be applied to it. Cast "
+                f"the column to String if you want text primitives to use it.",
                 CategoricalDtypeWarning,
                 stacklevel=2,
             )
