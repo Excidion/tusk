@@ -18,11 +18,11 @@ from tusk.primitives.registry import register
 
 TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "weekday")
 
-_COMPARABLE_PAIRS: tuple[tuple[F, ...], ...] = (
+_COMPARABLE_PAIRS = (
     (F.NUMERIC, F.NUMERIC),
     (F.HAS_DATE, F.HAS_DATE),
 )
-_EQUATABLE_PAIRS: tuple[tuple[F, ...], ...] = (
+_EQUATABLE_PAIRS = (
     *_COMPARABLE_PAIRS,
     (F.BOOLEAN, F.BOOLEAN),
     (F.STRING, F.STRING),
@@ -306,13 +306,8 @@ class ModuloNumeric(TransformPrimitive):
         Returns:
             A narwhals expression of the remainder.
         """
-        # `%` alone truncates on duckdb but floors on polars: -7 % 2 is -1 on
-        # one and 1 on the other. Adding the divisor back turns a truncated
-        # remainder into a floored one, but only when the signs disagree —
-        # that's the one case where |remainder| < |right| already guarantees
-        # the sum can't overflow the input's dtype. Doing it unconditionally
-        # (as an earlier version did) overflows narrow integer types even
-        # though the true remainder fits, e.g. Int16 20000 % 30000.
+        # Backends disagree on %'s sign, so the divisor floors the remainder only when
+        # the signs disagree, keeping the sum inside the input's dtype.
         remainder = left % right
         return (
             nw.when((remainder != 0) & ((remainder < 0) != (right < 0)))
@@ -498,9 +493,7 @@ class EqualCategorical(TransformPrimitive):
         Returns:
             A narwhals expression that is true where the labels match.
         """
-        # Compared as text because two Enum columns with different member
-        # lists cannot be compared directly on polars, though duckdb allows
-        # it. The label is the value; its encoding is not.
+        # The label, not its encoding, is the value — text compares the same everywhere.
         return left.cast(nw.String) == right.cast(nw.String)
 
 
@@ -524,8 +517,7 @@ class NotEqualCategorical(TransformPrimitive):
         Returns:
             A narwhals expression that is true where the labels differ.
         """
-        # Cast for the same reason EqualCategorical casts: two Enum columns
-        # with different member lists cannot be compared directly on polars.
+        # Same reason as EqualCategorical.
         return left.cast(nw.String) != right.cast(nw.String)
 
 
