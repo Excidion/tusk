@@ -115,21 +115,10 @@ comparison unknown rather than simply unequal.
 
 `(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column or a `Date` column,
 regardless of time zone, so a table holding a `Date` column and a tz-aware
-or tz-naive `Datetime` column will happily synthesize a comparison between
-any two of them. Nothing in tusk rejects this: `consistent_time_zones` is an
-opt-in check, not a default one. A `Date`/`Datetime` pair compares cleanly on
-both backends, casting the `Date` up to midnight. A tz mismatch is the one
-that misbehaves: it surfaces only at collect time, and differently per
-backend — polars raises, while duckdb promotes the tz-naive side to
-`TIMESTAMPTZ` by reading it in the session's `TimeZone` setting, so the
-answer silently depends on that setting rather than on the columns
-themselves.
+or tz-naive `Datetime` column will generate a comparison between
+any two of them.
+You can guard against this with `db.validate()`.
 
-`modulo_numeric` takes the sign of the divisor, so `MODULO_NUMERIC(-7, 2)` is
-`1` — duckdb's native `%` instead truncates toward zero and would answer
-`-1`. A zero divisor is backend-defined regardless: duckdb nulls it, and
-polars nulls it for integers but answers NaN for floats — tusk's float
-columns take the NaN branch of that split.
 
 ## What can go in `groupby_trans_primitives`
 

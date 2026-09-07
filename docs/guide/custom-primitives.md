@@ -16,13 +16,13 @@ from tusk.primitives import AggregationPrimitive, register
 class Range(AggregationPrimitive):
     """Difference between the largest and smallest value."""
 
-    name = "range"  # what DFS resolves, and the stem of generated column names
+    name = "range"  # identifier and also the stem of generated column names
     input_dtypes = (F.NUMERIC,)  # one per input; empty means zero-arity, like count
-    output_dtype = nw.Float64  # omit to derive from inputs via return_dtype
+    output_dtype = nw.Float64
     default_value = None  # empty group has no range
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        return expr.max() - expr.min()  # return a sequence for multi-output primitives
+        return expr.max() - expr.min()
 ```
 
 Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
