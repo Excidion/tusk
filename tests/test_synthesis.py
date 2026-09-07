@@ -970,14 +970,25 @@ def test_each_signature_contributes_its_own_combinations():
 
 
 def test_a_signature_never_pairs_across_its_slots():
-    """The whole point: amount > started_at is not a feature anyone can run."""
+    """The whole point: amount > started_at is not a feature anyone can run.
+
+    A schema needs two numeric columns and two datetime columns for this to
+    be a meaningful check: with only one of each, ``Comparable`` could not
+    produce any same-family pair either, and the negative assertions would
+    hold vacuously regardless of whether cross-family pairing were actually
+    prevented. ``quantity`` and ``ended_at`` give ``amount`` and
+    ``started_at`` same-family partners, so the two COMPARABLE features are
+    proven to exist before their cross-family absence is proven.
+    """
     db = tusk.Database("mixed").add_table(
         "events",
         pl.LazyFrame(
             {
                 "id": [1, 2],
                 "amount": [1.0, 2.0],
+                "quantity": [3, 4],
                 "started_at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)],
+                "ended_at": [dt.datetime(2024, 1, 3), dt.datetime(2024, 1, 4)],
             },
         ),
         primary_key="id",
@@ -992,6 +1003,8 @@ def test_a_signature_never_pairs_across_its_slots():
             max_depth=1,
         )
     }
+    assert "COMPARABLE__amount__quantity" in names
+    assert "COMPARABLE__started_at__ended_at" in names
     assert not any("amount__started_at" in name for name in names)
     assert not any("started_at__amount" in name for name in names)
 

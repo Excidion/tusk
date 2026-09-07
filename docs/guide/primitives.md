@@ -102,22 +102,26 @@ input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
 
 `equal` and `not_equal` also accept a pair of booleans or a pair of strings.
 A null on either side gives a null answer, as in SQL: an unknown value cannot
-be shown equal to anything, nor greater than it. Measured directly against
-featuretools, the two agree on every one of these null-operand cases; there
-is no divergence to document.
+be shown equal to anything, nor greater than it. For numeric operands that
+matches featuretools row for row, null rows included; see
+[primitive coverage](primitive-coverage.md) for what each row cites.
 
 Labels are a separate case. `Categorical` and `Enum` columns are compared with
 `equal_categorical` and `not_equal_categorical`, which compare the labels
 themselves rather than their encodings — two `Enum` columns with different
 member lists cannot be compared directly on polars at all.
 
-`(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column regardless of its time
-zone, so a table holding one tz-aware and one tz-naive `Datetime` column will
-happily synthesize a comparison between them. Nothing in tusk rejects this:
-`consistent_time_zones` is an opt-in check, not a default one. The mismatch
-surfaces at collect time — polars raises a backend error, while duckdb
-implicitly casts and hands back an answer that silently depends on which side
-it cast.
+`(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column or a `Date` column,
+regardless of time zone, so a table holding a `Date` column and a tz-aware
+or tz-naive `Datetime` column will happily synthesize a comparison between
+any two of them. Nothing in tusk rejects this: `consistent_time_zones` is an
+opt-in check, not a default one. A `Date`/`Datetime` pair compares cleanly on
+both backends, casting the `Date` up to midnight. A tz mismatch is the one
+that misbehaves: it surfaces only at collect time, and differently per
+backend — polars raises, while duckdb promotes the tz-naive side to
+`TIMESTAMPTZ` by reading it in the session's `TimeZone` setting, so the
+answer silently depends on that setting rather than on the columns
+themselves.
 
 `modulo_numeric` takes the sign of the divisor, so `MODULO_NUMERIC(-7, 2)` is
 `1`. That is Python's rule and featuretools' rule, but not every SQL engine's:
