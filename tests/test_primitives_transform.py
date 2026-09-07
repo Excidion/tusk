@@ -1,4 +1,5 @@
 import datetime as dt
+import math
 from zoneinfo import ZoneInfo
 
 import narwhals as nw
@@ -510,7 +511,7 @@ def test_modulo_by_zero_is_a_polars_float_artefact(signed):
     is what `signed` supplies; see `ModuloNumeric`'s docstring for the rest.
     """
     result = _apply(signed, "modulo_numeric", "v", "w")[4]
-    assert result != result  # NaN
+    assert math.isnan(result)
 
 
 @pytest.fixture

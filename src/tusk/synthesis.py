@@ -363,14 +363,10 @@ class _Context:
         ):
             return
         # The label-comparison suggestion only makes sense for a two-input
-        # primitive: a one-input STRING primitive (e.g. an uppercase
-        # transform) has no pairwise counterpart to point the user at.
-        # Arity is uniform across a primitive's signatures (Primitive.signatures
-        # rejects shapes that disagree), so checking one signature's length
-        # stands in for "this primitive takes two inputs" -- it is a proxy
-        # for "is a comparison", not the thing itself, so a future two-slot
-        # STRING primitive that isn't a comparison (string concatenation,
-        # say) would still trigger this suggestion.
+        # primitive, and arity is uniform across a primitive's signatures
+        # (Primitive.signatures rejects shapes that disagree), so checking
+        # one signature's length stands in for "this primitive takes two
+        # inputs".
         takes_two_inputs = len(primitive.signatures[0]) == 2
         for feature in candidates:
             if feature.dtype not in (nw.Categorical, nw.Enum):
