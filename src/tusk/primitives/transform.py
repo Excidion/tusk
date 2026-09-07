@@ -326,7 +326,7 @@ class ModuloNumeric(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class MultiplyNumericBoolean(TransformPrimitive):
-    """A number where the flag is true, zero where it is false."""
+    """A number where the flag is true, zero where it is false. A null gives a null."""
 
     name = "multiply_numeric_boolean"
     input_dtypes = (F.NUMERIC, F.BOOLEAN)
