@@ -44,6 +44,14 @@ code cannot.
 | `default_value` | What an empty group gets. See [empty groups](primitives.md#empty-groups). |
 | `build` | Takes one expression per input and returns the output expression, or a sequence of them for a multi-output primitive. |
 
+A tuple of families is one signature. `input_dtypes` can also be a tuple of
+such tuples, declaring alternative signatures for the same primitive: each
+alternative is matched as a whole, and every one must share the same arity.
+
+```python
+input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+```
+
 Subclass [`AggregationPrimitive`][tusk.primitives.AggregationPrimitive] for
 something that reduces a child table to one row per parent, and
 [`TransformPrimitive`][tusk.primitives.TransformPrimitive] for something that

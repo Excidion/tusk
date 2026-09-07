@@ -131,8 +131,11 @@ zero divisor is backend-defined regardless: duckdb nulls it, and polars nulls
 it for integers but answers NaN for floats — tusk's float columns take the
 NaN branch of that split.
 
-There is no `multiply_boolean`. Multiplying two booleans is `and`, which
-already ships under the name that says what it does.
+There is no `multiply_boolean`. SQL has one conjunction, not two, and `and`
+already is it. featuretools has both `and` and `multiply_boolean` because
+pandas gave it two functions that disagree with each other on a null operand
+(see [Nulls in `and` and `or`](#nulls-in-and-and-or)); `multiply_boolean` is
+the one whose values tusk's `and` matches.
 
 ## What can go in `groupby_trans_primitives`
 
