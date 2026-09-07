@@ -15,6 +15,16 @@ semantics, where every ordering and equality comparison is false and only
 ``not_equal`` is true. ``test_datetime_comparisons_diverge_where_an_operand_is_null``
 asserts both sides of that divergence rather than hiding either one.
 
+``equal`` and ``not_equal`` alone declare two more signatures, ``(BOOLEAN,
+BOOLEAN)`` and ``(STRING, STRING)``, each cross-checked over its own fixture.
+Both agree with featuretools on a null operand, the same "a null gives a
+null" contract the Numeric fixture confirms: featuretools' woodwork layer
+keeps a Boolean pair on pandas' nullable ``boolean`` dtype and a String pair
+(kept to enough distinct words to stay off low-cardinality inference) on
+``Unknown`` (pandas nullable ``string``), and both dtypes' ``eq``/``ne``
+propagate a null operand rather than settling the comparison the way plain
+``datetime64[ns]`` or a ``pd.CategoricalDtype`` pair does.
+
 ``modulo_numeric`` is built floored rather than as a plain ``%`` (polars
 floors, duckdb truncates), which is also what featuretools' pandas
 implementation does, so the two agree on negative operands -- on both a
@@ -251,6 +261,149 @@ def test_datetime_comparisons_diverge_where_an_operand_is_null(
         theirs[_featuretools_column(primitive_name)][unknown]
         == featuretools_answer_on_a_null_operand
     ).all()
+
+
+EQUALITY = ["equal", "not_equal"]
+
+
+@pytest.fixture
+def boolean_pair_rows():
+    """Two Boolean columns, each with a null of its own.
+
+    ``equal``/``not_equal`` also declare a ``(BOOLEAN, BOOLEAN)`` signature,
+    a shape neither ``rows`` nor ``datetime_rows`` above covers.
+    """
+    left = pd.array([True, True, False, False, None], dtype="boolean")
+    right = pd.array([True, False, False, None, True], dtype="boolean")
+    frame = pd.DataFrame(
+        {
+            "id": np.arange(1, len(left) + 1),
+            "left": left,
+            "right": right,
+        },
+    )
+    _assert_boolean_pair_rows_invariants(frame)
+    return frame
+
+
+def _assert_boolean_pair_rows_invariants(frame):
+    """Guard the cases ``boolean_pair_rows`` is built to cover.
+
+    Args:
+        frame: The table built by ``boolean_pair_rows``.
+    """
+    known = frame["left"].notna() & frame["right"].notna()
+    assert (frame["left"][known] == frame["right"][known]).any()
+    assert (frame["left"][known] != frame["right"][known]).any()
+    assert frame["left"].isna().any()
+    assert frame["right"].isna().any()
+
+
+@pytest.mark.parametrize("primitive_name", EQUALITY)
+def test_boolean_equality_matches_featuretools_where_nothing_is_null(
+    boolean_pair_rows,
+    primitive_name,
+):
+    """The (BOOLEAN, BOOLEAN) signature agrees wherever both flags are known."""
+    ours, theirs = _both_matrices(boolean_pair_rows, primitive_name)
+    known = boolean_pair_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert _nullable(ours[_tusk_column(primitive_name)][known]) == _nullable(
+        theirs[_featuretools_column(primitive_name)][known],
+    )
+
+
+@pytest.mark.parametrize("primitive_name", EQUALITY)
+def test_boolean_equality_agrees_with_featuretools_where_an_operand_is_null(
+    boolean_pair_rows,
+    primitive_name,
+):
+    """A null Boolean operand gives a null answer on both sides, unlike Datetime.
+
+    featuretools' woodwork layer keeps this pair on pandas' nullable
+    ``boolean`` dtype, whose ``eq``/``ne`` propagate a null operand instead
+    of settling the comparison the way plain ``datetime64[ns]`` does.
+    """
+    ours, theirs = _both_matrices(boolean_pair_rows, primitive_name)
+    unknown = ~boolean_pair_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert unknown.any()
+    assert ours[_tusk_column(primitive_name)][unknown].isna().all()
+    assert theirs[_featuretools_column(primitive_name)][unknown].isna().all()
+
+
+@pytest.fixture
+def string_pair_rows():
+    """Two String columns, each with a null of its own.
+
+    Eight distinct words across eight rows keep woodwork's inference on
+    ``Unknown`` (pandas nullable ``string``) rather than ``Categorical`` --
+    see ``test_string_equality_agrees_with_featuretools_where_an_operand_is_null``
+    for why that distinction matters here. ``equal``/``not_equal`` also
+    declare a ``(STRING, STRING)`` signature, a shape none of the fixtures
+    above cover.
+    """
+    left = ["apple", "banana", "apple", "cherry", None, "banana", "date", None]
+    right = ["apple", "grape", "apple", "cherry", "kiwi", None, "date", "fig"]
+    frame = pd.DataFrame(
+        {
+            "id": np.arange(1, len(left) + 1),
+            "left": left,
+            "right": right,
+        },
+    )
+    _assert_string_pair_rows_invariants(frame)
+    return frame
+
+
+def _assert_string_pair_rows_invariants(frame):
+    """Guard the cases ``string_pair_rows`` is built to cover.
+
+    Args:
+        frame: The table built by ``string_pair_rows``.
+    """
+    known = frame["left"].notna() & frame["right"].notna()
+    assert (frame["left"][known] == frame["right"][known]).any()
+    assert (frame["left"][known] != frame["right"][known]).any()
+    assert frame["left"].isna().any()
+    assert frame["right"].isna().any()
+
+
+@pytest.mark.parametrize("primitive_name", EQUALITY)
+def test_string_equality_matches_featuretools_where_nothing_is_null(
+    string_pair_rows,
+    primitive_name,
+):
+    """The (STRING, STRING) signature agrees wherever both words are known."""
+    ours, theirs = _both_matrices(string_pair_rows, primitive_name)
+    known = string_pair_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert _nullable(ours[_tusk_column(primitive_name)][known]) == _nullable(
+        theirs[_featuretools_column(primitive_name)][known],
+    )
+
+
+@pytest.mark.parametrize("primitive_name", EQUALITY)
+def test_string_equality_agrees_with_featuretools_where_an_operand_is_null(
+    string_pair_rows,
+    primitive_name,
+):
+    """A null String operand gives a null answer on both sides too.
+
+    woodwork infers this pair as ``Unknown``, so featuretools runs its
+    generic ``equal``/``not_equal`` on pandas' nullable ``string`` dtype
+    rather than routing through the ``pd.CategoricalDtype`` branch that
+    unions category sets -- the branch that makes ``equal_categorical``'s
+    comparison diverge on a null label (see ``labelled_rows`` above).
+    Nullable-string ``eq``/``ne`` instead propagate the null, the same
+    contract SQL and tusk use. The dtype assertion below pins that
+    inference so a future fixture edit (e.g. lower cardinality, tipping
+    woodwork toward ``Categorical``) fails here instead of silently
+    invalidating this explanation.
+    """
+    assert _featuretools_input_dtype(string_pair_rows, "left") == pd.StringDtype()
+    ours, theirs = _both_matrices(string_pair_rows, primitive_name)
+    unknown = ~string_pair_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert unknown.any()
+    assert ours[_tusk_column(primitive_name)][unknown].isna().all()
+    assert theirs[_featuretools_column(primitive_name)][unknown].isna().all()
 
 
 def test_modulo_matches_featuretools_on_negative_operands(rows):
