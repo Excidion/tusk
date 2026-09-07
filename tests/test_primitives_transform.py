@@ -338,6 +338,15 @@ def comparable():
                 "word_right": ["b", "b", "a", "a"],
                 "flag_left": [True, True, False, None],
                 "flag_right": [False, True, False, True],
+                # Same instants as "earlier", which already fall on midnight,
+                # so a Date/Datetime comparison must answer identically to
+                # a Datetime/Datetime one if a Date truly casts up cleanly.
+                "date_left": [
+                    dt.date(2024, 1, 1),
+                    dt.date(2024, 1, 2),
+                    dt.date(2024, 1, 3),
+                    None,
+                ],
             },
         ),
     )
@@ -390,6 +399,23 @@ def test_equal_and_not_equal_compare_strings(comparable, name, expected):
 )
 def test_equal_and_not_equal_compare_booleans(comparable, name, expected):
     assert _apply(comparable, name, "flag_left", "flag_right") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("greater_than", [False, False, True, None]),
+        ("less_than", [True, False, False, None]),
+        ("equal", [False, True, False, None]),
+    ],
+)
+def test_date_operand_compares_cleanly_against_datetime(comparable, name, expected):
+    """A Date column casts up to midnight, matching a Datetime comparison.
+
+    ``date_left`` holds the same instants as ``earlier``, so this must
+    answer identically to ``test_comparisons_compare_datetimes``.
+    """
+    assert _apply(comparable, name, "date_left", "later") == expected
 
 
 def test_comparisons_take_numeric_or_datetime_pairs():

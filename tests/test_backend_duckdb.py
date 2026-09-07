@@ -418,3 +418,35 @@ def test_binary_transforms_translate_to_sql(duck_db):
     assert row[1]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] == -7.0
     assert row[2]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] == 0.0
     assert row[3]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] is None
+
+
+def test_date_and_datetime_pair_compares_cleanly_on_duckdb(duck_db):
+    """A Date operand casts up to midnight, agreeing with a plain Datetime pair.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    _, con = duck_db
+    con.execute(
+        "CREATE TABLE readings AS SELECT * FROM (VALUES "
+        "(1, DATE '2024-01-01', TIMESTAMP '2024-01-01 00:00:00'), "
+        "(2, DATE '2024-01-02', TIMESTAMP '2024-01-02 12:00:00'), "
+        "(3, DATE '2024-01-03', TIMESTAMP '2024-01-03 00:00:00')) "
+        "t(id, d, ts)",
+    )
+    database = tusk.Database("sensors").add_table(
+        "readings",
+        con.table("readings"),
+        primary_key="id",
+    )
+    matrix = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="readings",
+        max_depth=1,
+        agg_primitives=[],
+        trans_primitives=["equal"],
+    )[0].pl()
+    row = {r["id"]: r for r in matrix.to_dicts()}
+    assert row[1]["EQUAL__d__ts"] is True
+    assert row[2]["EQUAL__d__ts"] is False
+    assert row[3]["EQUAL__d__ts"] is True
