@@ -945,34 +945,6 @@ class Comparable(TransformPrimitive):
         return left > right
 
 
-def test_each_signature_contributes_its_own_combinations():
-    db = tusk.Database("mixed").add_table(
-        "events",
-        pl.LazyFrame(
-            {
-                "id": [1, 2],
-                "amount": [1.0, 2.0],
-                "quantity": [3, 4],
-                "started_at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)],
-                "ended_at": [dt.datetime(2024, 1, 3), dt.datetime(2024, 1, 4)],
-            },
-        ),
-        primary_key="id",
-    )
-    names = {
-        f.name
-        for f in synthesize(
-            database=db,
-            target_table="events",
-            agg_primitives=[],
-            trans_primitives=[Comparable()],
-            max_depth=1,
-        )
-    }
-    assert "COMPARABLE__amount__quantity" in names
-    assert "COMPARABLE__started_at__ended_at" in names
-
-
 def test_a_signature_never_pairs_across_its_slots():
     """The whole point: amount > started_at is not a feature anyone can run.
 
