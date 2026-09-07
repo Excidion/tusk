@@ -102,14 +102,18 @@ input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
 
 `equal` and `not_equal` also accept a pair of booleans or a pair of strings.
 A null on either side gives a null answer, as in SQL: an unknown value cannot
-be shown equal to anything, nor greater than it. For numeric operands that
-matches featuretools row for row, null rows included; see
-[primitive coverage](primitive-coverage.md) for what each row cites.
+be shown equal to anything, nor greater than it. tusk holds to this rule
+uniformly, but featuretools does not: it agrees for numeric operands, while
+for datetimes and labels it treats a missing value as an ordinary unequal
+value rather than an unknown one. See [primitive coverage](primitive-coverage.md)
+for what each row cites.
 
 Labels are a separate case. `Categorical` and `Enum` columns are compared with
 `equal_categorical` and `not_equal_categorical`, which compare the labels
 themselves rather than their encodings — two `Enum` columns with different
-member lists cannot be compared directly on polars at all.
+member lists cannot be compared directly on polars at all. A null label
+follows the same rule as everything else on this page: it makes the
+comparison unknown rather than simply unequal.
 
 `(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column or a `Date` column,
 regardless of time zone, so a table holding a `Date` column and a tz-aware
