@@ -362,11 +362,7 @@ class _Context:
             DtypeFamily.STRING in signature for signature in primitive.signatures
         ):
             return
-        # The label-comparison suggestion only makes sense for a two-input
-        # primitive, and arity is uniform across a primitive's signatures
-        # (Primitive.signatures rejects shapes that disagree), so checking
-        # one signature's length stands in for "this primitive takes two
-        # inputs".
+        # Arity is uniform across a primitive's signatures, so one answers for all.
         takes_two_inputs = len(primitive.signatures[0]) == 2
         for feature in candidates:
             if feature.dtype not in (nw.Categorical, nw.Enum):
@@ -472,7 +468,7 @@ class _Context:
         all_combos = (
             combo
             for signature in primitive.signatures
-            for combo in self._combinations_for_signature(
+            for combo in self._fill_slots(
                 primitive,
                 candidates,
                 signature,
@@ -500,7 +496,7 @@ class _Context:
             self._unmatched.setdefault((primitive.name, table), None)
         return combos
 
-    def _combinations_for_signature(
+    def _fill_slots(
         self,
         primitive: Primitive,
         candidates: Sequence[Feature],
