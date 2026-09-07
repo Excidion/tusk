@@ -493,7 +493,7 @@ class EqualCategorical(TransformPrimitive):
         Returns:
             A narwhals expression that is true where the labels match.
         """
-        # The label, not its encoding, is the value — text compares the same everywhere.
+        # compare the label, not its encoding
         return left.cast(nw.String) == right.cast(nw.String)
 
 
@@ -517,7 +517,7 @@ class NotEqualCategorical(TransformPrimitive):
         Returns:
             A narwhals expression that is true where the labels differ.
         """
-        # Same reason as EqualCategorical.
+        # compare the label, not its encoding
         return left.cast(nw.String) != right.cast(nw.String)
 
 
