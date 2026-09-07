@@ -240,3 +240,8 @@ operands, the divergence this plan predicted, does not exist.
 `multiply_boolean` is not implemented as its own primitive: in tusk it
 would be the exact expression `and` already is, so the ⚠️ records identical
 values under two names, not a missing primitive.
+
+The shipped `modulo_numeric` expression is not the doubled form above: the
+floor correction is applied only when the remainder's sign disagrees with
+the divisor's, because the unconditional doubled form overflowed narrow
+integer dtypes (`Int16` 20000 % 30000, for example).
