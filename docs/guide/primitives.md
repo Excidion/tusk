@@ -105,8 +105,11 @@ A null on either side gives a null answer, as in SQL: an unknown value cannot
 be shown equal to anything, nor greater than it. tusk holds to this rule
 uniformly, but featuretools does not: it agrees for numeric, boolean and
 string operands, while for datetimes and labels it treats a missing value as
-an ordinary unequal value rather than an unknown one. See [primitive
-coverage](primitive-coverage.md) for what each row cites.
+an ordinary unequal value rather than an unknown one. String agreement holds
+only while featuretools infers the column as free text; a low-cardinality
+string column is inferred as a label instead and falls into that same
+diverging behavior. See [primitive coverage](primitive-coverage.md) for what
+each row cites.
 
 Labels are a separate case. `Categorical` and `Enum` columns are compared with
 `equal_categorical` and `not_equal_categorical`, which compare the labels
