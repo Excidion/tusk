@@ -81,7 +81,8 @@ def synthesize(
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
-            because a requested primitive requires a string input.
+            because a requested primitive's text inputs require a String
+            column.
         UnmatchedPrimitiveWarning: If a requested primitive matched no column
             of its input dtypes anywhere in the walk.
     """
@@ -196,7 +197,7 @@ class _Context:
             child_features = self.build(rel.child, depth_limit - 1, path + (rel,))
             usable = self._usable(rel.child, child_features)
             for primitive in self.agg:
-                if not primitive.input_dtypes:
+                if not primitive.signatures:
                     out.append(AggregationFeature(primitive, (), rel))
                     continue
                 for combo in self._combinations(primitive, usable, rel.child):
@@ -357,8 +358,12 @@ class _Context:
             primitive: The primitive whose inputs are being matched.
             candidates: Features available as inputs.
         """
-        if DtypeFamily.STRING not in primitive.input_dtypes:
+        if not any(
+            DtypeFamily.STRING in signature for signature in primitive.signatures
+        ):
             return
+        # Arity is uniform across a primitive's signatures, so one answers for all.
+        takes_two_inputs = len(primitive.signatures[0]) == 2
         for feature in candidates:
             if feature.dtype not in (nw.Categorical, nw.Enum):
                 continue
@@ -366,11 +371,20 @@ class _Context:
             if key in self._categorical_warned:
                 continue
             self._categorical_warned.add(key)
-            warnings.warn(
+            message = (
                 f"column {feature.name!r} on {feature.table!r} has dtype "
-                f"{feature.dtype}, so primitive {primitive.name!r} (which requires "
-                f"a string input) will not be applied to it. Cast the column to "
-                f"String if you want text primitives to use it.",
+                f"{feature.dtype}, so primitive {primitive.name!r} (whose text "
+                f"inputs require a String column) will not be applied to it. Cast "
+                f"the column to String if you want text primitives to use it."
+            )
+            if takes_two_inputs:
+                message += (
+                    " If you want to compare labels for equality instead, "
+                    "'equal_categorical' / 'not_equal_categorical' take two "
+                    "Categorical columns."
+                )
+            warnings.warn(
+                message,
                 CategoricalDtypeWarning,
                 stacklevel=2,
             )
@@ -428,7 +442,7 @@ class _Context:
         candidates: Sequence[Feature],
         table: str,
     ) -> list[tuple[Feature, ...]]:
-        """Enumerate input tuples a primitive accepts.
+        """Enumerate input tuples a primitive accepts, across all its shapes.
 
         Args:
             primitive: The primitive to match inputs for.
@@ -443,29 +457,31 @@ class _Context:
         # (``QUANTILES(x)[0]`` ...), never the bare stem, so nothing can read
         # it as an input. It stays a valid output; it is just not stackable.
         candidates = [f for f in candidates if not f.is_multi_output]
-        per_slot = [
-            [f for f in candidates if matches(f.dtype, family)]
-            for family in primitive.input_dtypes
-        ]
         self._warn_categorical(primitive, candidates)
 
-        combos: list[tuple[Feature, ...]]
-        if len(per_slot) == 1:
-            combos = [(f,) for f in per_slot[0]]
-        else:
-            combos = [c for c in itertools.product(*per_slot) if len(set(c)) == len(c)]
-            if primitive.commutative:
-                seen: set[frozenset[Feature]] = set()
-                deduped = []
-                for combo in combos:
-                    key = frozenset(combo)
-                    if key not in seen:
-                        seen.add(key)
-                        deduped.append(combo)
-                combos = deduped
-
-        if not primitive.stack_on_self:
-            combos = [c for c in combos if not any(_uses(f, primitive) for f in c)]
+        # Dtype families overlap -- a Datetime column matches both HAS_DATE
+        # and TEMPORAL -- so two shapes can yield the same combination. A
+        # commutative primitive can also have its two argument orders land in
+        # *different* signatures (e.g. (NUMERIC, ANY) and (ANY, NUMERIC)), so
+        # the commutative collapse has to run once here, over the union, not
+        # per signature.
+        all_combos = (
+            combo
+            for signature in primitive.signatures
+            for combo in self._fill_slots(
+                primitive,
+                candidates,
+                signature,
+            )
+        )
+        dedup_key = frozenset if primitive.commutative else tuple
+        seen: set[frozenset[Feature] | tuple[Feature, ...]] = set()
+        combos: list[tuple[Feature, ...]] = []
+        for combo in all_combos:
+            key = dedup_key(combo)
+            if key not in seen:
+                seen.add(key)
+                combos.append(combo)
 
         # Only a primitive that actually produced a feature here counts as
         # matched: dtype-compatible slots are not enough on their own (e.g. a
@@ -478,6 +494,38 @@ class _Context:
             self._matched.add(primitive.name)
         else:
             self._unmatched.setdefault((primitive.name, table), None)
+        return combos
+
+    def _fill_slots(
+        self,
+        primitive: Primitive,
+        candidates: Sequence[Feature],
+        signature: tuple[DtypeFamily, ...],
+    ) -> list[tuple[Feature, ...]]:
+        """Enumerate input tuples matching one of a primitive's input shapes.
+
+        Args:
+            primitive: The primitive to match inputs for.
+            candidates: Available features, already filtered of multi-output
+                ones.
+            signature: One dtype family per input slot.
+
+        Returns:
+            One tuple per valid input combination for this shape.
+        """
+        per_slot = [
+            [f for f in candidates if matches(f.dtype, family)] for family in signature
+        ]
+
+        combos: list[tuple[Feature, ...]]
+        if len(per_slot) == 1:
+            combos = [(f,) for f in per_slot[0]]
+        else:
+            combos = [c for c in itertools.product(*per_slot) if len(set(c)) == len(c)]
+
+        if not primitive.stack_on_self:
+            combos = [c for c in combos if not any(_uses(f, primitive) for f in c)]
+
         return combos
 
 

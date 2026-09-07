@@ -1,10 +1,13 @@
 import datetime as dt
 from dataclasses import dataclass
 
+import narwhals as nw
 import polars as pl
 import pytest
 
 import tusk
+from tusk.dtypes import DtypeFamily as F
+from tusk.primitives.base import TransformPrimitive
 from tusk.synthesis import synthesize
 
 
@@ -256,7 +259,6 @@ def test_aggregations_can_reach_a_temporal_column(db):
     columns, which is a property of that primitive's declared family, not of
     the key-exclusion rule this test is about.
     """
-    from tusk.dtypes import DtypeFamily as F
     from tusk.primitives.base import AggregationPrimitive
     from tusk.primitives.registry import register
 
@@ -425,6 +427,57 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
     assert "SUBTRACT_NUMERIC__b__b" not in n
 
 
+def test_commutative_dedup_collapses_across_heterogeneous_signatures():
+    """A commutative primitive with two alternative shapes still emits one order.
+
+    ``input_dtypes = ((F.NUMERIC, F.ANY), (F.ANY, F.NUMERIC))`` is the natural
+    way to declare "a number and anything, either way round". If the
+    commutative collapse only ran within one signature, the first shape would
+    contribute ``(amount, label)`` and the second ``(label, amount)``, and the
+    cross-signature union -- which dedups by exact tuple -- would let both
+    through.
+    """
+    from tusk.primitives.registry import register
+
+    @register
+    @dataclass(frozen=True)
+    class SameEitherOrder(TransformPrimitive):
+        """Compare two values for equality, in either argument order."""
+
+        name = "same_either_order"
+        input_dtypes = ((F.NUMERIC, F.ANY), (F.ANY, F.NUMERIC))
+        commutative = True
+
+        def build(self, left, right):
+            """Build the equality expression.
+
+            Args:
+                left: One value.
+                right: The other value.
+
+            Returns:
+                A narwhals expression.
+            """
+            return left == right
+
+    db = tusk.Database("het").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "amount": [1.0], "label": ["a"]}),
+        primary_key="id",
+    )
+    got = synthesize(
+        db,
+        "t",
+        agg_primitives=[],
+        trans_primitives=["same_either_order"],
+        groupby_trans_primitives=[],
+        max_depth=1,
+    )
+    n = names(got)
+    orders = {"SAME_EITHER_ORDER__amount__label", "SAME_EITHER_ORDER__label__amount"}
+    assert len(n & orders) == 1
+
+
 def test_self_referential_schema_terminates():
     db = (
         tusk.Database("hr")
@@ -501,9 +554,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     """A Categorical column skipped by a STRING primitive must say so."""
     import pyarrow  # noqa: F401  (dev dep; polars Categorical is enough here)
 
-    from tusk.dtypes import DtypeFamily as F
     from tusk.exceptions import CategoricalDtypeWarning
-    from tusk.primitives.base import TransformPrimitive
     from tusk.primitives.registry import register
 
     @register
@@ -536,7 +587,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
         ),
         primary_key="id",
     )
-    with pytest.warns(CategoricalDtypeWarning, match="cat"):
+    with pytest.warns(CategoricalDtypeWarning, match="cat") as caught:
         got = synthesize(
             db,
             "t",
@@ -548,6 +599,10 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     # The String column is still used; only the Categorical one is skipped.
     assert "SHOUT__plain" in names(got)
     assert "SHOUT__cat" not in names(got)
+    # shout takes one input, so it has no pairwise counterpart to point the
+    # user at -- the label-equality suggestion is for two-input primitives.
+    warning = caught.pop(CategoricalDtypeWarning)
+    assert "equal_categorical" not in str(warning.message)
 
 
 def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
@@ -876,3 +931,111 @@ def test_no_frames_are_touched(db, monkeypatch):
         groupby_trans_primitives=[],
         max_depth=2,
     )
+
+
+@dataclass(frozen=True)
+class Comparable(TransformPrimitive):
+    """A two-slot primitive accepting a numeric pair or a datetime pair."""
+
+    name = "comparable"
+    input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+    output_dtype = nw.Boolean
+
+    def build(self, left, right):
+        return left > right
+
+
+def test_a_signature_never_pairs_across_its_slots():
+    """The whole point: amount > started_at is not a feature anyone can run.
+
+    A schema needs two numeric columns and two datetime columns for this to
+    be a meaningful check: with only one of each, ``Comparable`` could not
+    produce any same-family pair either, and the negative assertions would
+    hold vacuously regardless of whether cross-family pairing were actually
+    prevented. ``quantity`` and ``ended_at`` give ``amount`` and
+    ``started_at`` same-family partners, so the two COMPARABLE features are
+    proven to exist before their cross-family absence is proven.
+    """
+    db = tusk.Database("mixed").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "amount": [1.0, 2.0],
+                "quantity": [3, 4],
+                "started_at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)],
+                "ended_at": [dt.datetime(2024, 1, 3), dt.datetime(2024, 1, 4)],
+            },
+        ),
+        primary_key="id",
+    )
+    names = {
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=[Comparable()],
+            max_depth=1,
+        )
+    }
+    assert "COMPARABLE__amount__quantity" in names
+    assert "COMPARABLE__started_at__ended_at" in names
+    assert not any("amount__started_at" in name for name in names)
+    assert not any("started_at__amount" in name for name in names)
+
+
+def test_overlapping_signatures_generate_one_feature():
+    """A Datetime column matches HAS_DATE and TEMPORAL both."""
+
+    @dataclass(frozen=True)
+    class Twice(TransformPrimitive):
+        name = "twice"
+        input_dtypes = ((F.HAS_DATE,), (F.TEMPORAL,))
+        output_dtype = nw.Int32
+
+        def build(self, expr):
+            return expr.dt.year()
+
+    db = tusk.Database("times").add_table(
+        "events",
+        pl.LazyFrame(
+            {"id": [1], "started_at": [dt.datetime(2024, 1, 1)]},
+        ),
+        primary_key="id",
+    )
+    names = [
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=[Twice()],
+            max_depth=1,
+        )
+    ]
+    assert names.count("TWICE__started_at") == 1
+
+
+def test_the_categorical_warning_names_the_primitive_that_handles_labels():
+    from tusk.exceptions import CategoricalDtypeWarning
+
+    db = tusk.Database("labelled").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2],
+                "status": pl.Series(["a", "b"], dtype=pl.Categorical),
+                "note": ["x", "y"],
+            },
+        ),
+        primary_key="id",
+    )
+    with pytest.warns(CategoricalDtypeWarning, match="equal_categorical"):
+        synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=["equal"],
+            max_depth=1,
+        )

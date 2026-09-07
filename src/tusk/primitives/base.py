@@ -11,11 +11,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily
+from tusk.exceptions import PrimitiveError
 
 
 class Primitive(ABC):
@@ -23,8 +24,10 @@ class Primitive(ABC):
 
     Attributes:
         name: Registry key, also the upper-cased stem of generated names.
-        input_dtypes: One dtype family per input. Empty means the primitive
-            takes no column input, e.g. ``count``.
+        input_dtypes: One dtype family per input, or several such tuples if
+            the primitive accepts alternative input shapes. Empty means the
+            primitive takes no column input, e.g. ``count``. Read it through
+            :attr:`signatures`.
         output_dtype: Fixed output dtype, or None to preserve the first
             input's.
         commutative: Whether argument order is irrelevant, so that only one
@@ -35,7 +38,9 @@ class Primitive(ABC):
     """
 
     name: ClassVar[str]
-    input_dtypes: ClassVar[tuple[DtypeFamily, ...]] = ()
+    input_dtypes: ClassVar[
+        tuple[DtypeFamily, ...] | tuple[tuple[DtypeFamily, ...], ...]
+    ] = ()
     output_dtype: ClassVar[Any] = None
     commutative: ClassVar[bool] = False
     stack_on_self: ClassVar[bool] = True
@@ -45,6 +50,36 @@ class Primitive(ABC):
     def number_of_outputs(self) -> int:
         """How many columns this primitive produces."""
         return 1
+
+    @property
+    def signatures(self) -> tuple[tuple[DtypeFamily, ...], ...]:
+        """Every input shape this primitive accepts.
+
+        Returns:
+            One tuple of dtype families per accepted shape. A primitive that
+            takes no column input has none.
+
+        Raises:
+            PrimitiveError: If input_dtypes mixes a flat shape with nested
+                alternatives, declares an alternative that is not a
+                non-empty tuple of dtype families, or the shapes do not all
+                take the same number of inputs.
+        """
+        declared = self.input_dtypes
+        if not declared:
+            return ()
+        if all(isinstance(family, DtypeFamily) for family in declared):
+            # A type checker cannot narrow the declared union from this
+            # element-wise check, so the flat shape is asserted explicitly.
+            return (cast("tuple[DtypeFamily, ...]", declared),)
+        signatures = _validated_alternatives(self.name, declared)
+        if len({len(signature) for signature in signatures}) > 1:
+            raise PrimitiveError(
+                f"primitive {self.name!r} declares input shapes that do not "
+                f"all take the same number of inputs; build() has one "
+                f"parameter list, so every shape must match it.",
+            )
+        return signatures
 
     def return_dtype(self, input_dtypes: tuple[Any, ...]) -> Any:
         """Compute the output dtype without touching data.
@@ -189,6 +224,37 @@ class NeedsCutoffTime(Primitive):
         Returns:
             A single expression, or a sequence for multi-output primitives.
         """
+
+
+def _validated_alternatives(
+    name: str,
+    declared: tuple[Any, ...],
+) -> tuple[tuple[DtypeFamily, ...], ...]:
+    """Validate a declared input_dtypes known not to be a single flat shape.
+
+    Args:
+        name: The declaring primitive's name, for the error message.
+        declared: The primitive's raw ``input_dtypes``.
+
+    Returns:
+        The declared alternatives, unchanged.
+
+    Raises:
+        PrimitiveError: If any alternative is not a non-empty tuple of
+            dtype families.
+    """
+    for signature in declared:
+        if (
+            not isinstance(signature, tuple)
+            or not signature
+            or not all(isinstance(family, DtypeFamily) for family in signature)
+        ):
+            raise PrimitiveError(
+                f"primitive {name!r} declares input_dtypes={declared!r}; each "
+                f"alternative must be a non-empty tuple of DtypeFamily "
+                f"members, e.g. (F.NUMERIC, F.NUMERIC).",
+            )
+    return cast("tuple[tuple[DtypeFamily, ...], ...]", declared)
 
 
 def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:

@@ -369,3 +369,91 @@ def test_boolean_transforms_hold_three_valued_logic_on_duckdb(duck_db):
     assert row[3]["OR__is_active__is_verified"] is True
     assert row[4]["OR__is_active__is_verified"] is None
     assert row[4]["NOT__is_active"] is None
+
+
+def test_binary_transforms_translate_to_sql(duck_db):
+    """Comparisons, floored modulo and masking survive the trip to SQL.
+
+    Modulo is the reason this test exists: duckdb's ``%`` truncates toward
+    zero, so a plain remainder would answer -1 here where polars answers 1.
+    Row 5's zero divisor pins duckdb's half of ``ModuloNumeric``'s
+    backend-defined rule, over both a float column (``v``/``w``) and an
+    integer one (``iv``/``iw``) -- the polars half is pinned in
+    ``tests/test_primitives_transform.py``.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    _, con = duck_db
+    con.execute(
+        "CREATE TABLE readings AS SELECT * FROM (VALUES "
+        "(1, -7.0, 2.0, TRUE, -7, 2), (2, 7.0, -2.0, FALSE, 7, -2), "
+        "(3, 5.0, NULL, NULL, 5, NULL), (4, 3.0, 3.0, TRUE, 3, 3), "
+        "(5, 5.0, 0.0, TRUE, 5, 0)) "
+        "t(id, v, w, flag, iv, iw)",
+    )
+    database = tusk.Database("sensors").add_table(
+        "readings",
+        con.table("readings"),
+        primary_key="id",
+    )
+    matrix = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="readings",
+        max_depth=1,
+        agg_primitives=[],
+        trans_primitives=[
+            "greater_than",
+            "equal",
+            "modulo_numeric",
+            "multiply_numeric_boolean",
+        ],
+    )[0].pl()
+    row = {r["id"]: r for r in matrix.to_dicts()}
+    assert row[1]["MODULO_NUMERIC__v__w"] == 1.0
+    assert row[2]["MODULO_NUMERIC__v__w"] == -1.0
+    assert row[3]["MODULO_NUMERIC__v__w"] is None
+    assert row[5]["MODULO_NUMERIC__v__w"] is None
+    assert row[5]["MODULO_NUMERIC__iv__iw"] is None
+    assert row[1]["GREATER_THAN__v__w"] is False
+    assert row[2]["GREATER_THAN__v__w"] is True
+    assert row[3]["GREATER_THAN__v__w"] is None
+    assert row[1]["EQUAL__v__w"] is False
+    assert row[2]["EQUAL__v__w"] is False
+    assert row[3]["EQUAL__v__w"] is None
+    assert row[4]["EQUAL__v__w"] is True
+    assert row[1]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] == -7.0
+    assert row[2]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] == 0.0
+    assert row[3]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] is None
+
+
+def test_date_and_datetime_pair_compares_cleanly_on_duckdb(duck_db):
+    """A Date operand casts up to midnight, agreeing with a plain Datetime pair.
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    _, con = duck_db
+    con.execute(
+        "CREATE TABLE readings AS SELECT * FROM (VALUES "
+        "(1, DATE '2024-01-01', TIMESTAMP '2024-01-01 00:00:00'), "
+        "(2, DATE '2024-01-02', TIMESTAMP '2024-01-02 12:00:00'), "
+        "(3, DATE '2024-01-03', TIMESTAMP '2024-01-03 00:00:00')) "
+        "t(id, d, ts)",
+    )
+    database = tusk.Database("sensors").add_table(
+        "readings",
+        con.table("readings"),
+        primary_key="id",
+    )
+    matrix = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="readings",
+        max_depth=1,
+        agg_primitives=[],
+        trans_primitives=["equal"],
+    )[0].pl()
+    row = {r["id"]: r for r in matrix.to_dicts()}
+    assert row[1]["EQUAL__d__ts"] is True
+    assert row[2]["EQUAL__d__ts"] is False
+    assert row[3]["EQUAL__d__ts"] is True

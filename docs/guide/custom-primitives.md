@@ -16,8 +16,10 @@ from tusk.primitives import AggregationPrimitive, register
 class Range(AggregationPrimitive):
     """Difference between the largest and smallest value."""
 
-    name = "range"
-    input_dtypes = (F.NUMERIC,)
+    name = "range"  # identifier and also the stem of generated column names
+    input_dtypes = (F.NUMERIC,)  # one per input; empty means zero-arity, like count
+    output_dtype = nw.Float64
+    default_value = None  # empty group has no range
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         return expr.max() - expr.min()
@@ -34,15 +36,18 @@ frozen dataclass written out like this, so `Year` and `Count` are the same kind
 of object as `Range` — nothing in tusk can reach a definition path your own
 code cannot.
 
-## The pieces
+See [empty groups](primitives.md#empty-groups) for how `default_value` is used
+downstream.
 
-| Attribute | Meaning |
-| --- | --- |
-| `name` | The string DFS resolves, and the uppercased stem of generated column names. |
-| `input_dtypes` | One [`DtypeFamily`][tusk.dtypes.DtypeFamily] per argument. An empty tuple means zero-arity, like `count`. |
-| `output_dtype` | The narwhals dtype produced. Omit to derive it from the inputs by overriding `return_dtype`. |
-| `default_value` | What an empty group gets. See [empty groups](primitives.md#empty-groups). |
-| `build` | Takes one expression per input and returns the output expression, or a sequence of them for a multi-output primitive. |
+Say your primitive takes either two numbers or two dates, never one of each.
+Declare `input_dtypes` as a tuple of signatures instead of a flat one:
+
+```python
+input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+```
+
+Each signature is matched as a whole, and every one must take the same number
+of inputs.
 
 Subclass [`AggregationPrimitive`][tusk.primitives.AggregationPrimitive] for
 something that reduces a child table to one row per parent, and

@@ -1,4 +1,5 @@
 import datetime as dt
+import math
 from zoneinfo import ZoneInfo
 
 import narwhals as nw
@@ -11,6 +12,7 @@ from tusk.exceptions import ValidationError
 from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import resolve
 from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
+from tusk.synthesis import synthesize
 
 
 @pytest.fixture
@@ -312,3 +314,379 @@ def test_deep_feature_synthesis_builds_the_boolean_transforms():
     assert got["OR__is_active__is_verified"].to_list() == [True, True, None]
     assert got["NOT__is_active"].to_list() == [False, True, None]
     assert "AND__is_verified__is_active" not in got.columns
+
+
+@pytest.fixture
+def comparable():
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "left": [1.0, 2.0, 3.0, None],
+                "right": [3.0, 2.0, 1.0, 1.0],
+                "earlier": [
+                    dt.datetime(2024, 1, 1),
+                    dt.datetime(2024, 1, 2),
+                    dt.datetime(2024, 1, 3),
+                    None,
+                ],
+                "later": [
+                    dt.datetime(2024, 1, 2),
+                    dt.datetime(2024, 1, 2),
+                    dt.datetime(2024, 1, 1),
+                    dt.datetime(2024, 1, 1),
+                ],
+                "word_left": ["a", "b", "a", None],
+                "word_right": ["b", "b", "a", "a"],
+                "flag_left": [True, True, False, None],
+                "flag_right": [False, True, False, True],
+                # Same instants as "earlier", which already fall on midnight,
+                # so a Date/Datetime comparison must answer identically to
+                # a Datetime/Datetime one if a Date truly casts up cleanly.
+                "date_left": [
+                    dt.date(2024, 1, 1),
+                    dt.date(2024, 1, 2),
+                    dt.date(2024, 1, 3),
+                    None,
+                ],
+            },
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("greater_than", [False, False, True, None]),
+        ("greater_than_equal_to", [False, True, True, None]),
+        ("less_than", [True, False, False, None]),
+        ("less_than_equal_to", [True, True, False, None]),
+        ("equal", [False, True, False, None]),
+        ("not_equal", [True, False, True, None]),
+    ],
+)
+def test_comparisons_compare_numbers(comparable, name, expected):
+    assert _apply(comparable, name, "left", "right") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("greater_than", [False, False, True, None]),
+        ("less_than", [True, False, False, None]),
+        ("equal", [False, True, False, None]),
+    ],
+)
+def test_comparisons_compare_datetimes(comparable, name, expected):
+    assert _apply(comparable, name, "earlier", "later") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("equal", [False, True, True, None]),
+        ("not_equal", [True, False, False, None]),
+    ],
+)
+def test_equal_and_not_equal_compare_strings(comparable, name, expected):
+    assert _apply(comparable, name, "word_left", "word_right") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("equal", [False, True, True, None]),
+        ("not_equal", [True, False, False, None]),
+    ],
+)
+def test_equal_and_not_equal_compare_booleans(comparable, name, expected):
+    assert _apply(comparable, name, "flag_left", "flag_right") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("greater_than", [False, False, True, None]),
+        ("less_than", [True, False, False, None]),
+        ("equal", [False, True, False, None]),
+    ],
+)
+def test_date_operand_compares_cleanly_against_datetime(comparable, name, expected):
+    """A Date column casts up to midnight, matching a Datetime comparison.
+
+    ``date_left`` holds the same instants as ``earlier``, so this must
+    answer identically to ``test_comparisons_compare_datetimes``.
+    """
+    assert _apply(comparable, name, "date_left", "later") == expected
+
+
+def test_comparisons_take_numeric_or_datetime_pairs():
+    for name in (
+        "greater_than",
+        "greater_than_equal_to",
+        "less_than",
+        "less_than_equal_to",
+    ):
+        assert resolve(name).signatures == (
+            (DtypeFamily.NUMERIC, DtypeFamily.NUMERIC),
+            (DtypeFamily.HAS_DATE, DtypeFamily.HAS_DATE),
+        )
+        assert resolve(name).output_dtype == nw.Boolean
+        assert resolve(name).commutative is False
+
+
+def test_equality_also_takes_booleans_and_strings():
+    """Equality is meaningful for every type that compares on both backends."""
+    for name in ("equal", "not_equal"):
+        assert resolve(name).signatures == (
+            (DtypeFamily.NUMERIC, DtypeFamily.NUMERIC),
+            (DtypeFamily.HAS_DATE, DtypeFamily.HAS_DATE),
+            (DtypeFamily.BOOLEAN, DtypeFamily.BOOLEAN),
+            (DtypeFamily.STRING, DtypeFamily.STRING),
+        )
+        assert resolve(name).commutative is True
+
+
+def test_comparing_a_number_with_a_string_is_never_synthesized():
+    """greater_than has no (NUMERIC, STRING) shape, so amount and label never pair.
+
+    A schema needs two numeric columns for this to be a meaningful check:
+    with only one, ``greater_than`` would generate nothing at all, and the
+    negative assertion would hold vacuously regardless of whether pairing
+    across families were actually prevented. ``quantity`` gives it a
+    numeric partner so a GREATER_THAN feature is proven to exist before its
+    absence with ``label`` is proven.
+
+    A plain ``"label" in name`` check would also match the identity feature
+    named ``label`` itself, which synthesize always includes regardless of
+    the requested transforms -- so the negative assertion targets
+    GREATER_THAN features specifically.
+    """
+    db = tusk.Database("mixed").add_table(
+        "events",
+        pl.LazyFrame(
+            {"id": [1], "amount": [1.0], "quantity": [2.0], "label": ["x"]},
+        ),
+        primary_key="id",
+    )
+    names = {
+        f.name
+        for f in synthesize(
+            database=db,
+            target_table="events",
+            agg_primitives=[],
+            trans_primitives=["greater_than"],
+            max_depth=1,
+        )
+    }
+    assert "GREATER_THAN__amount__quantity" in names
+    assert not any("GREATER_THAN" in name and "label" in name for name in names)
+
+
+@pytest.fixture
+def signed():
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "v": [7.0, -7.0, 7.0, -7.0, 1.0],
+                "w": [2.0, 2.0, -2.0, -2.0, 0.0],
+                "flag": [True, False, None, True, False],
+            },
+        ),
+    )
+
+
+def test_modulo_floors_rather_than_truncating(signed):
+    """Python's rule, not C's: the result takes the divisor's sign.
+
+    polars floors and duckdb truncates, so a plain % would mean two different
+    things depending on the backend.
+    """
+    assert _apply(signed, "modulo_numeric", "v", "w")[:4] == [1.0, 1.0, -1.0, -1.0]
+
+
+def test_modulo_by_zero_is_a_polars_float_artefact(signed):
+    """`% 0` has no floored answer, and the backends do not even agree on
+    dtype: duckdb nulls it for both ints and floats, polars nulls it for
+    ints but produces NaN for floats. This only pins the float case, which
+    is what `signed` supplies; see `test_modulo_by_zero_is_a_polars_integer_null`
+    for the integer case and `ModuloNumeric`'s docstring for duckdb's half.
+    """
+    result = _apply(signed, "modulo_numeric", "v", "w")[4]
+    assert math.isnan(result)
+
+
+@pytest.fixture
+def signed_integers():
+    return nw.from_native(
+        pl.LazyFrame(
+            {"v": [1], "w": [0]},
+            schema={"v": pl.Int64, "w": pl.Int64},
+        ),
+    )
+
+
+def test_modulo_by_zero_is_a_polars_integer_null(signed_integers):
+    """Unlike the float artefact above, an integer zero divisor is a plain
+    null: there is no NaN in an integer dtype for polars to fall back to.
+    """
+    assert _apply(signed_integers, "modulo_numeric", "v", "w") == [None]
+
+
+@pytest.fixture
+def signed_with_a_null_operand():
+    return nw.from_native(
+        pl.LazyFrame({"v": [7.0, None], "w": [None, 2.0]}),
+    )
+
+
+def test_modulo_null_operand_gives_a_null(signed_with_a_null_operand):
+    """A null dividend or divisor gives a null, per `ModuloNumeric`'s
+    docstring. Exercised on duckdb already; this pins the default backend.
+    """
+    assert _apply(signed_with_a_null_operand, "modulo_numeric", "v", "w") == [
+        None,
+        None,
+    ]
+
+
+@pytest.fixture
+def narrow_integers():
+    return nw.from_native(
+        pl.LazyFrame(
+            {"v": [20000], "w": [30000]},
+            schema={"v": pl.Int16, "w": pl.Int16},
+        ),
+    )
+
+
+def test_modulo_does_not_overflow_the_input_width(narrow_integers):
+    """20000 % 30000 is 20000 either way, but 20000 + 30000 overflows Int16.
+
+    A correction that runs even when the remainder already agrees with the
+    divisor's sign would force this overflow for no reason.
+    """
+    assert _apply(narrow_integers, "modulo_numeric", "v", "w") == [20000]
+
+
+def test_multiply_numeric_boolean_masks_the_number(signed):
+    assert _apply(signed, "multiply_numeric_boolean", "v", "flag") == [
+        7.0,
+        -0.0,
+        None,
+        -7.0,
+        0.0,
+    ]
+
+
+def test_modulo_and_masking_declare_their_inputs():
+    assert resolve("modulo_numeric").signatures == (
+        (DtypeFamily.NUMERIC, DtypeFamily.NUMERIC),
+    )
+    assert resolve("multiply_numeric_boolean").signatures == (
+        (DtypeFamily.NUMERIC, DtypeFamily.BOOLEAN),
+    )
+
+
+@pytest.fixture
+def labels():
+    """Two Enum columns whose member lists differ.
+
+    That difference is the case the cast exists for: polars raises
+    ``SchemaError: Enum mismatch`` on a direct comparison of these two.
+    """
+    return nw.from_native(
+        pl.LazyFrame(
+            {
+                "status": pl.Series(
+                    ["open", "closed", "open"],
+                    dtype=pl.Enum(["open", "closed", "pending"]),
+                ),
+                "tier": pl.Series(
+                    ["open", "open", None],
+                    dtype=pl.Enum(["open", "closed"]),
+                ),
+            },
+        ),
+    )
+
+
+def test_categorical_equality_compares_enums_with_different_members(labels):
+    assert _apply(labels, "equal_categorical", "status", "tier") == [
+        True,
+        False,
+        None,
+    ]
+
+
+def test_categorical_inequality_compares_enums_with_different_members(labels):
+    assert _apply(labels, "not_equal_categorical", "status", "tier") == [
+        False,
+        True,
+        None,
+    ]
+
+
+def test_comparing_the_enums_without_the_cast_would_raise(labels):
+    """Guards the reason the primitive casts at all.
+
+    Collected through narwhals, polars' ``SchemaError`` gets rewrapped into
+    the generic ``narwhals.exceptions.NarwhalsError`` (no dedicated subclass
+    exists for it), so this goes through native polars instead to pin the
+    concrete exception the cast rationale depends on. The narwhals-mediated
+    comparison is asserted too, since that is the layer an uncast ``build()``
+    would actually run through.
+    """
+    with pytest.raises(pl.exceptions.SchemaError, match="Enum mismatch"):
+        labels.to_native().with_columns(
+            (pl.col("status") == pl.col("tier")).alias("o"),
+        ).collect()
+    with pytest.raises(nw.exceptions.NarwhalsError, match="Enum mismatch"):
+        labels.with_columns(
+            (nw.col("status") == nw.col("tier")).alias("o"),
+        ).collect()
+
+
+def test_categorical_equality_takes_categorical_pairs():
+    for name in ("equal_categorical", "not_equal_categorical"):
+        assert resolve(name).signatures == (
+            (DtypeFamily.CATEGORICAL, DtypeFamily.CATEGORICAL),
+        )
+        assert resolve(name).output_dtype == nw.Boolean
+        assert resolve(name).commutative is True
+
+
+def test_deep_feature_synthesis_builds_the_categorical_equality_transform():
+    """EQUAL_CATEGORICAL is commutative, so each pair of columns is generated once.
+
+    Also exercises a Boolean primitive output landing in a matrix that still
+    carries its Categorical inputs as passthrough columns.
+    """
+    db = tusk.Database("labelled").add_table(
+        "events",
+        pl.LazyFrame(
+            {
+                "id": [1, 2, 3],
+                "status": pl.Series(
+                    ["open", "closed", "open"],
+                    dtype=pl.Enum(["open", "closed"]),
+                ),
+                "tier": pl.Series(
+                    ["open", "open", "closed"],
+                    dtype=pl.Enum(["open", "closed"]),
+                ),
+            },
+        ),
+        primary_key="id",
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=db,
+        target_table="events",
+        agg_primitives=[],
+        trans_primitives=["equal_categorical"],
+        max_depth=1,
+    )
+    got = matrix.collect().sort("id")
+    assert got["EQUAL_CATEGORICAL__status__tier"].to_list() == [True, False, False]
+    assert "EQUAL_CATEGORICAL__tier__status" not in got.columns
+    assert got["status"].to_list() == ["open", "closed", "open"]
+    assert got["tier"].to_list() == ["open", "open", "closed"]

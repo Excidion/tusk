@@ -90,6 +90,36 @@ and tusk builds the operator rather than working around it.
 featuretools instead propagates the null in every one of those cells. `NOT`
 agrees on both sides: the negation of an unknown is unknown.
 
+## Comparing two columns
+
+The comparison primitives accept a pair of numbers or a pair of datetimes,
+never one of each — a primitive may declare several input shapes, and each
+shape is matched as a whole:
+
+```py
+input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
+```
+
+`equal` and `not_equal` also accept a pair of booleans or a pair of strings.
+A null on either side gives a null answer, as in SQL: an unknown value cannot
+be shown equal to anything, nor greater than it. See [primitive
+coverage](primitive-coverage.md) for how this holds up against featuretools,
+column by column.
+
+Labels are a separate case. `Categorical` and `Enum` columns are compared with
+`equal_categorical` and `not_equal_categorical`, which compare the labels
+themselves rather than their encodings — two `Enum` columns with different
+member lists cannot be compared directly on polars at all. A null label
+follows the same rule as everything else on this page: it makes the
+comparison unknown rather than simply unequal.
+
+`(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column or a `Date` column,
+regardless of time zone, so a table holding a `Date` column and a tz-aware
+or tz-naive `Datetime` column will generate a comparison between
+any two of them.
+You can guard against this with `db.validate()`.
+
+
 ## What can go in `groupby_trans_primitives`
 
 Only **group-aware** primitives — ones whose expression reduces or scans across
