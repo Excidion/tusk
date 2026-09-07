@@ -46,7 +46,6 @@ import re
 import time
 from pathlib import Path
 
-import narwhals as nw
 import pytest
 
 import tusk
@@ -145,7 +144,7 @@ def staged(tmp_path_factory):
         path = directory / f"{name}.parquet"
         database.add_table(
             name,
-            nw.from_native(connection.sql(f"SELECT * FROM read_parquet('{path}')")),
+            connection.sql(f"SELECT * FROM read_parquet('{path}')"),
             primary_key=primary_key,
             row_creation_time=row_creation_time,
         )
