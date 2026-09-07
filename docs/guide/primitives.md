@@ -103,10 +103,10 @@ input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
 `equal` and `not_equal` also accept a pair of booleans or a pair of strings.
 A null on either side gives a null answer, as in SQL: an unknown value cannot
 be shown equal to anything, nor greater than it. tusk holds to this rule
-uniformly, but featuretools does not: it agrees for numeric operands, while
-for datetimes and labels it treats a missing value as an ordinary unequal
-value rather than an unknown one. See [primitive coverage](primitive-coverage.md)
-for what each row cites.
+uniformly, but featuretools does not: it agrees for numeric, boolean and
+string operands, while for datetimes and labels it treats a missing value as
+an ordinary unequal value rather than an unknown one. See [primitive
+coverage](primitive-coverage.md) for what each row cites.
 
 Labels are a separate case. `Categorical` and `Enum` columns are compared with
 `equal_categorical` and `not_equal_categorical`, which compare the labels
