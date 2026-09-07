@@ -288,8 +288,9 @@ class MultiplyNumeric(TransformPrimitive):
 class ModuloNumeric(TransformPrimitive):
     """Remainder after division, taking the sign of the divisor.
 
-    A zero divisor is backend-defined: duckdb nulls it for every numeric
-    dtype, polars nulls it for integers but produces NaN for floats.
+    A null dividend or divisor gives a null. A zero divisor is
+    backend-defined: duckdb nulls it for every numeric dtype, polars nulls it
+    for integers but produces NaN for floats.
     """
 
     name = "modulo_numeric"
@@ -480,7 +481,7 @@ class NotEqual(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class EqualCategorical(TransformPrimitive):
-    """Whether two label columns carry the same label."""
+    """Whether two label columns carry the same label. A null gives a null."""
 
     name = "equal_categorical"
     input_dtypes = (F.CATEGORICAL, F.CATEGORICAL)
@@ -506,7 +507,7 @@ class EqualCategorical(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class NotEqualCategorical(TransformPrimitive):
-    """Whether two label columns carry different labels."""
+    """Whether two label columns carry different labels. A null gives a null."""
 
     name = "not_equal_categorical"
     input_dtypes = (F.CATEGORICAL, F.CATEGORICAL)
@@ -523,9 +524,8 @@ class NotEqualCategorical(TransformPrimitive):
         Returns:
             A narwhals expression that is true where the labels differ.
         """
-        # Compared as text because two Enum columns with different member
-        # lists cannot be compared directly on polars, though duckdb allows
-        # it. The label is the value; its encoding is not.
+        # Cast for the same reason EqualCategorical casts: two Enum columns
+        # with different member lists cannot be compared directly on polars.
         return left.cast(nw.String) != right.cast(nw.String)
 
 

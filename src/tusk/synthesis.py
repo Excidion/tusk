@@ -362,6 +362,13 @@ class _Context:
             DtypeFamily.STRING in signature for signature in primitive.signatures
         ):
             return
+        # The label-comparison suggestion only makes sense for a two-input
+        # primitive: a one-input STRING primitive (e.g. an uppercase
+        # transform) has no pairwise counterpart to point the user at.
+        suggest_categorical_equality = any(
+            len(signature) == 2 and DtypeFamily.STRING in signature
+            for signature in primitive.signatures
+        )
         for feature in candidates:
             if feature.dtype not in (nw.Categorical, nw.Enum):
                 continue
@@ -369,14 +376,20 @@ class _Context:
             if key in self._categorical_warned:
                 continue
             self._categorical_warned.add(key)
-            warnings.warn(
+            message = (
                 f"column {feature.name!r} on {feature.table!r} has dtype "
                 f"{feature.dtype}, so primitive {primitive.name!r} (whose text "
                 f"inputs require a String column) will not be applied to it. Cast "
-                f"the column to String if you want text primitives to use it. If "
-                f"you want to compare labels for equality instead, "
-                f"'equal_categorical' / 'not_equal_categorical' take two "
-                f"Categorical columns.",
+                f"the column to String if you want text primitives to use it."
+            )
+            if suggest_categorical_equality:
+                message += (
+                    " If you want to compare labels for equality instead, "
+                    "'equal_categorical' / 'not_equal_categorical' take two "
+                    "Categorical columns."
+                )
+            warnings.warn(
+                message,
                 CategoricalDtypeWarning,
                 stacklevel=2,
             )

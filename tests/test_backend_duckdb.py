@@ -383,7 +383,8 @@ def test_binary_transforms_translate_to_sql(duck_db):
     _, con = duck_db
     con.execute(
         "CREATE TABLE readings AS SELECT * FROM (VALUES "
-        "(1, -7.0, 2.0, TRUE), (2, 7.0, -2.0, FALSE), (3, 5.0, NULL, NULL)) "
+        "(1, -7.0, 2.0, TRUE), (2, 7.0, -2.0, FALSE), (3, 5.0, NULL, NULL), "
+        "(4, 3.0, 3.0, TRUE)) "
         "t(id, v, w, flag)",
     )
     database = tusk.Database("sensors").add_table(
@@ -411,6 +412,9 @@ def test_binary_transforms_translate_to_sql(duck_db):
     assert row[2]["GREATER_THAN__v__w"] is True
     assert row[3]["GREATER_THAN__v__w"] is None
     assert row[1]["EQUAL__v__w"] is False
+    assert row[2]["EQUAL__v__w"] is False
+    assert row[3]["EQUAL__v__w"] is None
+    assert row[4]["EQUAL__v__w"] is True
     assert row[1]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] == -7.0
     assert row[2]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] == 0.0
     assert row[3]["MULTIPLY_NUMERIC_BOOLEAN__v__flag"] is None
