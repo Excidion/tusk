@@ -224,3 +224,19 @@ apply". No new legend icon.
 - Casting categorical inputs in the compiler (decision 5).
 - Comparison over `Duration`, which is orderable but has no featuretools
   counterpart.
+
+## Outcome
+
+Five rows landed ✅: the four arithmetic primitives and
+`multiply_numeric_boolean`, agreeing with featuretools everywhere, nulls
+included. The rest — the six comparisons, `equal_categorical`/
+`not_equal_categorical`, `modulo_numeric` and `and` — landed ⚠️ instead of
+the predicted ✅, each for a measured null-handling divergence: Numeric,
+Boolean and String operands agree on a null (null gives null both sides),
+but a Datetime operand does not (featuretools compares `NaT` with plain
+`datetime64[ns]` semantics), and featuretools' generic `equal`/`not_equal`
+treat a null label the same ordinarily-unequal way. `EQUAL` over numeric
+operands, the divergence this plan predicted, does not exist.
+`multiply_boolean` is not implemented as its own primitive: in tusk it
+would be the exact expression `and` already is, so the ⚠️ records identical
+values under two names, not a missing primitive.
