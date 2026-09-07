@@ -102,15 +102,9 @@ input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
 
 `equal` and `not_equal` also accept a pair of booleans or a pair of strings.
 A null on either side gives a null answer, as in SQL: an unknown value cannot
-be shown equal to anything, nor greater than it. tusk holds to this rule
-uniformly, but featuretools does not: it agrees for numeric, boolean and
-string operands, while for datetimes and labels it treats a missing value as
-an ordinary unequal value rather than an unknown one. String agreement holds
-only while featuretools infers the column as a plain string (woodwork
-`Unknown`, pandas nullable `string`) rather than a low-cardinality label; a
-low-cardinality string column is inferred as a label instead and falls into
-that same diverging behaviour. See [primitive coverage](primitive-coverage.md)
-for what each row cites.
+be shown equal to anything, nor greater than it. See [primitive
+coverage](primitive-coverage.md) for how this holds up against featuretools,
+column by column.
 
 Labels are a separate case. `Categorical` and `Enum` columns are compared with
 `equal_categorical` and `not_equal_categorical`, which compare the labels
@@ -132,18 +126,10 @@ answer silently depends on that setting rather than on the columns
 themselves.
 
 `modulo_numeric` takes the sign of the divisor, so `MODULO_NUMERIC(-7, 2)` is
-`1`. That is Python's rule and featuretools' rule, but not every SQL engine's:
-duckdb's `%` truncates toward zero and would answer `-1`. tusk builds the
-floored form explicitly so the feature means one thing on every backend. A
-zero divisor is backend-defined regardless: duckdb nulls it, and polars nulls
-it for integers but answers NaN for floats — tusk's float columns take the
-NaN branch of that split.
-
-There is no `multiply_boolean`. SQL has one conjunction, not two, and `and`
-already is it. featuretools has both `and` and `multiply_boolean` because
-pandas gave it two functions that disagree with each other on a null operand
-(see [Nulls in `and` and `or`](#nulls-in-and-and-or)); `multiply_boolean` is
-the one whose values tusk's `and` matches.
+`1` — duckdb's native `%` instead truncates toward zero and would answer
+`-1`. A zero divisor is backend-defined regardless: duckdb nulls it, and
+polars nulls it for integers but answers NaN for floats — tusk's float
+columns take the NaN branch of that split.
 
 ## What can go in `groupby_trans_primitives`
 
