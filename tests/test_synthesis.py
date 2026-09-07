@@ -601,7 +601,8 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     assert "SHOUT__cat" not in names(got)
     # shout takes one input, so it has no pairwise counterpart to point the
     # user at -- the label-equality suggestion is for two-input primitives.
-    assert "equal_categorical" not in str(caught[0].message)
+    warning = caught.pop(CategoricalDtypeWarning)
+    assert "equal_categorical" not in str(warning.message)
 
 
 def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
