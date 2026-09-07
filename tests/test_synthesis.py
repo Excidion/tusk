@@ -587,7 +587,7 @@ def test_categorical_column_skipped_by_string_primitive_warns():
         ),
         primary_key="id",
     )
-    with pytest.warns(CategoricalDtypeWarning, match="cat"):
+    with pytest.warns(CategoricalDtypeWarning, match="cat") as caught:
         got = synthesize(
             db,
             "t",
@@ -599,6 +599,9 @@ def test_categorical_column_skipped_by_string_primitive_warns():
     # The String column is still used; only the Categorical one is skipped.
     assert "SHOUT__plain" in names(got)
     assert "SHOUT__cat" not in names(got)
+    # shout takes one input, so it has no pairwise counterpart to point the
+    # user at -- the label-equality suggestion is for two-input primitives.
+    assert "equal_categorical" not in str(caught[0].message)
 
 
 def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):

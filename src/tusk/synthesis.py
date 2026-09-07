@@ -365,10 +365,13 @@ class _Context:
         # The label-comparison suggestion only makes sense for a two-input
         # primitive: a one-input STRING primitive (e.g. an uppercase
         # transform) has no pairwise counterpart to point the user at.
-        suggest_categorical_equality = any(
-            len(signature) == 2 and DtypeFamily.STRING in signature
-            for signature in primitive.signatures
-        )
+        # Arity is uniform across a primitive's signatures (Primitive.signatures
+        # rejects shapes that disagree), so checking one signature's length
+        # stands in for "this primitive takes two inputs" -- it is a proxy
+        # for "is a comparison", not the thing itself, so a future two-slot
+        # STRING primitive that isn't a comparison (string concatenation,
+        # say) would still trigger this suggestion.
+        takes_two_inputs = len(primitive.signatures[0]) == 2
         for feature in candidates:
             if feature.dtype not in (nw.Categorical, nw.Enum):
                 continue
@@ -382,7 +385,7 @@ class _Context:
                 f"inputs require a String column) will not be applied to it. Cast "
                 f"the column to String if you want text primitives to use it."
             )
-            if suggest_categorical_equality:
+            if takes_two_inputs:
                 message += (
                     " If you want to compare labels for equality instead, "
                     "'equal_categorical' / 'not_equal_categorical' take two "
