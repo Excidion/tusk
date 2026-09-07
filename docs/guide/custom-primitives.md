@@ -16,11 +16,11 @@ from tusk.primitives import AggregationPrimitive, register
 class Range(AggregationPrimitive):
     """Difference between the largest and smallest value."""
 
-    name = "range"
-    input_dtypes = (F.NUMERIC,)
+    name = "range"  # what DFS resolves, and the stem of generated column names
+    input_dtypes = (F.NUMERIC,)  # one DtypeFamily per input; empty tuple means zero-arity, like count
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        return expr.max() - expr.min()
+        return expr.max() - expr.min()  # return a sequence instead for a multi-output primitive
 ```
 
 Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
@@ -34,23 +34,20 @@ frozen dataclass written out like this, so `Year` and `Count` are the same kind
 of object as `Range` — nothing in tusk can reach a definition path your own
 code cannot.
 
-## The pieces
+`output_dtype` and `default_value` are optional and not shown above: omit
+`output_dtype` to derive it from the inputs by overriding `return_dtype`, and
+set `default_value` for what an empty group should produce (see [empty
+groups](primitives.md#empty-groups)).
 
-| Attribute | Meaning |
-| --- | --- |
-| `name` | The string DFS resolves, and the uppercased stem of generated column names. |
-| `input_dtypes` | One [`DtypeFamily`][tusk.dtypes.DtypeFamily] per argument. An empty tuple means zero-arity, like `count`. |
-| `output_dtype` | The narwhals dtype produced. Omit to derive it from the inputs by overriding `return_dtype`. |
-| `default_value` | What an empty group gets. See [empty groups](primitives.md#empty-groups). |
-| `build` | Takes one expression per input and returns the output expression, or a sequence of them for a multi-output primitive. |
-
-A tuple of families is one signature. `input_dtypes` can also be a tuple of
-such tuples, declaring alternative signatures for the same primitive: each
-alternative is matched as a whole, and every one must share the same arity.
+Say your primitive takes either two numbers or two dates, never one of each.
+Declare `input_dtypes` as a tuple of signatures instead of a flat one:
 
 ```python
 input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
 ```
+
+Each signature is matched as a whole, and every one must take the same number
+of inputs.
 
 Subclass [`AggregationPrimitive`][tusk.primitives.AggregationPrimitive] for
 something that reduces a child table to one row per parent, and
