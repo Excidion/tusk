@@ -79,7 +79,7 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     )
 
 
-def check_datetime_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_dtype_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared row creation time is a Datetime, not a Date.
 
     A table with no ``row_creation_time`` is skipped. Reads the schema only.
@@ -252,10 +252,10 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
     )
 
 
-CHECKS = {
+TABLE_CHECKS = {
     "non_null_primary_key": check_non_null_primary_key,
     "unique_primary_key": check_unique_primary_key,
-    "datetime_row_creation_time": check_datetime_row_creation_time,
+    "datetime_row_creation_time": check_dtype_row_creation_time,
 }
 
 RELATIONSHIP_CHECKS = {
@@ -315,7 +315,7 @@ def validate_table(
 
     Checks run in the order given; the first failure raises
     :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
-    is not in :data:`CHECKS` raises :class:`ValueError`.
+    is not in :data:`TABLE_CHECKS` raises :class:`ValueError`.
 
     Args:
         frame: The table's lazy frame.
@@ -323,8 +323,8 @@ def validate_table(
         checks: ``True`` for every table check, ``False`` for none, a check
             name, or an iterable of check names.
     """
-    for name in _select_checks(checks, CHECKS):
-        CHECKS[name](frame, schema)
+    for name in _select_checks(checks, TABLE_CHECKS):
+        TABLE_CHECKS[name](frame, schema)
 
 
 def validate_relationship(
@@ -366,10 +366,10 @@ def validate_database(
     Args:
         database: The database to check.
         database_checks: Selects from :data:`DATABASE_CHECKS`.
-        table_checks: Selects from :data:`CHECKS`.
+        table_checks: Selects from :data:`TABLE_CHECKS`.
         relationship_checks: Selects from :data:`RELATIONSHIP_CHECKS`.
     """
-    tables = _select_checks(table_checks, CHECKS)
+    tables = _select_checks(table_checks, TABLE_CHECKS)
     relationships = _select_checks(relationship_checks, RELATIONSHIP_CHECKS)
     wide = _select_checks(database_checks, DATABASE_CHECKS)
 

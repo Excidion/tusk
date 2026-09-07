@@ -83,7 +83,7 @@ def resolve_checks(selector: Checks) -> tuple[Check, ...]
 Two decisions inside it:
 
 - **Registry order, not argument order.** A selected list is deduplicated and
-  run in the order `CHECKS` declares, so behaviour never depends on how the
+  run in the order `TABLE_CHECKS` declares, so behaviour never depends on how the
   caller happened to type the list. With checks that raise on first failure,
   argument order would otherwise decide *which* error a user sees for data
   that violates two checks at once.

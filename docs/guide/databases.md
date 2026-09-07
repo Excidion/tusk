@@ -9,7 +9,9 @@ its column names and dtypes, nothing else. No row is read unless you ask for
 import tusk
 
 db = tusk.Database("shop")
-db.add_table("customers", customers_lf, primary_key="id", row_creation_time="signed_up_at")
+db.add_table(
+    "customers", customers_lf, primary_key="id", row_creation_time="signed_up_at"
+)
 db.add_table("orders", orders_lf, primary_key="id", row_creation_time="placed_at")
 db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
 ```
@@ -64,121 +66,51 @@ same backend in one database. Either way the feature matrix comes back
 
 ## Validation
 
-A database takes your declarations on trust. Naming a column as `primary_key`
-asserts that it identifies a row; nothing confirms it. When the assertion is
+A database takes your declarations (mostly) on trust. Naming a column as `primary_key`
+asserts that it identifies a row, but nothing confirms it. When the assertion is
 false, tusk does not fail — a duplicated key fans out every join that lands on
 the table, and `COUNT`, `SUM` and `MEAN` come back inflated by a factor you
 cannot see.
 
-[`validate()`][tusk.Database.validate] spends real queries to confirm the
+[`validate()`][tusk.Database.validate] runs real queries to confirm the
 declarations hold:
-
 ```python
 db.validate()
 ```
+It runs every check - each table, then each relationship, then the database
+as a whole - and raises
+[`ValidationError`][tusk.exceptions.ValidationError] on the first defect.
 
-It runs every check — each table, then each relationship, then the database
-as a whole — and raises
-[`ValidationError`][tusk.exceptions.ValidationError] on the first defect. It
-returns the database, so it chains.
-
-The error names the table, the column and the counts that disagree — for
-example `4 rows, 3 distinct values` — but not which keys are duplicated.
-Finding them costs a second full scan, which is a real bill on a remote
-backend, so tusk leaves that query to you if you want it.
-
-`validate()` takes one selector per scope — `tables`, `relationships` and
-`database` — each of which accepts `True` for every check in that scope,
-`False` for none, a name, or an iterable of names:
-
-```python
-db.validate(tables="unique_primary_key")     # one table check, nothing else
-db.validate(relationships=False)             # skip the joins
-db.validate(tables=["non_null_primary_key", "unique_primary_key"])
-```
-
-Each name is looked up only in its own scope, so `validate(tables=
-"consistent_time_zones")` raises `ValueError` — that check is database-wide.
-
-`add_table` and `add_relationship` take a single `validate=` selector, since
-each already knows its scope:
-
+If you don't want to wait until the full database is assembled you can also validate during the creation:
 ```python
 db.add_table("customers", customers_lf, primary_key="id", validate=True)
 ```
+Per default, both `add_table` and `add_relationship` only run checks that do not require reading any data.
+They just look at the table schemas and avoid costly queries.
 
-`add_table` defaults to `False`. That default is deliberate: without it every
-`add_table` would materialize a full scan, which is a silent performance cliff
-on `pl.scan_parquet` or a remote table.
-
-`add_relationship` also takes it, but defaults to `"matching_key_dtypes"`
-rather than `False`, because that check reads the declared dtypes and no
-rows — it costs nothing, and a key dtype mismatch is worth hearing about at
-the point you declare the link rather than at the join:
+This way you catch the most obvious errors early:
+A key dtype mismatch is worth hearing about at the point you declare the link
+rather than at the join.
 
 ```python
 db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
 # ValidationError: foreign_key 'customer_id' of 'orders' is String,
 # but primary_key 'id' of 'customers' is Int64
 
-db.add_relationship(..., validate=True)   # also checks the keys overlap
+db.add_relationship(..., validate=True)  # run all checks
 db.add_relationship(..., validate=False)  # check nothing
 ```
 
-A relationship that fails validation is not registered, exactly as a table
-that fails is not added. A misspelled check name raises `ValueError`, not
-`ValidationError`, so catching validation failures never swallows a typo.
+A relationship that fails validation is not registered and as a table that fails is not added.
 
 ### Available checks
 
-Table checks run against one table. `add_table` and `validate()` both run them:
+There are checks that
 
-| Name | Confirms |
-| --- | --- |
-| `non_null_primary_key` | The declared `primary_key` holds no null. |
-| `unique_primary_key` | The declared `primary_key` holds no repeated value. |
-| `datetime_row_creation_time` | The declared `row_creation_time` is a `Datetime`, not a `Date`. |
++ span the whole [database](/api/validation/#tusk.validation.DATABASE_CHECKS)
++ run against each [table](/api/validation/#tusk.validation.TABLE_CHECKS) .
++ cross check each [relationship](/api/validation/#tusk.validation.RELATIONSHIP_CHECKS)
 
-Relationship checks run against each relationship, and database checks against
-the whole database. Only `validate()` runs those — `add_table` sees one table
-and raises `ValueError` if you name one:
-
-| Name | Scope | Confirms |
-| --- | --- | --- |
-| `matching_key_dtypes` | relationship | The `foreign_key` dtype matches the parent's `primary_key` exactly. |
-| `overlapping_keys` | relationship | The `foreign_key` matches at least one of the parent's keys. Nulls are ignored. |
-| `consistent_time_zones` | database | Every `Datetime` column is tz-aware, or every one is naive. Zones may differ; mixing awareness does not. |
-
-With `validate=True` checks run in the order above, so `non_null_primary_key`
-reports a null key before `unique_primary_key` reports it as a duplicate. An
-explicit list runs in the order you write it.
-
-A table with no `primary_key` is skipped by the key checks rather than failed —
-you were already warned about that at `add_table` time. A table with no
-`row_creation_time` is skipped by `datetime_row_creation_time`.
-
-`matching_key_dtypes` demands an exact match rather than anything looser,
-because the backends disagree about what they will join and the strictest one
-decides: pyarrow refuses `Int64` against `Int32`, polars refuses `Int64`
-against `Float64`, and polars refuses every crossing of `String`,
-`Categorical` and `Enum` — including two `Enum`s whose categories differ. A
-looser rule would pass validation and then fail the join. Cast the column
-instead.
-
-`datetime_row_creation_time`, `matching_key_dtypes` and
-`consistent_time_zones` read the declared dtypes, not the rows, so they cost
-no query. `overlapping_keys` is the only one that reads rows on a
-relationship, and it stops at the first match rather than scanning the child.
-
-`overlapping_keys` asks only whether the two key columns meet at all, not
-whether every foreign key resolves. Orphan rows are ordinary in real data —
-a warehouse that deletes parents, an extract that cuts a table short — and
-failing on them would make the check unusable. Zero overlap is the defect it
-looks for: the wrong column, or two id spaces that never met.
-
-In `unique_primary_key`, nulls count as one distinct value, so **repeated
-nulls fail** while **a single null passes**. A lone null key is a real defect,
-but `non_null_primary_key` is the check that reports it.
 
 ## Looking at the schema
 

@@ -81,7 +81,7 @@ class Database:
         primary_key: str | None = None,
         row_creation_time: str | None = None,
         *,
-        validate: bool | str | Iterable[str] = False,
+        validate: bool | str | Iterable[str] = "datetime_row_creation_time",
     ) -> Database:
         """Add a table to the database.
 
@@ -94,12 +94,10 @@ class Database:
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
                 Required for order-dependent primitives on this table.
-            validate: Checks to run against the data before registering the
-                table. ``False`` (the default) runs none and reads no rows;
-                ``True`` runs every check; a check name or an iterable of
-                names runs those. A failing check raises
-                :class:`~tusk.exceptions.ValidationError` and the table is not
-                registered.
+            validate: Pick a string or list of strings from
+                [here](validation/#tusk.validation.TABLE_CHECKS)
+                to enable specific checks.
+                `True` runs every check, `False` runs none.
 
         Returns:
             This database, to allow chaining.
@@ -173,13 +171,10 @@ class Database:
             parent: Name of the parent table. Must have a ``primary_key``.
             child: Name of the child table.
             foreign_key: The child's column pointing at the parent's primary key.
-            validate: Which relationship checks to run before registering the
-                link. Defaults to ``"matching_key_dtypes"``, which reads the
-                declared dtypes and no rows, so it costs nothing; ``True``
-                also runs ``"overlapping_keys"``, which joins the two
-                tables. ``False`` runs none. A failing check raises
-                :class:`~tusk.exceptions.ValidationError` and the
-                relationship is not registered.
+            validate: Pick a string or list of strings from
+                [here](validation/#tusk.validation.RELATIONSHIP_CHECKS)
+                to enable specific checks.
+                `True` runs every check, `False` runs none.
 
         Returns:
             This database, to allow chaining.
@@ -214,20 +209,17 @@ class Database:
     ) -> Database:
         """Run validation checks against the database.
 
-        Each argument selects from its own registry, and takes the same forms
-        as ``validate=`` on :meth:`add_table`: ``True`` for every check in
-        that scope, ``False`` for none, a check name, or an iterable of names.
-        A name outside the scope it is given to raises :class:`ValueError`.
-
         Table checks run against every table in insertion order, then
         relationship checks against every relationship, then database-wide
-        checks once. The first failure raises
-        :class:`~tusk.exceptions.ValidationError`.
+        checks once. The first failure raises.
 
         Args:
-            database: Checks spanning the whole database.
-            tables: Checks run against each table.
-            relationships: Checks run against each relationship.
+            database: [Checks](validation/#tusk.validation.DATABASE_CHECKS)
+                spanning the whole database.
+            tables: [Checks](validation/#tusk.validation.TABLE_CHECKS)
+                run against each table.
+            relationships: [Checks](validation/#tusk.validation.RELATIONSHIP_CHECKS)
+                run against each relationship.
 
         Returns:
             This database, to allow chaining.

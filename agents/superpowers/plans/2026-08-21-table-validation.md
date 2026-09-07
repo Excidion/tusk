@@ -4,7 +4,7 @@
 
 **Goal:** Add opt-in data validation — checks that run real queries against a table to confirm its declarations hold — selected by name through one vocabulary shared by `Database.add_table(validate=…)` and `Database.validate(…)`, with `unique_primary_key` as the first check.
 
-**Architecture:** A new `src/tusk/validation.py` owns everything: the check functions, a `CHECKS` registry mapping names to them, and `resolve_checks()` which turns a `bool | str | Iterable[str]` selector into the checks to run. `Database` gains a `validate()` method and an `add_table(validate=…)` parameter, both thin delegations to `validate_table()`. Three tasks: the module standalone, the `Database` wiring, then backend portability and the guide.
+**Architecture:** A new `src/tusk/validation.py` owns everything: the check functions, a `TABLE_CHECKS` registry mapping names to them, and `resolve_checks()` which turns a `bool | str | Iterable[str]` selector into the checks to run. `Database` gains a `validate()` method and an `add_table(validate=…)` parameter, both thin delegations to `validate_table()`. Three tasks: the module standalone, the `Database` wiring, then backend portability and the guide.
 
 **Tech Stack:** Python 3.10+, narwhals, polars/pyarrow/duckdb backends, pytest, uv, ruff + ty + interrogate + pydoclint via pre-commit, zensical for docs.
 
@@ -38,7 +38,7 @@
   - `tusk.exceptions.ValidationError(TuskError)`
   - `tusk.validation.Checks = bool | str | Iterable[str]`
   - `tusk.validation.Check = Callable[[nw.LazyFrame, TableSchema], None]`
-  - `tusk.validation.CHECKS: Mapping[str, Check]`, currently `{"unique_primary_key": check_unique_primary_key}`
+  - `tusk.validation.TABLE_CHECKS: Mapping[str, Check]`, currently `{"unique_primary_key": check_unique_primary_key}`
   - `tusk.validation.check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None`
   - `tusk.validation.resolve_checks(selector: Checks) -> tuple[Check, ...]`
   - `tusk.validation.validate_table(frame: nw.LazyFrame, schema: TableSchema, checks: Checks = True) -> None`
@@ -55,7 +55,7 @@ import pytest
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
-    CHECKS,
+    TABLE_CHECKS,
     check_unique_primary_key,
     resolve_checks,
     validate_table,
@@ -131,7 +131,7 @@ def test_empty_selectors_select_nothing():
 
 def test_a_repeated_name_runs_the_check_once():
     assert resolve_checks(["unique_primary_key", "unique_primary_key"]) == (
-        CHECKS["unique_primary_key"],
+        TABLE_CHECKS["unique_primary_key"],
     )
 
 
@@ -141,7 +141,7 @@ def test_checks_run_in_registry_order_not_argument_order(monkeypatch):
         "first": lambda f, s: calls.append("first"),
         "second": lambda f, s: calls.append("second"),
     }
-    monkeypatch.setattr("tusk.validation.CHECKS", ordered)
+    monkeypatch.setattr("tusk.validation.TABLE_CHECKS", ordered)
     validate_table(frame([1]), schema(), ["second", "first"])
     assert calls == ["first", "second"]
 
@@ -196,7 +196,7 @@ The rest of the schema layer takes declarations on trust: naming a column as
 These checks spend real queries to find out. Nothing here runs unless the user
 asks, through :meth:`tusk.Database.validate` or ``add_table(validate=…)``.
 
-Adding a check is a new function plus a new entry in :data:`CHECKS`; no call
+Adding a check is a new function plus a new entry in :data:`TABLE_CHECKS`; no call
 signature changes and both entry points pick it up.
 """
 
@@ -278,7 +278,7 @@ CHECKS: Mapping[str, Check] = {
 def resolve_checks(selector: Checks) -> tuple[Check, ...]:
     """Turn a selector into the checks it names.
 
-    Selected checks are deduplicated and returned in :data:`CHECKS` order, not
+    Selected checks are deduplicated and returned in :data:`TABLE_CHECKS` order, not
     argument order, so which failure a caller sees never depends on how they
     happened to type the list.
 
@@ -290,7 +290,7 @@ def resolve_checks(selector: Checks) -> tuple[Check, ...]:
         The selected checks, in registry order.
 
     Raises:
-        ValueError: If a name is not in :data:`CHECKS`.
+        ValueError: If a name is not in :data:`TABLE_CHECKS`.
     """
     if isinstance(selector, bool):
         return tuple(CHECKS.values()) if selector else ()
@@ -299,9 +299,9 @@ def resolve_checks(selector: Checks) -> tuple[Check, ...]:
     unknown = sorted(names - set(CHECKS))
     if unknown:
         listed = ", ".join(repr(name) for name in unknown)
-        available = ", ".join(repr(name) for name in CHECKS)
+        available = ", ".join(repr(name) for name in TABLE_CHECKS)
         raise ValueError(f"unknown check {listed}; available checks: {available}")
-    return tuple(check for name, check in CHECKS.items() if name in names)
+    return tuple(check for name, check in TABLE_CHECKS.items() if name in names)
 
 
 def validate_table(
@@ -381,7 +381,7 @@ def spy(monkeypatch):
     """Replace the registry with a recorder, so plumbing is observable."""
     calls = []
     monkeypatch.setattr(
-        "tusk.validation.CHECKS",
+        "tusk.validation.TABLE_CHECKS",
         {"unique_primary_key": lambda f, s: calls.append(s.name)},
     )
     return calls

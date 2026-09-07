@@ -12,7 +12,7 @@ from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
     check_cutoff_time_zone,
-    check_datetime_row_creation_time,
+    check_dtype_row_creation_time,
     check_non_null_primary_key,
     check_unique_primary_key,
     validate_table,
@@ -97,7 +97,7 @@ def test_an_empty_list_runs_nothing():
 def test_checks_run_in_the_order_given(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "tusk.validation.CHECKS",
+        "tusk.validation.TABLE_CHECKS",
         {
             "first": lambda f, s: calls.append("first"),
             "second": lambda f, s: calls.append("second"),
@@ -149,8 +149,11 @@ def spy(monkeypatch):
     """Replace the registry with a recorder, so plumbing is observable."""
     calls = []
     monkeypatch.setattr(
-        "tusk.validation.CHECKS",
-        {"unique_primary_key": lambda f, s: calls.append(s.name)},
+        "tusk.validation.TABLE_CHECKS",
+        {
+            "unique_primary_key": lambda f, s: calls.append(s.name),
+            "datetime_row_creation_time": check_dtype_row_creation_time,
+        },
     )
     return calls
 
@@ -159,10 +162,21 @@ def dupes():
     return pl.LazyFrame({"id": [7, 7, 12], "v": [1.0, 2.0, 3.0]})
 
 
-def test_add_table_does_not_validate_by_default(spy):
+def test_add_table_runs_no_other_check_by_default(spy):
     db = tusk.Database("x").add_table("t", dupes(), primary_key="id")
     assert spy == []
     assert db.table_names == ("t",)
+
+
+def test_add_table_checks_the_row_creation_time_by_default():
+    frame = pl.LazyFrame({"id": [1], "created_at": [dt.date(2024, 1, 1)]})
+    with pytest.raises(ValidationError, match="row_creation_time 'created_at'"):
+        tusk.Database("x").add_table(
+            "t",
+            frame,
+            primary_key="id",
+            row_creation_time="created_at",
+        )
 
 
 def test_add_table_validates_when_asked(spy):
@@ -319,18 +333,18 @@ def temporal_schema(dtype, column="created_at"):
 
 def test_a_date_row_creation_time_is_reported():
     with pytest.raises(ValidationError) as excinfo:
-        check_datetime_row_creation_time(frame([1]), temporal_schema(nw.Date))
+        check_dtype_row_creation_time(frame([1]), temporal_schema(nw.Date))
     message = str(excinfo.value)
     assert "row_creation_time 'created_at'" in message
     assert "expected Datetime" in message
 
 
 def test_a_datetime_row_creation_time_passes():
-    check_datetime_row_creation_time(frame([1]), temporal_schema(nw.Datetime()))
+    check_dtype_row_creation_time(frame([1]), temporal_schema(nw.Datetime()))
 
 
 def test_a_tz_aware_row_creation_time_passes():
-    check_datetime_row_creation_time(
+    check_dtype_row_creation_time(
         frame([1]),
         temporal_schema(nw.Datetime(time_zone="UTC")),
     )
@@ -338,11 +352,11 @@ def test_a_tz_aware_row_creation_time_passes():
 
 def test_a_non_temporal_row_creation_time_is_reported():
     with pytest.raises(ValidationError, match="expected Datetime"):
-        check_datetime_row_creation_time(frame([1]), temporal_schema(nw.Int64))
+        check_dtype_row_creation_time(frame([1]), temporal_schema(nw.Int64))
 
 
 def test_a_table_without_a_row_creation_time_is_skipped():
-    check_datetime_row_creation_time(
+    check_dtype_row_creation_time(
         frame([1]),
         TableSchema("events", "id", None, {"id": nw.Int64}),
     )
@@ -710,9 +724,10 @@ def test_each_scope_selects_from_its_own_registry():
 
 
 def test_scopes_are_switched_off_independently(monkeypatch):
+    db = linked([1], [1], validate=False)
     seen = []
     monkeypatch.setattr(
-        "tusk.validation.CHECKS",
+        "tusk.validation.TABLE_CHECKS",
         {"t": lambda f, s: seen.append("table")},
     )
     monkeypatch.setattr(
@@ -723,7 +738,6 @@ def test_scopes_are_switched_off_independently(monkeypatch):
         "tusk.validation.DATABASE_CHECKS",
         {"d": lambda d: seen.append("db")},
     )
-    db = linked([1], [1], validate=False)
     db.validate(tables=False)
     assert seen == ["rel", "db"]
 

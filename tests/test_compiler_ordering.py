@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 import narwhals as nw
 import polars as pl
@@ -16,6 +17,7 @@ from tusk.primitives.registry import register, resolve
 
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
 AMOUNT = IdentityFeature("transactions", "amount", nw.Float64())
+CREATION_TIMES = [datetime(2024, 1, 3), datetime(2024, 1, 1), datetime(2024, 1, 2)]
 
 
 @register
@@ -64,7 +66,7 @@ def test_ungrouped_order_dependent_transform_uses_row_creation_time_not_frame_or
         {
             "id": [1, 2, 3],
             "v": [100.0, 1.0, 10.0],
-            "t": [3, 1, 2],  # deliberately not row order
+            "t": CREATION_TIMES,  # deliberately not row order
         },
     )
     db = tusk.Database("x").add_table(
@@ -102,7 +104,7 @@ def test_ordering_uses_row_creation_time_not_frame_order():
             "id": [1, 2, 3],
             "g": [1, 1, 1],
             "v": [100.0, 1.0, 10.0],
-            "t": [3, 1, 2],  # deliberately not row order
+            "t": CREATION_TIMES,  # deliberately not row order
         },
     )
     parent = pl.LazyFrame({"id": [1]})
