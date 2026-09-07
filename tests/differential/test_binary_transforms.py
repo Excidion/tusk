@@ -1,11 +1,19 @@
 """Cross-check tusk's binary transform primitives against featuretools.
 
-The arithmetic four agree everywhere. The comparisons agree wherever both
-inputs are known, and also on the two rows where one input is null: measured
-directly (not assumed), both sides answer null there for all six comparison
+The arithmetic four agree everywhere. Over two Numeric columns, the
+comparisons agree wherever both inputs are known, and also on the rows where
+one input is null: both sides answer null there for all six comparison
 primitives, the same "a null gives a null" contract SQL uses. That agreement
 is asserted explicitly by
 ``test_comparisons_agree_where_an_input_is_null`` rather than taken on faith.
+
+Over two Datetime columns -- the ``(HAS_DATE, HAS_DATE)`` signature the
+comparisons also declare -- the six agree wherever both inputs are known, but
+diverge where one is null: tusk still answers null, while featuretools'
+pandas implementation compares ``NaT`` with plain ``datetime64[ns]``
+semantics, where every ordering and equality comparison is false and only
+``not_equal`` is true. ``test_datetime_comparisons_diverge_where_an_operand_is_null``
+asserts both sides of that divergence rather than hiding either one.
 
 ``modulo_numeric`` is built floored rather than as a plain ``%`` (polars
 floors, duckdb truncates), which is also what featuretools' pandas
@@ -32,14 +40,26 @@ named infix on the featuretools side, so there is no parenthesized name for
 it to translate.
 
 ``multiply_numeric_boolean`` is exercised too, over its own fixture, since it
-takes ``(NUMERIC, BOOLEAN)`` rather than two numeric columns.
-``equal_categorical`` and ``not_equal_categorical`` are not: featuretools has
-no counterpart for either, so there is nothing to differ against.
+takes ``(NUMERIC, BOOLEAN)`` rather than two numeric columns. tusk has no
+``multiply_boolean`` of its own -- SQL has one conjunction, not two -- but
+featuretools' ``multiply_boolean`` is cross-checked against tusk's ``and``
+anyway, since it is the primitive that motivates the coverage-table claim
+that the two agree on every row, nulls included (unlike featuretools' own
+``and``; see ``tests/differential/test_boolean_transforms.py`` for that
+divergence).
+
+``equal_categorical`` and ``not_equal_categorical`` are cross-checked too,
+against featuretools' generic ``equal``/``not_equal``: featuretools has no
+primitive of the same name, but its unconstrained equality primitives accept
+a pair of Categorical columns as readily as any other, so those are the
+counterpart to differ against.
 
 Run with: uv run --group validation pytest -m differential
 
 Verified against featuretools 1.31.0.
 """
+
+import datetime as dt
 
 import pytest
 
@@ -77,6 +97,7 @@ _FEATURETOOLS_OPERATOR = {
     "equal": "=",
     "not_equal": "!=",
     "modulo_numeric": "%",
+    "multiply_boolean": "*",
 }
 
 
@@ -149,6 +170,89 @@ def test_comparisons_agree_where_an_input_is_null(rows, primitive_name):
     assert theirs[_featuretools_column(primitive_name)][unknown].isna().all()
 
 
+@pytest.fixture
+def datetime_rows():
+    """Two Datetime columns, ordered both ways, equal once, null once each."""
+    left = pd.to_datetime(
+        [
+            dt.datetime(2024, 1, 1),
+            dt.datetime(2024, 1, 5),
+            dt.datetime(2024, 1, 3),
+            None,
+            dt.datetime(2024, 1, 2),
+        ],
+    )
+    right = pd.to_datetime(
+        [
+            dt.datetime(2024, 1, 2),
+            dt.datetime(2024, 1, 5),
+            dt.datetime(2024, 1, 1),
+            dt.datetime(2024, 1, 6),
+            None,
+        ],
+    )
+    frame = pd.DataFrame(
+        {
+            "id": np.arange(1, len(left) + 1),
+            "left": left,
+            "right": right,
+        },
+    )
+    _assert_datetime_rows_invariants(frame)
+    return frame
+
+
+def _assert_datetime_rows_invariants(frame):
+    """Guard the cases ``datetime_rows`` is built to cover.
+
+    Args:
+        frame: The table built by ``datetime_rows``.
+    """
+    both_known = frame["left"].notna() & frame["right"].notna()
+    assert both_known.any()
+    assert (~both_known).any()
+    assert (frame["left"] > frame["right"]).any()
+    assert (frame["left"] < frame["right"]).any()
+    assert (frame["left"] == frame["right"]).any()
+
+
+@pytest.mark.parametrize("primitive_name", COMPARISONS)
+def test_datetime_comparisons_match_featuretools_where_nothing_is_null(
+    datetime_rows,
+    primitive_name,
+):
+    """The (HAS_DATE, HAS_DATE) signature agrees too, wherever both are known."""
+    ours, theirs = _both_matrices(datetime_rows, primitive_name)
+    known = datetime_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert _nullable(ours[_tusk_column(primitive_name)][known]) == _nullable(
+        theirs[_featuretools_column(primitive_name)][known],
+    )
+
+
+@pytest.mark.parametrize("primitive_name", COMPARISONS)
+def test_datetime_comparisons_diverge_where_an_operand_is_null(
+    datetime_rows,
+    primitive_name,
+):
+    """A null Datetime operand is answered differently on each side.
+
+    tusk still gives a null, the same "a null gives a null" contract the
+    Numeric fixture confirms. featuretools instead runs its comparisons over
+    plain ``datetime64[ns]`` values, where pandas treats ``NaT`` as ordered
+    nowhere and unequal everywhere: every ordering and equality comparison
+    answers false, and only ``not_equal`` answers true.
+    """
+    ours, theirs = _both_matrices(datetime_rows, primitive_name)
+    unknown = ~datetime_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
+    assert unknown.any()
+    assert ours[_tusk_column(primitive_name)][unknown].isna().all()
+    featuretools_answer_on_a_null_operand = primitive_name == "not_equal"
+    assert (
+        theirs[_featuretools_column(primitive_name)][unknown]
+        == featuretools_answer_on_a_null_operand
+    ).all()
+
+
 def test_modulo_matches_featuretools_on_negative_operands(rows):
     """Both floor, so -7 % 2 is 1 and 7 % -2 is -1 on each side.
 
@@ -159,7 +263,7 @@ def test_modulo_matches_featuretools_on_negative_operands(rows):
     ours, theirs = _both_matrices(rows, "modulo_numeric")
     operands = rows.set_index("id")[["left", "right"]]
     nonzero_divisor = operands.notna().all(axis=1) & (operands["right"] != 0)
-    assert (~nonzero_divisor).any()
+    assert nonzero_divisor.any()
     assert _numbers(
         ours[_tusk_column("modulo_numeric")][nonzero_divisor],
     ) == _numbers(
@@ -228,6 +332,158 @@ def _featuretools_column_for_multiply_numeric_boolean(theirs):
     return candidates[0]
 
 
+@pytest.fixture
+def boolean_rows():
+    """Every pairing of True, False and null across two boolean columns.
+
+    Used to cross-check tusk's ``and`` against featuretools' differently
+    named ``multiply_boolean``, a shape neither ``rows`` nor
+    ``numeric_and_boolean_rows`` above covers.
+    """
+    left = [True, True, True, False, False, False, None, None, None]
+    right = [True, False, None, True, False, None, True, False, None]
+    frame = pd.DataFrame(
+        {
+            "id": np.arange(1, len(left) + 1),
+            "left": pd.array(left, dtype="boolean"),
+            "right": pd.array(right, dtype="boolean"),
+        },
+    )
+    _assert_boolean_rows_invariants(frame)
+    return frame
+
+
+def _assert_boolean_rows_invariants(frame):
+    """Guard the cases ``boolean_rows`` is built to cover.
+
+    Args:
+        frame: The table built by ``boolean_rows``.
+    """
+    known = frame["left"].notna() & frame["right"].notna()
+    assert (frame["left"][known] & frame["right"][known]).any()
+    assert (~frame["left"][known] & ~frame["right"][known]).any()
+    assert frame["left"].isna().any()
+    assert frame["right"].isna().any()
+
+
+def test_and_matches_featuretools_multiply_boolean(boolean_rows):
+    """tusk has no ``multiply_boolean``: its ``and`` already answers this way.
+
+    featuretools has two boolean-conjunction primitives that disagree with
+    each other on a null operand -- ``and`` (``np.logical_and``, which
+    propagates the null; see ``tests/differential/test_boolean_transforms.py``
+    for that divergence) and ``multiply_boolean`` (``np.bitwise_and``, which
+    settles a null operand against a known ``False`` instead). tusk's ``and``
+    agrees with the latter on every row, nulls included, because SQL has one
+    conjunction, not two.
+    """
+    ours = _tusk_matrix(boolean_rows, "and")
+    theirs = _featuretools_matrix(boolean_rows, "multiply_boolean")
+    assert _nullable(ours[_tusk_column("and")]) == _nullable(
+        theirs[_featuretools_column("multiply_boolean")],
+    )
+
+
+@pytest.fixture
+def labelled_rows():
+    """Two Categorical columns with different category sets, one null label.
+
+    ``equal_categorical`` and ``not_equal_categorical`` take
+    ``(CATEGORICAL, CATEGORICAL)``, a shape none of the fixtures above cover.
+    featuretools has no primitive of the same name, but its generic
+    ``equal``/``not_equal`` accept any column pair, so this fixture is run
+    through those instead.
+    """
+    status = pd.Categorical(
+        ["open", "closed", "open", "closed"],
+        categories=["open", "closed", "pending"],
+    )
+    tier = pd.Categorical(
+        ["open", "open", None, "closed"],
+        categories=["open", "closed"],
+    )
+    frame = pd.DataFrame(
+        {
+            "id": np.arange(1, len(status) + 1),
+            "status": status,
+            "tier": tier,
+        },
+    )
+    _assert_labelled_rows_invariants(frame)
+    return frame
+
+
+def _assert_labelled_rows_invariants(frame):
+    """Guard the cases ``labelled_rows`` is built to cover.
+
+    Args:
+        frame: The table built by ``labelled_rows``.
+    """
+    assert set(frame["status"].cat.categories) != set(frame["tier"].cat.categories)
+    known = frame["status"].notna() & frame["tier"].notna()
+    labels_match = frame["status"].astype(str) == frame["tier"].astype(str)
+    assert (labels_match & known).any()
+    assert (~labels_match & known).any()
+    assert frame["tier"].isna().any()
+
+
+@pytest.mark.parametrize(
+    ("tusk_primitive_name", "featuretools_primitive_name"),
+    [("equal_categorical", "equal"), ("not_equal_categorical", "not_equal")],
+)
+def test_categorical_equality_matches_featuretools_where_nothing_is_null(
+    labelled_rows,
+    tusk_primitive_name,
+    featuretools_primitive_name,
+):
+    """Wherever both labels are known, comparing by label agrees either way."""
+    ours = _tusk_matrix(labelled_rows, tusk_primitive_name)
+    theirs = _featuretools_matrix(labelled_rows, featuretools_primitive_name)
+    known = labelled_rows.set_index("id")[["status", "tier"]].notna().all(axis=1)
+    assert _nullable(
+        ours[_tusk_column(tusk_primitive_name, "status", "tier")][known],
+    ) == _nullable(
+        theirs[_featuretools_column(featuretools_primitive_name, "status", "tier")][
+            known
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("tusk_primitive_name", "featuretools_primitive_name", "featuretools_answer"),
+    [
+        ("equal_categorical", "equal", False),
+        ("not_equal_categorical", "not_equal", True),
+    ],
+)
+def test_categorical_equality_diverges_where_a_label_is_null(
+    labelled_rows,
+    tusk_primitive_name,
+    featuretools_primitive_name,
+    featuretools_answer,
+):
+    """A null label is answered differently on each side.
+
+    tusk gives a null: an unknown label cannot be shown equal or unequal to
+    anything. featuretools' generic equality primitives instead compare the
+    raw pandas values, where a null label settles the comparison like any
+    other mismatch -- false for equality, true for inequality.
+    """
+    ours = _tusk_matrix(labelled_rows, tusk_primitive_name)
+    theirs = _featuretools_matrix(labelled_rows, featuretools_primitive_name)
+    unknown = ~labelled_rows.set_index("id")[["status", "tier"]].notna().all(axis=1)
+    assert unknown.any()
+    assert (
+        ours[_tusk_column(tusk_primitive_name, "status", "tier")][unknown].isna().all()
+    )
+    assert (
+        theirs[_featuretools_column(featuretools_primitive_name, "status", "tier")][
+            unknown
+        ]
+        == featuretools_answer
+    ).all()
+
+
 def test_modulo_diverges_on_a_zero_divisor(rows):
     """A zero divisor is backend-defined, per ``ModuloNumeric``'s own docstring.
 
@@ -266,28 +522,33 @@ def _featuretools_input_dtype(frame, column_name):
     return es["rows"][column_name].dtype
 
 
-def _tusk_column(primitive_name):
-    """Name tusk's left-right output column for one binary primitive.
+def _tusk_column(primitive_name, left_name="left", right_name="right"):
+    """Name tusk's output column for one binary primitive.
 
     Args:
         primitive_name: The primitive's name.
+        left_name: The first input column's name.
+        right_name: The second input column's name.
 
     Returns:
-        The column name tusk gives the ``(left, right)`` feature.
+        The column name tusk gives the ``(left_name, right_name)`` feature.
     """
-    return f"{primitive_name.upper()}__left__right"
+    return f"{primitive_name.upper()}__{left_name}__{right_name}"
 
 
-def _featuretools_column(primitive_name):
-    """Name featuretools' left-right output column for one binary primitive.
+def _featuretools_column(primitive_name, left_name="left", right_name="right"):
+    """Name featuretools' output column for one binary primitive.
 
     Args:
         primitive_name: The primitive's name.
+        left_name: The first input column's name.
+        right_name: The second input column's name.
 
     Returns:
-        The column name featuretools gives the ``(left, right)`` feature.
+        The column name featuretools gives the ``(left_name, right_name)``
+        feature.
     """
-    return f"left {_FEATURETOOLS_OPERATOR[primitive_name]} right"
+    return f"{left_name} {_FEATURETOOLS_OPERATOR[primitive_name]} {right_name}"
 
 
 def _numbers(series):
