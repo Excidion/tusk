@@ -508,10 +508,45 @@ def test_modulo_by_zero_is_a_polars_float_artefact(signed):
     """`% 0` has no floored answer, and the backends do not even agree on
     dtype: duckdb nulls it for both ints and floats, polars nulls it for
     ints but produces NaN for floats. This only pins the float case, which
-    is what `signed` supplies; see `ModuloNumeric`'s docstring for the rest.
+    is what `signed` supplies; see `test_modulo_by_zero_is_a_polars_integer_null`
+    for the integer case and `ModuloNumeric`'s docstring for duckdb's half.
     """
     result = _apply(signed, "modulo_numeric", "v", "w")[4]
     assert math.isnan(result)
+
+
+@pytest.fixture
+def signed_integers():
+    return nw.from_native(
+        pl.LazyFrame(
+            {"v": [1], "w": [0]},
+            schema={"v": pl.Int64, "w": pl.Int64},
+        ),
+    )
+
+
+def test_modulo_by_zero_is_a_polars_integer_null(signed_integers):
+    """Unlike the float artefact above, an integer zero divisor is a plain
+    null: there is no NaN in an integer dtype for polars to fall back to.
+    """
+    assert _apply(signed_integers, "modulo_numeric", "v", "w") == [None]
+
+
+@pytest.fixture
+def signed_with_a_null_operand():
+    return nw.from_native(
+        pl.LazyFrame({"v": [7.0, None], "w": [None, 2.0]}),
+    )
+
+
+def test_modulo_null_operand_gives_a_null(signed_with_a_null_operand):
+    """A null dividend or divisor gives a null, per `ModuloNumeric`'s
+    docstring. Exercised on duckdb already; this pins the default backend.
+    """
+    assert _apply(signed_with_a_null_operand, "modulo_numeric", "v", "w") == [
+        None,
+        None,
+    ]
 
 
 @pytest.fixture
