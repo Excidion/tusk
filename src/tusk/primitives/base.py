@@ -72,7 +72,7 @@ class Primitive(ABC):
             # A type checker cannot narrow the declared union from this
             # element-wise check, so the flat shape is asserted explicitly.
             return (cast("tuple[DtypeFamily, ...]", declared),)
-        signatures = _alternatives_or_raise(self.name, declared)
+        signatures = _validated_alternatives(self.name, declared)
         if len({len(signature) for signature in signatures}) > 1:
             raise PrimitiveError(
                 f"primitive {self.name!r} declares input shapes that do not "
@@ -226,7 +226,7 @@ class NeedsCutoffTime(Primitive):
         """
 
 
-def _alternatives_or_raise(
+def _validated_alternatives(
     name: str,
     declared: tuple[Any, ...],
 ) -> tuple[tuple[DtypeFamily, ...], ...]:
