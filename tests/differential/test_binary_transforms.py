@@ -23,7 +23,10 @@ keeps a Boolean pair on pandas' nullable ``boolean`` dtype and a String pair
 (kept to enough distinct words to stay off low-cardinality inference) on
 ``Unknown`` (pandas nullable ``string``), and both dtypes' ``eq``/``ne``
 propagate a null operand rather than settling the comparison the way plain
-``datetime64[ns]`` or a ``pd.CategoricalDtype`` pair does.
+``datetime64[ns]`` or a ``pd.CategoricalDtype`` pair does. A low-cardinality
+String pair takes that ``pd.CategoricalDtype`` branch instead and diverges the
+same way Datetime and label pairs do; that divergence is measured separately
+by ``test_string_equality_diverges_where_a_low_cardinality_operand_is_null``.
 
 ``modulo_numeric`` is built floored rather than as a plain ``%`` (polars
 floors, duckdb truncates), which is also what featuretools' pandas
@@ -321,8 +324,11 @@ def test_boolean_equality_agrees_with_featuretools_where_an_operand_is_null(
 
     featuretools' woodwork layer keeps this pair on pandas' nullable
     ``boolean`` dtype, whose ``eq``/``ne`` propagate a null operand instead
-    of settling the comparison the way plain ``datetime64[ns]`` does.
+    of settling the comparison the way plain ``datetime64[ns]`` does. The
+    dtype assertion below pins that inference so a future fixture edit fails
+    here instead of silently invalidating this explanation.
     """
+    assert _featuretools_input_dtype(boolean_pair_rows, "left") == pd.BooleanDtype()
     ours, theirs = _both_matrices(boolean_pair_rows, primitive_name)
     unknown = ~boolean_pair_rows.set_index("id")[["left", "right"]].notna().all(axis=1)
     assert unknown.any()
@@ -334,12 +340,14 @@ def test_boolean_equality_agrees_with_featuretools_where_an_operand_is_null(
 def string_pair_rows():
     """Two String columns, each with a null of its own.
 
-    Eight distinct words across eight rows keep woodwork's inference on
-    ``Unknown`` (pandas nullable ``string``) rather than ``Categorical`` --
-    see ``test_string_equality_agrees_with_featuretools_where_an_operand_is_null``
-    for why that distinction matters here. ``equal``/``not_equal`` also
-    declare a ``(STRING, STRING)`` signature, a shape none of the fixtures
-    above cover.
+    Varied enough words, relative to each column's row count, to keep
+    woodwork's inference on ``Unknown`` (pandas nullable ``string``) rather
+    than ``Categorical`` -- see
+    ``test_string_equality_agrees_with_featuretools_where_an_operand_is_null``
+    for why that distinction matters here, and
+    ``low_cardinality_string_pair_rows`` below for a fixture built to cross
+    that threshold instead. ``equal``/``not_equal`` also declare a ``(STRING,
+    STRING)`` signature, a shape none of the fixtures above cover.
     """
     left = ["apple", "banana", "apple", "cherry", None, "banana", "date", None]
     right = ["apple", "grape", "apple", "cherry", "kiwi", None, "date", "fig"]
@@ -404,6 +412,77 @@ def test_string_equality_agrees_with_featuretools_where_an_operand_is_null(
     assert unknown.any()
     assert ours[_tusk_column(primitive_name)][unknown].isna().all()
     assert theirs[_featuretools_column(primitive_name)][unknown].isna().all()
+
+
+@pytest.fixture
+def low_cardinality_string_pair_rows():
+    """Two String columns repeating two words, each with a null of its own.
+
+    Two distinct words held to a low enough share of each column's known
+    rows tips woodwork's inference to ``Categorical`` instead of the
+    ``Unknown`` that ``string_pair_rows`` above is built to keep -- see
+    ``test_string_equality_diverges_where_a_low_cardinality_operand_is_null``
+    for why that distinction matters here.
+    """
+    left = ["lo", "hi", "lo", "hi", "lo", "hi", "lo", "hi", "lo", "hi", None]
+    right = [None, "hi", "lo", "lo", "lo", "hi", "hi", "hi", "lo", "hi", "lo"]
+    frame = pd.DataFrame(
+        {
+            "id": np.arange(1, len(left) + 1),
+            "left": left,
+            "right": right,
+        },
+    )
+    _assert_low_cardinality_string_pair_rows_invariants(frame)
+    return frame
+
+
+def _assert_low_cardinality_string_pair_rows_invariants(frame):
+    """Guard the cases ``low_cardinality_string_pair_rows`` is built to cover.
+
+    Args:
+        frame: The table built by ``low_cardinality_string_pair_rows``.
+    """
+    known = frame["left"].notna() & frame["right"].notna()
+    assert (frame["left"][known] == frame["right"][known]).any()
+    assert (frame["left"][known] != frame["right"][known]).any()
+    assert frame["left"].isna().any()
+    assert frame["right"].isna().any()
+
+
+@pytest.mark.parametrize("primitive_name", EQUALITY)
+def test_string_equality_diverges_where_a_low_cardinality_operand_is_null(
+    low_cardinality_string_pair_rows,
+    primitive_name,
+):
+    """A low-cardinality String pair is answered differently on each side.
+
+    woodwork infers this pair as ``Categorical`` rather than ``Unknown``, so
+    featuretools runs its generic ``equal``/``not_equal`` on a
+    ``pd.CategoricalDtype`` pair -- the same branch that makes
+    ``equal_categorical``/``not_equal_categorical`` diverge on a null label
+    (see ``labelled_rows`` above): a null operand settles the comparison like
+    any other mismatch instead of propagating it. tusk still gives a null,
+    the same "a null gives a null" contract the other String, Boolean and
+    Numeric fixtures confirm. The dtype assertion below pins that inference
+    so a future fixture edit fails here instead of silently invalidating
+    this explanation.
+    """
+    assert isinstance(
+        _featuretools_input_dtype(low_cardinality_string_pair_rows, "left"),
+        pd.CategoricalDtype,
+    )
+    ours, theirs = _both_matrices(low_cardinality_string_pair_rows, primitive_name)
+    unknown = ~low_cardinality_string_pair_rows.set_index("id")[
+        ["left", "right"]
+    ].notna().all(axis=1)
+    assert unknown.any()
+    assert ours[_tusk_column(primitive_name)][unknown].isna().all()
+    featuretools_answer_on_a_null_operand = primitive_name == "not_equal"
+    assert (
+        theirs[_featuretools_column(primitive_name)][unknown]
+        == featuretools_answer_on_a_null_operand
+    ).all()
 
 
 def test_modulo_matches_featuretools_on_negative_operands(rows):
