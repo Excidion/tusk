@@ -17,10 +17,12 @@ class Range(AggregationPrimitive):
     """Difference between the largest and smallest value."""
 
     name = "range"  # what DFS resolves, and the stem of generated column names
-    input_dtypes = (F.NUMERIC,)  # one DtypeFamily per input; empty tuple means zero-arity, like count
+    input_dtypes = (F.NUMERIC,)  # one per input; empty means zero-arity, like count
+    output_dtype = nw.Float64  # omit to derive from inputs via return_dtype
+    default_value = None  # empty group has no range
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        return expr.max() - expr.min()  # return a sequence instead for a multi-output primitive
+        return expr.max() - expr.min()  # return a sequence for multi-output primitives
 ```
 
 Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
@@ -34,10 +36,8 @@ frozen dataclass written out like this, so `Year` and `Count` are the same kind
 of object as `Range` — nothing in tusk can reach a definition path your own
 code cannot.
 
-`output_dtype` and `default_value` are optional and not shown above: omit
-`output_dtype` to derive it from the inputs by overriding `return_dtype`, and
-set `default_value` for what an empty group should produce (see [empty
-groups](primitives.md#empty-groups)).
+See [empty groups](primitives.md#empty-groups) for how `default_value` is used
+downstream.
 
 Say your primitive takes either two numbers or two dates, never one of each.
 Declare `input_dtypes` as a tuple of signatures instead of a flat one:
