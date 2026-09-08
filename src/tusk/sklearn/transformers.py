@@ -38,7 +38,12 @@ from tusk.sklearn._encoders import (
     get_last_step,
     validate_selection_pipeline,
 )
-from tusk.sklearn._frames import backend_hint, collect_matrix, read_keys
+from tusk.sklearn._frames import (
+    backend_hint,
+    check_keys_are_visible,
+    collect_matrix,
+    read_keys,
+)
 from tusk.sklearn._lineage import Sentinels, make_sentinels
 from tusk.synthesis import synthesize
 
@@ -139,10 +144,15 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         # scikit-learn's scorers call predict() with no metadata, so without
         # this fallback every cross-validated score would come back nan.
         db = self.database_ if database is None else database
+        primary_key = self._require_primary_key(db)
+        keys = read_keys(X)
+        check_keys_are_visible(
+            db, self.target_table, primary_key, keys, self.cutoff_time
+        )
         return collect_matrix(
             matrix=self.features_.apply(db, self.cutoff_time),
-            primary_key=self._require_primary_key(db),
-            keys=read_keys(X),
+            primary_key=primary_key,
+            keys=keys,
             output_backend=self.output_backend,
         )
 

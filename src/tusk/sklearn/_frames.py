@@ -1,6 +1,7 @@
 """Materializes a lazy feature matrix for scikit-learn.
 
 :func:`read_keys` normalizes the primary key ``X`` to a list.
+:func:`check_keys_are_visible` rejects keys the target table has no row for.
 :func:`collect_matrix` filters the matrix to those keys, collects it, and
 returns the rows in key order. :func:`backend_hint` annotates exceptions from
 a user's pipeline with the frame backend in play.
@@ -15,11 +16,14 @@ import contextlib
 import sys
 import warnings
 from collections.abc import Iterable, Iterator
+from datetime import datetime
 from typing import Any
 
 import narwhals as nw
 from narwhals.typing import IntoLazyFrame
 
+from tusk.compiler import base_frame
+from tusk.database import Database
 from tusk.exceptions import SchemaError
 
 _POSITION = "__tusk_position"
@@ -55,6 +59,36 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
     return keys
 
 
+def check_keys_are_visible(
+    database: Database,
+    target_table: str,
+    primary_key: str,
+    keys: list[Any],
+    cutoff_time: datetime | None,
+) -> None:
+    """Fail if the target table has no row for a key at ``cutoff_time``.
+
+    Reads the target's primary key alone, so a stale key is reported without
+    computing the feature matrix first. Raises
+    :class:`~tusk.exceptions.SchemaError`, from :func:`_reject_missing_keys`,
+    if a key names no visible row.
+
+    Args:
+        database: The database holding the frames.
+        target_table: Table the features are built for.
+        primary_key: The target table's primary key.
+        keys: Key values the caller asked for.
+        cutoff_time: The cutoff, or None.
+    """
+    visible = (
+        base_frame(database, target_table, cutoff_time)
+        .select(primary_key)
+        .filter(nw.col(primary_key).is_in(keys))
+        .collect()
+    )
+    _reject_missing_keys(keys, set(visible[primary_key].to_list()), primary_key)
+
+
 def collect_matrix(
     matrix: IntoLazyFrame,
     primary_key: str,
@@ -87,14 +121,7 @@ def collect_matrix(
     filtered = frame.filter(nw.col(primary_key).is_in(keys))
     collected = _collect(filtered, output_backend)
 
-    found = set(collected[primary_key].to_list())
-    missing = [k for k in keys if k not in found]
-    if missing:
-        raise SchemaError(
-            f"no row for {len(missing)} of {len(keys)} keys, e.g. "
-            f"{missing[:5]}; they are absent from {primary_key!r} or were "
-            f"excluded by cutoff_time",
-        )
+    _reject_missing_keys(keys, set(collected[primary_key].to_list()), primary_key)
 
     # The key dtype must be taken from the collected frame rather than
     # inferred: inference gives int64, and a duckdb database keyed by int32
@@ -106,6 +133,27 @@ def collect_matrix(
     )
     joined = order.join(collected, on=primary_key, how="left").sort(_POSITION)
     return joined.drop([primary_key, _POSITION]).to_native()
+
+
+def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> None:
+    """Fail if a requested key is not among the ones found.
+
+    Args:
+        keys: Key values the caller asked for.
+        found: Key values that produced a row.
+        primary_key: The target table's primary key, named in the message.
+
+    Raises:
+        SchemaError: If a key is missing.
+    """
+    missing = [k for k in keys if k not in found]
+    if not missing:
+        return
+    raise SchemaError(
+        f"no row for {len(missing)} of {len(keys)} keys, e.g. "
+        f"{missing[:5]}; they are absent from {primary_key!r} or were "
+        f"excluded by cutoff_time",
+    )
 
 
 def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:

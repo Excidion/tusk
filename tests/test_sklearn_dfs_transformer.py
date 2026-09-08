@@ -1,7 +1,9 @@
+import datetime as dt
 import warnings
 
 import narwhals as nw
 import numpy as np
+import polars as pl
 import pytest
 import sklearn
 from sklearn.dummy import DummyClassifier
@@ -10,6 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, KFold, cross_val_score
 from sklearn.pipeline import Pipeline
 
+import tusk
 from tusk.exceptions import SchemaError, UnmatchedPrimitiveWarning
 from tusk.sklearn import DFSTransformer
 
@@ -153,3 +156,61 @@ def test_importing_tusk_does_not_import_sklearn():
         check=True,
     )
     assert result.stdout.strip() == "False"
+
+
+def _database_whose_matrix_cannot_be_computed():
+    """A database whose sessions blow up the moment the matrix is collected.
+
+    Only the aggregation over sessions is poisoned, so anything reading the
+    target table's keys alone still works.
+    """
+
+    def refuse(_):
+        raise RuntimeError("the feature matrix was computed")
+
+    customers = pl.LazyFrame(
+        {
+            "id": [1, 2],
+            "age": [30, 40],
+            "signed_up_at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 6, 1)],
+        },
+    )
+    sessions = pl.LazyFrame(
+        {
+            "id": [10],
+            "customer_id": [1],
+            "started_at": [dt.datetime(2024, 3, 4)],
+        },
+    ).with_columns(
+        pl.col("customer_id").map_batches(refuse, return_dtype=pl.Int64),
+    )
+    return (
+        tusk.Database("retail")
+        .add_table(
+            "customers",
+            customers,
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "sessions",
+            sessions,
+            primary_key="id",
+            row_creation_time="started_at",
+        )
+        .add_relationship(
+            parent="customers",
+            child="sessions",
+            foreign_key="customer_id",
+        )
+    )
+
+
+def test_a_key_excluded_by_cutoff_time_raises_before_the_matrix_is_computed():
+    fitted = DFSTransformer(
+        target_table="customers",
+        max_depth=2,
+        cutoff_time=dt.datetime(2024, 3, 1),
+    ).fit([1], database=_database_whose_matrix_cannot_be_computed())
+    with pytest.raises(SchemaError, match="cutoff_time"):
+        fitted.transform([1, 2])

@@ -1,10 +1,16 @@
+import datetime as dt
+
 import narwhals as nw
 import numpy as np
 import polars as pl
 import pytest
 
 from tusk.exceptions import SchemaError
-from tusk.sklearn._frames import collect_matrix, read_keys
+from tusk.sklearn._frames import (
+    check_keys_are_visible,
+    collect_matrix,
+    read_keys,
+)
 
 
 @pytest.mark.parametrize(
@@ -98,3 +104,12 @@ def test_backend_hint_names_the_backend_and_the_fix():
     hint = notes or warned
     assert "polars" in hint.lower()
     assert "output_backend" in hint
+
+
+def test_check_keys_are_visible_names_cutoff_time_for_an_excluded_key(db):
+    with pytest.raises(SchemaError, match="cutoff_time"):
+        check_keys_are_visible(db, "customers", "id", [1], dt.datetime(2023, 12, 31))
+
+
+def test_check_keys_are_visible_passes_when_every_key_survives_the_cutoff(db):
+    check_keys_are_visible(db, "customers", "id", [1, 2], dt.datetime(2024, 6, 1))
