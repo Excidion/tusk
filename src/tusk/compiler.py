@@ -148,7 +148,7 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         )
 
 
-def _base_frame(
+def base_frame(
     database: Database,
     table: str,
     cutoff_time: datetime | None,
@@ -206,7 +206,7 @@ def _table_frame(
         SchemaError: If ``needed`` contains a feature type this compiler does
             not know how to compute.
     """
-    frame = _base_frame(database, table, cutoff_time)
+    frame = base_frame(database, table, cutoff_time)
     needed = {f for f in needed if f.table == table}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
