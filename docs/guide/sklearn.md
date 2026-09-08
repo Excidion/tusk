@@ -65,24 +65,24 @@ pipeline.fit(np.array([1, 2, 3]), y_train, database=db)
 Each element is one key. A key with no matching row raises, as does a
 repeated key: both would misalign the matrix against `y`.
 
-## Cutoff times shrink the target table
+## Cutoff time and the target table
 
-`cutoff_time` filters every table, the target included, so a target row that
-did not exist yet at the cutoff has no row in the matrix. Any key in `X` naming
-such a row raises `SchemaError`:
-
+`cutoff_time` filters every table, the target included. A target row that
+did not exist yet at the cutoff will have no row in the matrix. Therefore,
+any key in `X` identifying such a row raises `SchemaError`:
 ```
 no row for 3 of 100 keys, e.g. [17, 41, 88]; they are absent from
 'customer_id' or were excluded by cutoff_time
 ```
+The error is raised before the full feature matrix is computed.
+`transform` first reads the target table's primary key alone,
+under the same cutoff, so a stale key costs a one-column scan
+rather than a full pass over the features.
 
-The check is all-or-nothing: you never get a matrix with null rows standing in
-for the excluded keys. Filter `X` and `y` down to the keys that existed at the
-cutoff yourself, before handing them to the pipeline.
+To avoid this error, filter `X` and `y` down to the keys that existed at the
+cutoff, before handing them to the pipeline.
 
-The keys are checked before the matrix is computed: `transform` first reads the
-target table's primary key alone, under the same cutoff, so a stale key costs a
-one-column scan rather than a full pass over the features.
+The keys are checked before the matrix is computed:
 
 ## Cross-validation and search
 
