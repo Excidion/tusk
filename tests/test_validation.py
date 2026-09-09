@@ -993,6 +993,7 @@ def test_an_update_time_updated_by_another_one_is_reported():
         ("pending", nw.Categorical()),
         (dt.datetime(2024, 1, 1), nw.Datetime()),
         (dt.date(2024, 1, 1), nw.Date()),
+        ([1, 2], nw.Int64()),
     ],
 )
 def test_a_fitting_pre_update_value_passes(value, dtype):

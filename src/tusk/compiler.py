@@ -217,16 +217,14 @@ def _restore_updated_columns(
 def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
     """Build the test for a row's update having already happened.
 
-    A null update time is a row that was never updated, so the value it holds
-    is the one it has always held.
+    A null update time counts as never updated.
 
     Args:
         update_time: Column recording when the row was updated.
         cutoff_time: The cutoff.
 
     Returns:
-        A boolean expression, true where the stored values are the ones that
-        held at the cutoff.
+        A boolean expression, true where the update has already happened.
     """
     updated = nw.col(update_time)
     return updated.is_null() | (updated <= cutoff_time)

@@ -175,10 +175,8 @@ def check_unmasked_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -
 def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no column is rewritten by two row update times.
 
-    Two update times over one column give it two earlier values and two
-    moments to switch between them, and nothing chooses. The entry
-    ``add_table`` adds for an update time that says nothing about itself
-    counts like any other. Reads the schema only.
+    The entry ``add_table`` adds for an update time that says nothing about
+    itself counts like any other. Reads the schema only.
 
     Args:
         frame: The table's lazy frame. Unused.
@@ -423,8 +421,7 @@ def _fits_dtype(value: Any, dtype: Any) -> bool:
     """Decide whether a Python value can stand in for a narwhals dtype.
 
     A null fits every column. A dtype family tusk does not recognise accepts
-    every value, because refusing one it cannot judge is worse than letting
-    the backend judge it at collect time.
+    every value.
 
     Args:
         value: The declared pre-update value.
@@ -449,6 +446,8 @@ def _fits_dtype(value: Any, dtype: Any) -> bool:
         return dtype == nw.Datetime
     if isinstance(value, date):
         return dtype == nw.Date
+    # Refusing a value in a dtype family tusk cannot judge is worse than
+    # letting the backend judge it at collect time.
     return True
 
 

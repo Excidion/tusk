@@ -230,7 +230,7 @@ so you can pick a different value. Listing it yourself silences the warning.
 The primary key and the `row_creation_time` may not appear in a mapping. The
 primary key names the feature matrix's rows, and every visible row was created
 at or before the cutoff already, so neither has an earlier value that means
-anything. Both are refused by a check that runs by default.
+anything. Both are refused by checks that run by default.
 
 Foreign keys **may** be updated, and doing so is one of the more useful cases:
 an order moved to another customer after the cutoff, with its foreign key given
