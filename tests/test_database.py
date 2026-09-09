@@ -195,24 +195,29 @@ def test_an_update_time_that_lists_itself_warns_nothing():
         )
 
 
-def test_only_the_update_time_nothing_covers_is_warned_about():
-    # 'first' updates 'second', so 'second' is already covered and only
-    # 'first' is missing a pre-update value of its own.
+def test_a_chained_update_time_warns_about_both_and_is_rejected():
+    # 'first' updates 'second', and 'second' also lacks a pre-update value of
+    # its own, so both get an implicit self-entry -- which leaves 'second'
+    # listed under both 'first' and itself, and singly_masked_columns rejects
+    # that chain rather than letting a later mask read a not-yet-masked value.
     with pytest.warns(ImplicitRowUpdateTimeMaskWarning) as caught:
-        tusk.Database("d").add_table(
-            "orders",
-            pl.LazyFrame(
-                {
-                    "id": [1],
-                    "first": [dt.datetime(2024, 9, 1)],
-                    "second": [dt.datetime(2024, 9, 2)],
-                },
-            ),
-            primary_key="id",
-            row_update_times={"first": {"second": None}, "second": {}},
-        )
-    assert len(caught) == 1
-    assert "'first'" in str(caught[0].message)
+        with pytest.raises(ValidationError, match="'second'"):
+            tusk.Database("d").add_table(
+                "orders",
+                pl.LazyFrame(
+                    {
+                        "id": [1],
+                        "first": [dt.datetime(2024, 9, 1)],
+                        "second": [dt.datetime(2024, 9, 2)],
+                    },
+                ),
+                primary_key="id",
+                row_update_times={"first": {"second": None}, "second": {}},
+            )
+    assert len(caught) == 2
+    messages = {str(warning.message) for warning in caught}
+    assert any("'first'" in message for message in messages)
+    assert any("'second'" in message for message in messages)
 
 
 def test_an_unknown_update_time_column_is_rejected():
@@ -307,6 +312,35 @@ def test_add_table_rejects_a_misfitting_pre_update_value_by_default():
             primary_key="id",
             row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
         )
+
+
+def test_add_table_rejects_a_chained_row_update_time_by_default():
+    # 'updated_at' masks 'shipped_at' and 'shipped_at' in turn masks 'status'.
+    # A single with_columns reads every mask's condition off the original
+    # frame, so 'status' would read shipped_at's raw, unmasked, post-cutoff
+    # value and leak it -- add_table must refuse the declaration outright
+    # rather than produce a frame that could leak.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ImplicitRowUpdateTimeMaskWarning)
+        with pytest.raises(ValidationError, match="'shipped_at'"):
+            tusk.Database("d").add_table(
+                "orders",
+                pl.LazyFrame(
+                    {
+                        "id": [1],
+                        "placed_at": [dt.datetime(2024, 1, 1)],
+                        "status": ["delivered"],
+                        "shipped_at": [dt.datetime(2024, 4, 1)],
+                        "updated_at": [dt.datetime(2024, 9, 1)],
+                    },
+                ),
+                primary_key="id",
+                row_creation_time="placed_at",
+                row_update_times={
+                    "updated_at": {"shipped_at": None, "updated_at": None},
+                    "shipped_at": {"status": "pending"},
+                },
+            )
 
 
 def test_add_table_still_does_not_scan_by_default():

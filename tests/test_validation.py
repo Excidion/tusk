@@ -980,6 +980,32 @@ def test_an_update_time_updated_by_another_one_is_reported():
         check_singly_masked_columns(frame([1]), schema)
 
 
+def test_add_table_rejects_a_chained_row_update_time():
+    # 'updated_at' masks 'shipped_at', which in turn masks 'status'. A single
+    # with_columns reads every mask's condition off the original frame, so
+    # 'status' would leak shipped_at's raw post-cutoff value; add_table must
+    # refuse this declaration rather than let base_frame produce it.
+    with pytest.raises(ValidationError, match="'shipped_at'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame(
+                {
+                    "id": [1],
+                    "placed_at": [dt.datetime(2024, 1, 1)],
+                    "status": ["delivered"],
+                    "shipped_at": [dt.datetime(2024, 4, 1)],
+                    "updated_at": [dt.datetime(2024, 9, 1)],
+                },
+            ),
+            primary_key="id",
+            row_creation_time="placed_at",
+            row_update_times={
+                "updated_at": {"shipped_at": None, "updated_at": None},
+                "shipped_at": {"status": "pending"},
+            },
+        )
+
+
 @pytest.mark.parametrize(
     ("value", "dtype"),
     [
@@ -988,6 +1014,8 @@ def test_an_update_time_updated_by_another_one_is_reported():
         (1, nw.Int64()),
         (1, nw.Float64()),
         (1.5, nw.Float64()),
+        (0, nw.Decimal()),
+        (0.5, nw.Decimal()),
         (True, nw.Boolean()),
         ("pending", nw.String()),
         ("pending", nw.Categorical()),

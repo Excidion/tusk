@@ -420,8 +420,8 @@ def _updating_row_update_time(schema: TableSchema, column: str | None) -> str | 
 def _fits_dtype(value: Any, dtype: Any) -> bool:
     """Decide whether a Python value can stand in for a narwhals dtype.
 
-    A null fits every column. A dtype family tusk does not recognise accepts
-    every value.
+    A null fits every column. A value of a Python type this function does not
+    check for fits every dtype.
 
     Args:
         value: The declared pre-update value.
@@ -437,9 +437,9 @@ def _fits_dtype(value: Any, dtype: Any) -> bool:
     if isinstance(value, bool):
         return dtype == nw.Boolean
     if isinstance(value, int):
-        return dtype.is_integer() or dtype.is_float()
+        return bool(dtype.is_numeric())
     if isinstance(value, float):
-        return dtype.is_float()
+        return bool(dtype.is_float()) or dtype == nw.Decimal
     if isinstance(value, str):
         return dtype in (nw.String, nw.Categorical, nw.Enum)
     if isinstance(value, datetime):

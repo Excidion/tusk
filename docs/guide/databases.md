@@ -208,6 +208,10 @@ inner mapping names the columns that edit rewrote, each mapped to **the value
 it held before**. Under a cutoff, a row whose `updated_at` falls after it
 serves those earlier values instead of its current ones.
 
+A column given its pre-update value this way is said to be **masked**, and
+that value is its **fallback** — the vocabulary the `singly_masked_columns`
+and `matching_fallback_dtypes` checks take their names from.
+
 tusk cannot work the earlier value out for you. The table kept only the current
 one; `"pending"` above is your knowledge about your own data, not something
 tusk can recover. `None` is a legitimate answer — it says the column's earlier

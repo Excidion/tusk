@@ -74,7 +74,11 @@ class FeatureList(Sequence[Feature]):
                 Its tz awareness must match the database's Datetime columns'.
                 None disables filtering. Columns declared in a table's
                 ``row_update_times`` also serve the value they held before,
-                wherever the update happened after the cutoff.
+                wherever the update happened after the cutoff. Like the
+                cutoff itself, ``row_update_times`` is read from ``database``
+                at call time and is not recorded on the feature definitions,
+                so applying them to a second database is governed by that
+                database's own declaration.
 
         Returns:
             feature_matrix: An uncomputed query plan in the caller's native

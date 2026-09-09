@@ -483,7 +483,7 @@ def _reject_unknown_updated_columns(
 def _row_update_times_without_a_value(
     row_update_times: Mapping[str, Mapping[str, Any]],
 ) -> list[str]:
-    """Return the update time columns that no update time gives a value.
+    """Return the update time columns that do not list themselves.
 
     Args:
         row_update_times: The normalized declaration.
@@ -491,8 +491,7 @@ def _row_update_times_without_a_value(
     Returns:
         Their names, in declaration order.
     """
-    updated = {column for values in row_update_times.values() for column in values}
-    return [name for name in row_update_times if name not in updated]
+    return [name for name, updated in row_update_times.items() if name not in updated]
 
 
 def _warn_about_incomplete_row_update_times(incomplete: list[str], table: str) -> None:

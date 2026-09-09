@@ -135,7 +135,11 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             X: The target's primary key. Its order becomes the matrix's
                 row order.
             database: The database, routed as metadata. When absent, the one
-                seen at fit is used.
+                seen at fit is used. A database supplied here need not be the
+                one features were fitted on; its own ``row_update_times``
+                declaration governs the cutoff's masking, since that
+                declaration is not recorded on the fitted feature
+                definitions.
 
         Returns:
             An eager native frame, one row per key, in key order.
