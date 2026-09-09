@@ -137,29 +137,30 @@ Six new entries in `TABLE_CHECKS`. Five read no rows and run by default from
 | Name | Raises when | Default |
 | --- | --- | --- |
 | `datetime_row_update_times` | an update-time column is not `Datetime` | on |
-| `single_masking_row_update_time` | one column is masked by two update times | on |
+| `singly_masked_columns` | one column is masked by two update times | on |
 | `unmasked_primary_key` | the primary key is masked | on |
 | `unmasked_row_creation_time` | the row creation time is masked | on |
-| `fallback_dtypes` | a fallback does not fit its column's dtype | on |
-| `ordered_row_update_times` | some `update_time < row_creation_time` | off |
+| `matching_fallback_dtypes` | a fallback does not fit its column's dtype | on |
+| `ordered_row_times` | some `update_time < row_creation_time` | off |
 
-`single_masking_row_update_time` counts the self-mask of decision 3 like any
-other entry, so declaring `{"a": {"b_time": 0}, "b_time": {...}}` fails: `a`
-masks `b_time` and `b_time` masks itself.
+`singly_masked_columns` counts the self-mask of decision 3 like any other
+entry, so declaring `{"a": {"b_time": 0}, "b_time": {...}}` fails: `a` masks
+`b_time` and `b_time` masks itself.
 
 `datetime_row_update_times` mirrors the existing
 `datetime_row_creation_time`: a `Date` has no time of day and compares against
 a cutoff differently across backends.
 
-`fallback_dtypes` compares each fallback against `schema.dtypes[column]`
-without reading a row. Its purpose is the error site: `{"score": "pending"}`
+`matching_fallback_dtypes` compares each fallback against
+`schema.dtypes[column]` without reading a row, the same shape of check as
+`matching_key_dtypes`. Its purpose is the error site: `{"score": "pending"}`
 against an `Int64` otherwise fails inside a lazy query plan at `collect()`,
 far from the `add_table` call that caused it. A `None` fallback always passes.
 
-`ordered_row_update_times` is the only check here that scans, so it stays off
-and is reachable through `db.validate(tables="ordered_row_update_times")`. An
-update recorded before the row existed means the two columns do not mean what
-they were declared to mean.
+`ordered_row_times` is the only check here that scans, so it stays off and is
+reachable through `db.validate(tables="ordered_row_times")`. An update
+recorded before the row existed means the two columns do not mean what they
+were declared to mean.
 
 ### The default selector
 
@@ -171,10 +172,10 @@ they were declared to mean.
 DEFAULT_TABLE_CHECKS = (
     "datetime_row_creation_time",
     "datetime_row_update_times",
-    "single_masking_row_update_time",
+    "singly_masked_columns",
     "unmasked_primary_key",
     "unmasked_row_creation_time",
-    "fallback_dtypes",
+    "matching_fallback_dtypes",
 )
 ```
 
