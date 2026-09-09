@@ -1,3 +1,6 @@
+import datetime as dt
+import warnings
+
 import narwhals as nw
 import polars as pl
 import pyarrow as pa
@@ -5,7 +8,11 @@ import pytest
 
 import tusk
 from tusk.database import Relationship
-from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
+from tusk.exceptions import (
+    ImplicitRowUpdateTimeMaskWarning,
+    MissingPrimaryKeyWarning,
+    SchemaError,
+)
 
 
 def test_schema_is_read_from_the_frame(db):
@@ -110,3 +117,156 @@ def test_backend_mismatch_raises():
     db = tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}), primary_key="a")
     with pytest.raises(SchemaError, match="polars.*pyarrow|pyarrow.*polars"):
         db.add_table("u", pa.table({"a": [1]}), primary_key="a")
+
+
+def test_row_update_times_land_on_the_schema():
+    db = tusk.Database("d").add_table(
+        "orders",
+        pl.LazyFrame(
+            {
+                "id": [1],
+                "status": ["delivered"],
+                "updated_at": [dt.datetime(2024, 9, 1)],
+            },
+        ),
+        primary_key="id",
+        row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
+    )
+    assert db.schema("orders").row_update_times == {
+        "updated_at": {"status": "pending", "updated_at": None},
+    }
+
+
+def test_column_updates_flattens_the_declaration():
+    db = tusk.Database("d").add_table(
+        "orders",
+        pl.LazyFrame(
+            {
+                "id": [1],
+                "status": ["delivered"],
+                "updated_at": [dt.datetime(2024, 9, 1)],
+            },
+        ),
+        primary_key="id",
+        row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
+    )
+    assert db.schema("orders").column_updates == (
+        ("updated_at", "status", "pending"),
+        ("updated_at", "updated_at", None),
+    )
+
+
+def test_a_table_without_row_update_times_has_an_empty_mapping():
+    db = tusk.Database("d").add_table(
+        "orders", pl.LazyFrame({"id": [1]}), primary_key="id"
+    )
+    assert db.schema("orders").row_update_times == {}
+    assert db.schema("orders").column_updates == ()
+
+
+def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
+    with pytest.warns(ImplicitRowUpdateTimeMaskWarning, match="'updated_at'"):
+        db = tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame(
+                {
+                    "id": [1],
+                    "status": ["delivered"],
+                    "updated_at": [dt.datetime(2024, 9, 1)],
+                },
+            ),
+            primary_key="id",
+            row_update_times={"updated_at": {"status": "pending"}},
+        )
+    assert db.schema("orders").row_update_times["updated_at"]["updated_at"] is None
+
+
+def test_an_update_time_that_lists_itself_warns_nothing():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ImplicitRowUpdateTimeMaskWarning)
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame(
+                {"id": [1], "updated_at": [dt.datetime(2024, 9, 1)]},
+            ),
+            primary_key="id",
+            row_update_times={"updated_at": {"updated_at": dt.datetime(2024, 1, 1)}},
+        )
+
+
+def test_only_the_update_time_nothing_covers_is_warned_about():
+    # 'first' updates 'second', so 'second' is already covered and only
+    # 'first' is missing a pre-update value of its own.
+    with pytest.warns(ImplicitRowUpdateTimeMaskWarning) as caught:
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame(
+                {
+                    "id": [1],
+                    "first": [dt.datetime(2024, 9, 1)],
+                    "second": [dt.datetime(2024, 9, 2)],
+                },
+            ),
+            primary_key="id",
+            row_update_times={"first": {"second": None}, "second": {}},
+        )
+    assert len(caught) == 1
+    assert "'first'" in str(caught[0].message)
+
+
+def test_an_unknown_update_time_column_is_rejected():
+    with pytest.raises(SchemaError, match="row_update_time 'nope'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame({"id": [1]}),
+            primary_key="id",
+            row_update_times={"nope": {}},
+        )
+
+
+def test_an_unknown_updated_column_is_rejected():
+    with pytest.raises(SchemaError, match="'nope'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "updated_at": [dt.datetime(2024, 9, 1)]}),
+            primary_key="id",
+            row_update_times={"updated_at": {"nope": 1}},
+        )
+
+
+def test_a_flat_row_update_times_mapping_is_rejected():
+    with pytest.raises(SchemaError, match="row_update_time 'updated_at'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "updated_at": [dt.datetime(2024, 9, 1)]}),
+            primary_key="id",
+            row_update_times={"updated_at": ["status"]},  # ty: ignore[invalid-argument-type]
+        )
+
+
+def test_a_non_mapping_row_update_times_is_rejected():
+    with pytest.raises(SchemaError, match="row_update_times"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame({"id": [1]}),
+            primary_key="id",
+            row_update_times=["updated_at"],  # ty: ignore[invalid-argument-type]
+        )
+
+
+def test_the_declaration_is_copied_not_aliased():
+    declared = {"updated_at": {"status": "pending", "updated_at": None}}
+    db = tusk.Database("d").add_table(
+        "orders",
+        pl.LazyFrame(
+            {
+                "id": [1],
+                "status": ["delivered"],
+                "updated_at": [dt.datetime(2024, 9, 1)],
+            },
+        ),
+        primary_key="id",
+        row_update_times=declared,
+    )
+    declared["updated_at"]["status"] = "mutated"
+    assert db.schema("orders").row_update_times["updated_at"]["status"] == "pending"

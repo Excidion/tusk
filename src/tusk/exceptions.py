@@ -32,6 +32,17 @@ class MissingPrimaryKeyWarning(UserWarning):
     """Warns that a table without a primary key has reduced capabilities."""
 
 
+class ImplicitRowUpdateTimeMaskWarning(UserWarning):
+    """Warns that a row update time was given a null pre-update value.
+
+    An update time listed under no update time is read straight from the
+    table, so ``MAX(updated_at)`` returns a timestamp from after the cutoff.
+    tusk fills the gap rather than serving that leak, but a null is only its
+    guess at what the column held before. Its own class, so it can be filtered
+    independently.
+    """
+
+
 class CategoricalDtypeWarning(UserWarning):
     """Warns that a Categorical or Enum column was skipped by a string primitive."""
 
