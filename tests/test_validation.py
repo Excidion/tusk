@@ -13,8 +13,11 @@ from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
     check_cutoff_time_zone,
     check_dtype_row_creation_time,
+    check_dtype_row_update_times,
     check_non_null_primary_key,
     check_unique_primary_key,
+    check_unmasked_primary_key,
+    check_unmasked_row_creation_time,
     validate_table,
 )
 
@@ -820,3 +823,84 @@ def test_add_relationship_runs_the_join_when_asked():
 def test_add_relationship_rejects_a_table_check_name():
     with pytest.raises(ValueError, match="unknown check 'unique_primary_key'"):
         linked([1], [1], validate="unique_primary_key")
+
+
+def updating_schema(row_update_times, primary_key="id", row_creation_time=None):
+    """A schema over id / status / created_at / updated_at."""
+    return TableSchema(
+        "orders",
+        primary_key,
+        row_creation_time,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "created_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        row_update_times,
+    )
+
+
+def test_a_date_row_update_time_is_reported():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "updated_on": nw.Date()},
+        {"updated_on": {"updated_on": None}},
+    )
+    with pytest.raises(ValidationError, match="row_update_time 'updated_on'"):
+        check_dtype_row_update_times(frame([1]), schema)
+
+
+def test_a_datetime_row_update_time_passes():
+    check_dtype_row_update_times(
+        frame([1]), updating_schema({"updated_at": {"updated_at": None}})
+    )
+
+
+def test_a_table_without_row_update_times_passes_the_dtype_check():
+    check_dtype_row_update_times(frame([1]), updating_schema({}))
+
+
+def test_an_updated_primary_key_is_reported():
+    schema = updating_schema({"updated_at": {"id": None, "updated_at": None}})
+    with pytest.raises(ValidationError, match="primary_key 'id'"):
+        check_unmasked_primary_key(frame([1]), schema)
+
+
+def test_an_untouched_primary_key_passes():
+    check_unmasked_primary_key(
+        frame([1]), updating_schema({"updated_at": {"status": "pending"}})
+    )
+
+
+def test_a_table_without_a_primary_key_passes_the_unmasked_check():
+    check_unmasked_primary_key(
+        frame([1]),
+        updating_schema({"updated_at": {"status": "pending"}}, primary_key=None),
+    )
+
+
+def test_an_updated_row_creation_time_is_reported():
+    schema = updating_schema(
+        {"updated_at": {"created_at": None, "updated_at": None}},
+        row_creation_time="created_at",
+    )
+    with pytest.raises(ValidationError, match="row_creation_time 'created_at'"):
+        check_unmasked_row_creation_time(frame([1]), schema)
+
+
+def test_an_untouched_row_creation_time_passes():
+    check_unmasked_row_creation_time(
+        frame([1]),
+        updating_schema(
+            {"updated_at": {"status": "pending"}}, row_creation_time="created_at"
+        ),
+    )
+
+
+def test_a_table_without_a_row_creation_time_passes_the_unmasked_check():
+    check_unmasked_row_creation_time(
+        frame([1]), updating_schema({"updated_at": {"status": "pending"}})
+    )

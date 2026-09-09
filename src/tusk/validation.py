@@ -104,6 +104,74 @@ def check_dtype_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> N
     )
 
 
+def check_dtype_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm every declared row update time is a Datetime, not a Date.
+
+    A table with no ``row_update_times`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the columns to check.
+
+    Raises:
+        ValidationError: If a row update time column is not a Datetime.
+    """
+    for column in schema.row_update_times:
+        dtype = schema.dtypes[column]
+        if dtype == nw.Datetime:
+            continue
+        raise ValidationError(
+            f"row_update_time {column!r} of {schema.name!r} is {dtype}, "
+            f"expected Datetime",
+        )
+
+
+def check_unmasked_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row update time rewrites the primary key.
+
+    A table with no ``primary_key`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the column to check.
+
+    Raises:
+        ValidationError: If a row update time lists the primary key.
+    """
+    update_time = _updating_row_update_time(schema, schema.primary_key)
+    if update_time is None:
+        return
+
+    raise ValidationError(
+        f"primary_key {schema.primary_key!r} of {schema.name!r} is listed "
+        f"under row_update_time {update_time!r}; the primary key names the "
+        f"feature matrix's rows, so it cannot be served an earlier value",
+    )
+
+
+def check_unmasked_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row update time rewrites the row creation time.
+
+    A table with no ``row_creation_time`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the column to check.
+
+    Raises:
+        ValidationError: If a row update time lists the row creation time.
+    """
+    update_time = _updating_row_update_time(schema, schema.row_creation_time)
+    if update_time is None:
+        return
+
+    raise ValidationError(
+        f"row_creation_time {schema.row_creation_time!r} of {schema.name!r} "
+        f"is listed under row_update_time {update_time!r}; every visible row "
+        f"was created at or before the cutoff already",
+    )
+
+
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
     """Confirm a cutoff matches the tz awareness of the database's Datetime columns.
 
@@ -252,10 +320,31 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
     )
 
 
+def _updating_row_update_time(schema: TableSchema, column: str | None) -> str | None:
+    """Return the row update time that rewrites a column.
+
+    Args:
+        schema: The table's schema.
+        column: The column to look for, or None.
+
+    Returns:
+        The first row update time listing it, or None when nothing does.
+    """
+    if column is None:
+        return None
+    for update_time, updated, _ in schema.column_updates:
+        if updated == column:
+            return update_time
+    return None
+
+
 TABLE_CHECKS = {
     "non_null_primary_key": check_non_null_primary_key,
     "unique_primary_key": check_unique_primary_key,
     "datetime_row_creation_time": check_dtype_row_creation_time,
+    "datetime_row_update_times": check_dtype_row_update_times,
+    "unmasked_primary_key": check_unmasked_primary_key,
+    "unmasked_row_creation_time": check_unmasked_row_creation_time,
 }
 
 RELATIONSHIP_CHECKS = {
