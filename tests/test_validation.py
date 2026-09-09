@@ -15,6 +15,7 @@ from tusk.validation import (
     check_dtype_row_creation_time,
     check_dtype_row_update_times,
     check_non_null_primary_key,
+    check_singly_masked_columns,
     check_unique_primary_key,
     check_unmasked_primary_key,
     check_unmasked_row_creation_time,
@@ -904,3 +905,68 @@ def test_a_table_without_a_row_creation_time_passes_the_unmasked_check():
     check_unmasked_row_creation_time(
         frame([1]), updating_schema({"updated_at": {"status": "pending"}})
     )
+
+
+def test_a_column_updated_by_two_update_times_is_reported():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "shipped_at": {"status": "pending"},
+            "updated_at": {"status": "unknown"},
+        },
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_singly_masked_columns(frame([1]), schema)
+    message = str(excinfo.value)
+    assert "'status'" in message
+    assert "'shipped_at'" in message
+    assert "'updated_at'" in message
+
+
+def test_one_update_time_over_many_columns_passes():
+    check_singly_masked_columns(
+        frame([1]),
+        updating_schema({"updated_at": {"status": "pending", "updated_at": None}}),
+    )
+
+
+def test_two_update_times_over_different_columns_pass():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "note": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "shipped_at": {"status": "pending", "shipped_at": None},
+            "updated_at": {"note": None, "updated_at": None},
+        },
+    )
+    check_singly_masked_columns(frame([1]), schema)
+
+
+def test_an_update_time_updated_by_another_one_is_reported():
+    # 'first' rewrites 'second', and add_table also gives 'second' an entry of
+    # its own, so 'second' ends up with two.
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "first": nw.Datetime(), "second": nw.Datetime()},
+        {"first": {"second": None, "first": None}, "second": {"second": None}},
+    )
+    with pytest.raises(ValidationError, match="'second'"):
+        check_singly_masked_columns(frame([1]), schema)

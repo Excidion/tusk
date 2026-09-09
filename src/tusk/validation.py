@@ -172,6 +172,32 @@ def check_unmasked_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -
     )
 
 
+def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no column is rewritten by two row update times.
+
+    Two update times over one column give it two earlier values and two
+    moments to switch between them, and nothing chooses. The entry
+    ``add_table`` adds for an update time that says nothing about itself
+    counts like any other. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the updates.
+
+    Raises:
+        ValidationError: If one column appears under two row update times.
+    """
+    seen: dict[str, str] = {}
+    for update_time, column, _ in schema.column_updates:
+        if column in seen:
+            raise ValidationError(
+                f"{column!r} of {schema.name!r} is listed under both "
+                f"row_update_time {seen[column]!r} and row_update_time "
+                f"{update_time!r}; give it one row_update_time",
+            )
+        seen[column] = update_time
+
+
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
     """Confirm a cutoff matches the tz awareness of the database's Datetime columns.
 
@@ -345,6 +371,7 @@ TABLE_CHECKS = {
     "datetime_row_update_times": check_dtype_row_update_times,
     "unmasked_primary_key": check_unmasked_primary_key,
     "unmasked_row_creation_time": check_unmasked_row_creation_time,
+    "singly_masked_columns": check_singly_masked_columns,
 }
 
 RELATIONSHIP_CHECKS = {
