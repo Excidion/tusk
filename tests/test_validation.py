@@ -11,6 +11,7 @@ from tusk import validation
 from tusk.database import TableSchema
 from tusk.exceptions import TuskError, ValidationError
 from tusk.validation import (
+    DEFAULT_TABLE_CHECKS,
     check_cutoff_time_zone,
     check_dtype_row_creation_time,
     check_dtype_row_update_times,
@@ -159,6 +160,11 @@ def spy(monkeypatch):
         {
             "unique_primary_key": lambda f, s: calls.append(s.name),
             "datetime_row_creation_time": check_dtype_row_creation_time,
+            "datetime_row_update_times": check_dtype_row_update_times,
+            "singly_masked_columns": check_singly_masked_columns,
+            "unmasked_primary_key": check_unmasked_primary_key,
+            "unmasked_row_creation_time": check_unmasked_row_creation_time,
+            "matching_fallback_dtypes": check_matching_fallback_dtypes,
         },
     )
     return calls
@@ -1105,3 +1111,38 @@ def test_a_table_without_row_update_times_passes_the_order_check():
     check_ordered_row_times(
         times_frame([dt.datetime(2024, 3, 1)], [dt.datetime(2024, 1, 1)]), schema
     )
+
+
+def test_the_order_check_is_not_in_the_add_table_default():
+    # It scans, so add_table must not pay for it.
+    assert "ordered_row_times" not in DEFAULT_TABLE_CHECKS
+
+
+def test_every_default_check_is_registered():
+    assert set(DEFAULT_TABLE_CHECKS) <= set(validation.TABLE_CHECKS)
+
+
+def test_no_default_check_reads_rows():
+    """Every default check must answer from the schema alone.
+
+    A frame that raises on any access proves it: if a check touched the data,
+    this test would see the exception instead of a clean pass.
+    """
+
+    class Unreadable:
+        def __getattr__(self, name):
+            raise AssertionError(f"a default check read the frame: {name}")
+
+    schema = TableSchema(
+        "orders",
+        "id",
+        "created_at",
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "created_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {"updated_at": {"status": "pending", "updated_at": None}},
+    )
+    validate_table(Unreadable(), schema, DEFAULT_TABLE_CHECKS)  # ty: ignore[invalid-argument-type]

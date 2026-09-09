@@ -15,7 +15,12 @@ from tusk.exceptions import (
     SchemaError,
 )
 from tusk.plotting import SchemaDiagram
-from tusk.validation import validate_database, validate_relationship, validate_table
+from tusk.validation import (
+    DEFAULT_TABLE_CHECKS,
+    validate_database,
+    validate_relationship,
+    validate_table,
+)
 
 
 @dataclass(frozen=True)
@@ -99,9 +104,12 @@ class Database:
         row_creation_time: str | None = None,
         row_update_times: Mapping[str, Mapping[str, Any]] | None = None,
         *,
-        validate: bool | str | Iterable[str] = "datetime_row_creation_time",
+        validate: bool | str | Iterable[str] = DEFAULT_TABLE_CHECKS,
     ) -> Database:
         """Add a table to the database.
+
+        A selected check that fails raises
+        :class:`~tusk.exceptions.ValidationError`.
 
         Args:
             name: Name to register the table under.
@@ -121,7 +129,8 @@ class Database:
             validate: Pick a string or list of strings from
                 [here](validation/#tusk.validation.TABLE_CHECKS)
                 to enable specific checks.
-                `True` runs every check, `False` runs none.
+                `True` runs every check, `False` runs none. The default runs
+                every check that reads no rows.
 
         Returns:
             This database, to allow chaining.

@@ -12,6 +12,7 @@ from tusk.exceptions import (
     ImplicitRowUpdateTimeMaskWarning,
     MissingPrimaryKeyWarning,
     SchemaError,
+    ValidationError,
 )
 
 
@@ -270,3 +271,56 @@ def test_the_declaration_is_copied_not_aliased():
     )
     declared["updated_at"]["status"] = "mutated"
     assert db.schema("orders").row_update_times["updated_at"]["status"] == "pending"
+
+
+def test_add_table_rejects_a_date_row_update_time_by_default():
+    with pytest.raises(ValidationError, match="row_update_time 'updated_on'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "updated_on": [dt.date(2024, 9, 1)]}),
+            primary_key="id",
+            row_update_times={"updated_on": {"updated_on": None}},
+        )
+
+
+def test_add_table_rejects_an_updated_primary_key_by_default():
+    with pytest.raises(ValidationError, match="primary_key 'id'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame({"id": [1], "updated_at": [dt.datetime(2024, 9, 1)]}),
+            primary_key="id",
+            row_update_times={"updated_at": {"id": None, "updated_at": None}},
+        )
+
+
+def test_add_table_rejects_a_misfitting_pre_update_value_by_default():
+    with pytest.raises(ValidationError, match="'status'"):
+        tusk.Database("d").add_table(
+            "orders",
+            pl.LazyFrame(
+                {
+                    "id": [1],
+                    "status": [1],
+                    "updated_at": [dt.datetime(2024, 9, 1)],
+                },
+            ),
+            primary_key="id",
+            row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
+        )
+
+
+def test_add_table_still_does_not_scan_by_default():
+    # unique_primary_key and ordered_row_times both read rows; neither may run.
+    tusk.Database("d").add_table(
+        "orders",
+        pl.LazyFrame(
+            {
+                "id": [1, 1],
+                "created_at": [dt.datetime(2024, 3, 1)] * 2,
+                "updated_at": [dt.datetime(2024, 1, 1)] * 2,
+            },
+        ),
+        primary_key="id",
+        row_creation_time="created_at",
+        row_update_times={"updated_at": {"updated_at": None}},
+    )

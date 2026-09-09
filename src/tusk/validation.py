@@ -464,6 +464,18 @@ TABLE_CHECKS = {
     "ordered_row_times": check_ordered_row_times,
 }
 
+# Every check here answers from the declared schema, so add_table can run all
+# of them without reading a row. A check that scans belongs in TABLE_CHECKS
+# and not here.
+DEFAULT_TABLE_CHECKS = (
+    "datetime_row_creation_time",
+    "datetime_row_update_times",
+    "singly_masked_columns",
+    "unmasked_primary_key",
+    "unmasked_row_creation_time",
+    "matching_fallback_dtypes",
+)
+
 RELATIONSHIP_CHECKS = {
     "matching_key_dtypes": check_matching_key_dtypes,
     "overlapping_keys": check_overlapping_keys,
