@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import narwhals as nw
+import polars as pl
 import pytest
 
 import tusk
@@ -12,6 +13,7 @@ from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
 from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
+from tusk.primitives.registry import resolve
 
 CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
@@ -180,3 +182,73 @@ def test_a_dfs_requested_cutoff_time_transform_used_as_an_aggregation_fails(db):
             max_depth=2,
             cutoff_time=datetime(2024, 3, 1),
         )
+
+
+def test_an_update_survives_an_aggregation(updating_db):
+    # Count is zero-arity in this codebase, so a base column cannot feed it;
+    # n_unique is the aggregation primitive that both takes a column input
+    # and is sensitive to the value being counted.
+    status = IdentityFeature("orders", "status", nw.String())
+    distinct_statuses = AggregationFeature(
+        resolve("n_unique"),
+        (status,),
+        Relationship("customers", "orders", "customer_id"),
+    )
+    got = (
+        compile_features(
+            FeatureList([distinct_statuses]),
+            updating_db,
+            cutoff_time=datetime(2024, 6, 1),
+        )
+        .collect()
+        .to_native()
+        .sort("id")
+    )
+    # Without masking, customer 1's orders show 'delivered' and 'pending' (2
+    # distinct values); with order 10's status rewound to 'pending', both of
+    # customer 1's orders read 'pending' (1 distinct value). Customer 2's
+    # single order is unaffected either way.
+    assert got["N_UNIQUE__orders__status"].to_list() == [1, 1]
+
+
+def test_an_updated_foreign_key_stops_a_child_reaching_its_parent():
+    customers = pl.LazyFrame(
+        {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},
+    )
+    orders = pl.LazyFrame(
+        {
+            "id": [10, 11],
+            "customer_id": [1, 2],
+            "amount": [1.0, 2.0],
+            "placed_at": [datetime(2024, 3, 1)] * 2,
+            "moved_at": [datetime(2024, 9, 1), None],
+        },
+    )
+    db = (
+        tusk.Database("shop")
+        .add_table(
+            "customers", customers, primary_key="id", row_creation_time="signed_up_at"
+        )
+        .add_table(
+            "orders",
+            orders,
+            primary_key="id",
+            row_creation_time="placed_at",
+            row_update_times={"moved_at": {"customer_id": None, "moved_at": None}},
+        )
+        .add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+    )
+    amount = IdentityFeature("orders", "amount", nw.Float64())
+    total = AggregationFeature(
+        resolve("sum"), (amount,), Relationship("customers", "orders", "customer_id")
+    )
+    got = (
+        compile_features(FeatureList([total]), db, cutoff_time=datetime(2024, 6, 1))
+        .collect()
+        .to_native()
+        .sort("id")
+    )
+    # Order 10 was moved to customer 1 after the cutoff, so at the cutoff it
+    # belonged to nobody. Sum's default_value of 0 covers customer 1's
+    # resulting empty group, per the empty-group convention in this file.
+    assert got["SUM__orders__amount"].to_list() == [0.0, 2.0]

@@ -92,3 +92,51 @@ def db():
             foreign_key="session_id",
         )
     )
+
+
+@pytest.fixture
+def updating_db():
+    """A shop whose orders have a status and a parent that get rewritten.
+
+    Against a cutoff of 2024-06-01: order 10 was updated after it, order 11
+    never, order 12 before it.
+    """
+    customers = pl.LazyFrame(
+        {
+            "id": [1, 2],
+            "signed_up_at": [dt.datetime(2024, 1, 1)] * 2,
+        },
+    )
+    orders = pl.LazyFrame(
+        {
+            "id": [10, 11, 12],
+            "customer_id": [1, 1, 2],
+            "amount": [1.0, 2.0, 4.0],
+            "placed_at": [dt.datetime(2024, 3, 1)] * 3,
+            "status": ["delivered", "pending", "delivered"],
+            "updated_at": [
+                dt.datetime(2024, 9, 1),
+                None,
+                dt.datetime(2024, 4, 1),
+            ],
+        },
+    )
+    return (
+        tusk.Database("shop")
+        .add_table(
+            "customers",
+            customers,
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "orders",
+            orders,
+            primary_key="id",
+            row_creation_time="placed_at",
+            row_update_times={
+                "updated_at": {"status": "pending", "updated_at": None},
+            },
+        )
+        .add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+    )

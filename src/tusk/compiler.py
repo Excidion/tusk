@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import narwhals as nw
 
-from tusk.database import Database, Relationship
+from tusk.database import Database, Relationship, TableSchema
 from tusk.exceptions import PrimitiveError, SchemaError, ValidationError
 from tusk.features import (
     AggregationFeature,
@@ -153,12 +153,13 @@ def base_frame(
     table: str,
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Return a table's frame with the cutoff filter applied.
+    """Return a table's frame as it stood at the cutoff.
 
-    Tables without a ``row_creation_time`` are timeless and pass through
-    unfiltered -- documented rather than warned, per spec section 8. A
-    database that declares no ``row_creation_time`` anywhere therefore
-    treats a cutoff as a silent no-op.
+    Rows created after the cutoff are dropped and columns updated after it
+    hold the value they held before. Tables without a ``row_creation_time``
+    are timeless and keep every row -- documented rather than warned, per spec
+    section 8 -- and a table declaring no ``row_update_times`` keeps every
+    value, so a cutoff on a database that declares neither is a silent no-op.
 
     The target table is filtered like any other, so a cutoff can leave the
     feature matrix with fewer rows than the target table has. That matches
@@ -171,13 +172,64 @@ def base_frame(
         cutoff_time: The cutoff, or None.
 
     Returns:
-        The filtered lazy frame.
+        The frame as it stood at the cutoff.
     """
     frame = database.frame(table)
-    row_creation_time = database.schema(table).row_creation_time
-    if cutoff_time is not None and row_creation_time is not None:
-        frame = frame.filter(nw.col(row_creation_time) <= cutoff_time)
-    return frame
+    if cutoff_time is None:
+        return frame
+
+    schema = database.schema(table)
+    if schema.row_creation_time is not None:
+        frame = frame.filter(nw.col(schema.row_creation_time) <= cutoff_time)
+    return _restore_updated_columns(frame, schema, cutoff_time)
+
+
+def _restore_updated_columns(
+    frame: nw.LazyFrame,
+    schema: TableSchema,
+    cutoff_time: datetime,
+) -> nw.LazyFrame:
+    """Give every column updated after the cutoff the value it held before.
+
+    Args:
+        frame: The table's frame, already filtered to the cutoff.
+        schema: The table's schema, naming the updates.
+        cutoff_time: The cutoff.
+
+    Returns:
+        The frame, with one replaced column per declared update.
+    """
+    # One with_columns for all of them: every expression in a single call
+    # reads the frame as it was, so an update time that replaces itself
+    # cannot corrupt the conditions of the columns it also replaces.
+    replacements = [
+        nw.when(_was_updated_by(update_time, cutoff_time))
+        .then(nw.col(column))
+        .otherwise(nw.lit(value, dtype=schema.dtypes[column]))
+        .alias(column)
+        for update_time, column, value in schema.column_updates
+    ]
+    if not replacements:
+        return frame
+    return frame.with_columns(*replacements)
+
+
+def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
+    """Build the test for a row's update having already happened.
+
+    A null update time is a row that was never updated, so the value it holds
+    is the one it has always held.
+
+    Args:
+        update_time: Column recording when the row was updated.
+        cutoff_time: The cutoff.
+
+    Returns:
+        A boolean expression, true where the stored values are the ones that
+        held at the cutoff.
+    """
+    updated = nw.col(update_time)
+    return updated.is_null() | (updated <= cutoff_time)
 
 
 def _table_frame(
