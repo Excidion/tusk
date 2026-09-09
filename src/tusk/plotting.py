@@ -49,7 +49,8 @@ class SchemaDiagram:
             database: The database to draw.
             columns: True lists every column, False lists none, and
                 ``"structural"`` lists only the primary key, the foreign keys,
-                and the ``row_creation_time``.
+                the ``row_creation_time``, the ``row_update_times``, and the
+                columns they update.
 
         Returns:
             The diagram.
@@ -300,8 +301,9 @@ def describe_comments(
     """Describe everything about a column that Mermaid has no marker for.
 
     Mermaid knows only PK, FK and UK, and its ``classDef`` styling cannot
-    target an individual attribute, so the tables a foreign key points at and
-    the ``row_creation_time`` both have to travel in the comment slot.
+    target an individual attribute, so the tables a foreign key points at, the
+    ``row_creation_time``, and every ``row_update_times`` role all have to
+    travel in the comment slot.
 
     Args:
         column: The column's name.
@@ -316,6 +318,15 @@ def describe_comments(
         comments.append("-> " + ", ".join(parents[column]))
     if column == schema.row_creation_time:
         comments.append("row creation time")
+    if column in schema.row_update_times:
+        comments.append("row update time")
+    comments.extend(
+        f"updated by {update_time}"
+        for update_time, updated, _ in schema.column_updates
+        # An update time carries its own label already, so naming it as its
+        # own updater would only repeat itself.
+        if updated == column and update_time != column
+    )
     return comments
 
 

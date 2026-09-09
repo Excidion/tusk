@@ -286,7 +286,8 @@ class Database:
         Args:
             columns: True lists every column, False lists none, and
                 ``"structural"`` lists only the primary key, the foreign keys,
-                and the ``row_creation_time``.
+                the ``row_creation_time``, the ``row_update_times``, and the
+                columns they update.
 
         Returns:
             The diagram, which renders itself in a notebook and writes itself

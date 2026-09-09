@@ -487,3 +487,50 @@ def test_plot_reads_no_rows(db, monkeypatch):
 
     monkeypatch.setattr(nw.LazyFrame, "collect", fail)
     db.plot()
+
+
+@pytest.fixture
+def updating_diagram_db():
+    """A table whose status is rewritten by an update time."""
+    return tusk.Database("shop").add_table(
+        "orders",
+        pl.LazyFrame(
+            {
+                "id": [1],
+                "status": ["delivered"],
+                "note": ["hi"],
+                "placed_at": [dt.datetime(2024, 3, 1)],
+                "updated_at": [dt.datetime(2024, 9, 1)],
+            },
+        ),
+        primary_key="id",
+        row_creation_time="placed_at",
+        row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
+    )
+
+
+def test_an_update_time_is_labelled(updating_diagram_db):
+    source = SchemaDiagram.from_database(updating_diagram_db, columns=True).source
+    assert 'Datetime[us] updated_at "row update time"' in source
+
+
+def test_an_updated_column_names_its_update_time(updating_diagram_db):
+    source = SchemaDiagram.from_database(updating_diagram_db, columns=True).source
+    assert 'String status "updated by updated_at"' in source
+
+
+def test_an_update_time_is_not_labelled_as_updated_by_itself(updating_diagram_db):
+    source = SchemaDiagram.from_database(updating_diagram_db, columns=True).source
+    assert "updated by updated_at; updated by updated_at" not in source
+    assert 'updated_at "row update time; updated by updated_at"' not in source
+
+
+def test_the_structural_view_keeps_update_times_and_updated_columns(
+    updating_diagram_db,
+):
+    source = SchemaDiagram.from_database(
+        updating_diagram_db, columns="structural"
+    ).source
+    assert "updated_at" in source
+    assert "status" in source
+    assert "note" not in source
