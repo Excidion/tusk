@@ -1499,16 +1499,11 @@ def test_a_table_without_row_update_times_passes_the_order_check():
     )
 
 
-def test_the_order_check_is_not_in_the_add_table_default():
-    # It scans, so add_table must not pay for it.
-    from tusk.validation import DEFAULT_TABLE_CHECKS
-
-    assert "ordered_row_times" not in DEFAULT_TABLE_CHECKS
 ```
 
 Add `check_ordered_row_times` to the `from tusk.validation import (...)` block.
 
-Leave `test_the_order_check_is_not_in_the_add_table_default` failing until Task 7 introduces `DEFAULT_TABLE_CHECKS`; note that in the commit message.
+The assertion that this check stays out of the `add_table` default belongs to Task 7, which introduces `DEFAULT_TABLE_CHECKS`. Do not write it here — this task ends green like every other.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -1562,16 +1557,17 @@ Register it in `TABLE_CHECKS`, last:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_validation.py -v`
-Expected: every new test PASSES except `test_the_order_check_is_not_in_the_add_table_default`, which fails on `ImportError: cannot import name 'DEFAULT_TABLE_CHECKS'`. Task 7 fixes it.
+Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the whole suite and lint**
+
+Run: `uv run pytest && just lint`
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/tusk/validation.py tests/test_validation.py
-git commit -m "feat: add an opt-in check that updates follow row creation
-
-test_the_order_check_is_not_in_the_add_table_default stays red until
-DEFAULT_TABLE_CHECKS lands in the next commit."
+git commit -m "feat: add an opt-in check that updates follow row creation"
 ```
 
 ---
@@ -1592,6 +1588,11 @@ DEFAULT_TABLE_CHECKS lands in the next commit."
 Append to `tests/test_validation.py`:
 
 ```python
+def test_the_order_check_is_not_in_the_add_table_default():
+    # It scans, so add_table must not pay for it.
+    assert "ordered_row_times" not in DEFAULT_TABLE_CHECKS
+
+
 def test_every_default_check_is_registered():
     assert set(DEFAULT_TABLE_CHECKS) <= set(validation.TABLE_CHECKS)
 
@@ -1742,7 +1743,31 @@ Expected: PASS, including `test_the_order_check_is_not_in_the_add_table_default`
 - [ ] **Step 6: Run the whole suite and lint**
 
 Run: `uv run pytest && just lint`
-Expected: all green. If a pre-existing test built a table that trips a new default check, that table was always wrong — fix the fixture, do not pass `validate=False`.
+Expected: all green.
+
+One pre-existing breakage is known and must be fixed here. The `spy` fixture in `tests/test_validation.py:150` monkeypatches `TABLE_CHECKS` down to two entries, and `test_add_table_runs_no_other_check_by_default` then calls `add_table` with the default selector. Once that default names six checks, `_select_checks` raises `ValueError: unknown check 'datetime_row_update_times'` against the shrunken registry. Widen the fixture to carry every default name, keeping `unique_primary_key` as the recorder and pointing the rest at their real functions, so the test still proves what it was written to prove — that the scanning check does not run by default:
+
+```python
+@pytest.fixture
+def spy(monkeypatch):
+    """Replace the registry with a recorder, so plumbing is observable."""
+    calls = []
+    monkeypatch.setattr(
+        "tusk.validation.TABLE_CHECKS",
+        {
+            "unique_primary_key": lambda f, s: calls.append(s.name),
+            "datetime_row_creation_time": check_dtype_row_creation_time,
+            "datetime_row_update_times": check_dtype_row_update_times,
+            "singly_masked_columns": check_singly_masked_columns,
+            "unmasked_primary_key": check_unmasked_primary_key,
+            "unmasked_row_creation_time": check_unmasked_row_creation_time,
+            "matching_fallback_dtypes": check_matching_fallback_dtypes,
+        },
+    )
+    return calls
+```
+
+If any *other* pre-existing test trips a new default check, that test's table was always wrong — fix the table, do not pass `validate=False`.
 
 - [ ] **Step 7: Commit**
 
