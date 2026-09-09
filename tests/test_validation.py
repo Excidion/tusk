@@ -16,6 +16,7 @@ from tusk.validation import (
     check_dtype_row_update_times,
     check_matching_fallback_dtypes,
     check_non_null_primary_key,
+    check_ordered_row_times,
     check_singly_masked_columns,
     check_unique_primary_key,
     check_unmasked_primary_key,
@@ -1028,3 +1029,79 @@ def test_a_misfitting_pre_update_value_is_reported(value, dtype):
 
 def test_a_table_without_row_update_times_passes_the_value_check():
     check_matching_fallback_dtypes(frame([1]), updating_schema({}))
+
+
+def times_frame(created, updated):
+    """A frame of creation and update timestamps."""
+    return nw.from_native(
+        pl.LazyFrame(
+            {"created_at": created, "updated_at": updated},
+            schema={"created_at": pl.Datetime, "updated_at": pl.Datetime},
+        ),
+    )
+
+
+def times_schema():
+    """A schema over created_at and updated_at, the latter updating itself."""
+    return TableSchema(
+        "orders",
+        None,
+        "created_at",
+        {"created_at": nw.Datetime(), "updated_at": nw.Datetime()},
+        {"updated_at": {"updated_at": None}},
+    )
+
+
+def test_an_update_before_the_creation_is_reported():
+    got = times_frame(
+        [dt.datetime(2024, 3, 1)] * 2,
+        [dt.datetime(2024, 1, 1), dt.datetime(2024, 5, 1)],
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_ordered_row_times(got, times_schema())
+    message = str(excinfo.value)
+    assert "'updated_at'" in message
+    assert "'created_at'" in message
+    assert "1 rows" in message
+
+
+def test_updates_at_or_after_the_creation_pass():
+    check_ordered_row_times(
+        times_frame(
+            [dt.datetime(2024, 3, 1)] * 2,
+            [dt.datetime(2024, 3, 1), dt.datetime(2024, 5, 1)],
+        ),
+        times_schema(),
+    )
+
+
+def test_a_null_update_time_passes_the_order_check():
+    check_ordered_row_times(
+        times_frame([dt.datetime(2024, 3, 1)], [None]), times_schema()
+    )
+
+
+def test_a_table_without_a_row_creation_time_passes_the_order_check():
+    schema = TableSchema(
+        "orders",
+        None,
+        None,
+        {"created_at": nw.Datetime(), "updated_at": nw.Datetime()},
+        {"updated_at": {"updated_at": None}},
+    )
+    check_ordered_row_times(
+        times_frame([dt.datetime(2024, 3, 1)], [dt.datetime(2024, 1, 1)]), schema
+    )
+
+
+def test_a_table_without_row_update_times_passes_the_order_check():
+    schema = TableSchema(
+        "orders",
+        None,
+        "created_at",
+        {"created_at": nw.Datetime(), "updated_at": nw.Datetime()},
+        {},
+    )
+    check_ordered_row_times(
+        times_frame([dt.datetime(2024, 3, 1)], [dt.datetime(2024, 1, 1)]), schema
+    )

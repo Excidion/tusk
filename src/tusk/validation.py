@@ -220,6 +220,39 @@ def check_matching_fallback_dtypes(frame: nw.LazyFrame, schema: TableSchema) -> 
         )
 
 
+def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row was updated before it was created.
+
+    Scans the table. A table with no ``row_creation_time`` or no
+    ``row_update_times`` is skipped, as is a row whose update time is null:
+    a row that was never updated has no order to check.
+
+    Args:
+        frame: The table's lazy frame.
+        schema: The table's schema, naming the columns to compare.
+
+    Raises:
+        ValidationError: If an update time is before the row creation time.
+    """
+    created = schema.row_creation_time
+    if created is None or not schema.row_update_times:
+        return
+
+    early = frame.select(
+        (nw.col(update_time) < nw.col(created)).sum().alias(update_time)
+        for update_time in schema.row_update_times
+    ).collect()
+
+    for update_time in schema.row_update_times:
+        rows = early[update_time].item()
+        if not rows:
+            continue
+        raise ValidationError(
+            f"row_update_time {update_time!r} of {schema.name!r} is before "
+            f"row_creation_time {created!r} in {rows} rows",
+        )
+
+
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
     """Confirm a cutoff matches the tz awareness of the database's Datetime columns.
 
@@ -428,6 +461,7 @@ TABLE_CHECKS = {
     "unmasked_row_creation_time": check_unmasked_row_creation_time,
     "singly_masked_columns": check_singly_masked_columns,
     "matching_fallback_dtypes": check_matching_fallback_dtypes,
+    "ordered_row_times": check_ordered_row_times,
 }
 
 RELATIONSHIP_CHECKS = {
