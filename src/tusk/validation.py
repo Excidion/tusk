@@ -7,8 +7,8 @@ Nothing here runs unless the caller asks, through
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
-from typing import TYPE_CHECKING
+from datetime import date, datetime
+from typing import TYPE_CHECKING, Any
 
 import narwhals as nw
 
@@ -198,6 +198,28 @@ def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> Non
         seen[column] = update_time
 
 
+def check_matching_fallback_dtypes(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm every declared pre-update value fits the column it replaces.
+
+    Reads the schema only. A null fits every column.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the updates.
+
+    Raises:
+        ValidationError: If a pre-update value does not fit its column's dtype.
+    """
+    for update_time, column, value in schema.column_updates:
+        dtype = schema.dtypes[column]
+        if _fits_dtype(value, dtype):
+            continue
+        raise ValidationError(
+            f"{value!r}, listed for {column!r} of {schema.name!r} under "
+            f"row_update_time {update_time!r}, is not a {dtype} value",
+        )
+
+
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
     """Confirm a cutoff matches the tz awareness of the database's Datetime columns.
 
@@ -364,6 +386,39 @@ def _updating_row_update_time(schema: TableSchema, column: str | None) -> str | 
     return None
 
 
+def _fits_dtype(value: Any, dtype: Any) -> bool:
+    """Decide whether a Python value can stand in for a narwhals dtype.
+
+    A null fits every column. A dtype family tusk does not recognise accepts
+    every value, because refusing one it cannot judge is worse than letting
+    the backend judge it at collect time.
+
+    Args:
+        value: The declared pre-update value.
+        dtype: The narwhals dtype of the column it replaces.
+
+    Returns:
+        True if the value fits the dtype.
+    """
+    # bool is a subclass of int and datetime is a subclass of date, so both
+    # narrow types have to be tested before the wide ones.
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return dtype == nw.Boolean
+    if isinstance(value, int):
+        return dtype.is_integer() or dtype.is_float()
+    if isinstance(value, float):
+        return dtype.is_float()
+    if isinstance(value, str):
+        return dtype in (nw.String, nw.Categorical, nw.Enum)
+    if isinstance(value, datetime):
+        return dtype == nw.Datetime
+    if isinstance(value, date):
+        return dtype == nw.Date
+    return True
+
+
 TABLE_CHECKS = {
     "non_null_primary_key": check_non_null_primary_key,
     "unique_primary_key": check_unique_primary_key,
@@ -372,6 +427,7 @@ TABLE_CHECKS = {
     "unmasked_primary_key": check_unmasked_primary_key,
     "unmasked_row_creation_time": check_unmasked_row_creation_time,
     "singly_masked_columns": check_singly_masked_columns,
+    "matching_fallback_dtypes": check_matching_fallback_dtypes,
 }
 
 RELATIONSHIP_CHECKS = {

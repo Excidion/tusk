@@ -14,6 +14,7 @@ from tusk.validation import (
     check_cutoff_time_zone,
     check_dtype_row_creation_time,
     check_dtype_row_update_times,
+    check_matching_fallback_dtypes,
     check_non_null_primary_key,
     check_singly_masked_columns,
     check_unique_primary_key,
@@ -970,3 +971,60 @@ def test_an_update_time_updated_by_another_one_is_reported():
     )
     with pytest.raises(ValidationError, match="'second'"):
         check_singly_masked_columns(frame([1]), schema)
+
+
+@pytest.mark.parametrize(
+    ("value", "dtype"),
+    [
+        (None, nw.Int64()),
+        (None, nw.String()),
+        (1, nw.Int64()),
+        (1, nw.Float64()),
+        (1.5, nw.Float64()),
+        (True, nw.Boolean()),
+        ("pending", nw.String()),
+        ("pending", nw.Categorical()),
+        (dt.datetime(2024, 1, 1), nw.Datetime()),
+        (dt.date(2024, 1, 1), nw.Date()),
+    ],
+)
+def test_a_fitting_pre_update_value_passes(value, dtype):
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "column": dtype, "updated_at": nw.Datetime()},
+        {"updated_at": {"column": value, "updated_at": None}},
+    )
+    check_matching_fallback_dtypes(frame([1]), schema)
+
+
+@pytest.mark.parametrize(
+    ("value", "dtype"),
+    [
+        ("pending", nw.Int64()),
+        (1.5, nw.Int64()),
+        (True, nw.Int64()),
+        (1, nw.String()),
+        (1, nw.Boolean()),
+        (dt.date(2024, 1, 1), nw.Datetime()),
+        (dt.datetime(2024, 1, 1), nw.Date()),
+    ],
+)
+def test_a_misfitting_pre_update_value_is_reported(value, dtype):
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "column": dtype, "updated_at": nw.Datetime()},
+        {"updated_at": {"column": value, "updated_at": None}},
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_matching_fallback_dtypes(frame([1]), schema)
+    message = str(excinfo.value)
+    assert "'column'" in message
+    assert "'updated_at'" in message
+
+
+def test_a_table_without_row_update_times_passes_the_value_check():
+    check_matching_fallback_dtypes(frame([1]), updating_schema({}))
