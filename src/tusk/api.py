@@ -55,9 +55,12 @@ def deep_feature_synthesis(
             Its tz awareness must match the database's Datetime columns'.
             A table with no ``row_creation_time`` is timeless and passes
             through unfiltered, so a cutoff on a database that declares none is
-            silently a no-op. None disables filtering. Ignored entirely when
-            ``features_only`` is true, since nothing is computed: the cutoff
-            belongs to compilation, and feature definitions do not record it.
+            silently a no-op. None disables filtering. Columns declared in a
+            table's ``row_update_times`` also serve the value they held
+            before, wherever the update happened after the cutoff. Ignored
+            entirely when ``features_only`` is true, since nothing is
+            computed: the cutoff belongs to compilation, and feature
+            definitions do not record it.
         features_only: Return the feature definitions without computing them.
 
     Returns:
@@ -117,7 +120,9 @@ def apply_features(
             must match the database's Datetime columns'. A table with no
             ``row_creation_time`` is timeless and passes through unfiltered,
             so a cutoff on a database that declares none is silently a no-op.
-            None disables filtering.
+            None disables filtering. Columns declared in a table's
+            ``row_update_times`` also serve the value they held before,
+            wherever the update happened after the cutoff.
 
     Returns:
         feature_matrix: An uncomputed query plan in the caller's native frame

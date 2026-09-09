@@ -72,7 +72,9 @@ class FeatureList(Sequence[Feature]):
                 this value are visible, on the target table as well as its
                 relatives, so the matrix may have fewer rows than the target.
                 Its tz awareness must match the database's Datetime columns'.
-                None disables filtering.
+                None disables filtering. Columns declared in a table's
+                ``row_update_times`` also serve the value they held before,
+                wherever the update happened after the cutoff.
 
         Returns:
             feature_matrix: An uncomputed query plan in the caller's native

@@ -177,3 +177,69 @@ keeps only the table names and the lines between them:
 ```python
 db.plot(columns="structural")
 ```
+
+## Row update times
+
+`row_creation_time` decides whether a **row** is visible at a cutoff. It says
+nothing about a **column**. A table that keeps only each row's current state
+plus a timestamp of the last edit
+
+| id | placed_at | status | updated_at |
+| -- | --------- | ------ | ---------- |
+| 1 | 2024-01-05 | delivered | 2024-09-01 |
+
+is fully visible at `cutoff_time=2024-06-01`, and `status` comes back holding a
+value written three months after it. `row_update_times` closes that:
+
+```python
+db.add_table(
+    "orders",
+    orders,
+    primary_key="id",
+    row_creation_time="placed_at",
+    row_update_times={
+        "updated_at": {"status": "pending", "updated_at": None},
+    },
+)
+```
+
+The outer key names the column recording when the row was last edited. The
+inner mapping names the columns that edit rewrote, each mapped to **the value
+it held before**. Under a cutoff, a row whose `updated_at` falls after it
+serves those earlier values instead of its current ones.
+
+tusk cannot work the earlier value out for you. The table kept only the current
+one; `"pending"` above is your knowledge about your own data, not something
+tusk can recover. `None` is a legitimate answer — it says the column's earlier
+value is unknown — but it is an answer you choose, not a default you fall into.
+
+A null `updated_at` means the row was never edited, so its stored value is its
+original one and is visible at every cutoff.
+
+### The update time updates itself
+
+`MAX(orders.updated_at)` on a customer answers "when will this customer's order
+next be touched" unless `updated_at` gets an earlier value of its own. tusk
+therefore adds `"updated_at": None` to the mapping when you leave it out, and
+warns with
+[`ImplicitRowUpdateTimeMaskWarning`][tusk.exceptions.ImplicitRowUpdateTimeMaskWarning]
+so you can pick a different value. Listing it yourself silences the warning.
+
+### What cannot be updated
+
+The primary key and the `row_creation_time` may not appear in a mapping. The
+primary key names the feature matrix's rows, and every visible row was created
+at or before the cutoff already, so neither has an earlier value that means
+anything. Both are refused by a check that runs by default.
+
+Foreign keys **may** be updated, and doing so is one of the more useful cases:
+an order moved to another customer after the cutoff, with its foreign key given
+an earlier value of `None`, correctly stops contributing to either customer's
+aggregations at that cutoff.
+
+### What tusk cannot see
+
+A column that is overwritten in place and named in no `row_update_times` is
+indistinguishable, to tusk, from one that is never touched. It will be read at
+face value and it will leak. Nothing in a schema reveals which columns are
+rewritten; only you know that.
