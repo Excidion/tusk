@@ -27,8 +27,14 @@ db.add_table(
     primary_key="id",
     row_creation_time="signed_up_at",
 )
-db.add_table("products", products_lf, primary_key="id", row_creation_time="listed_at")
-db.add_table("orders", orders_lf, primary_key="id", row_creation_time="placed_at")
+db.add_table("products", products_lf, primary_key="id")
+db.add_table(
+    "orders",
+    orders_lf,
+    primary_key="id",
+    row_creation_time="placed_at",
+    row_update_times={"payed_at": {"payed_at": None, "payment_method": None}},
+)
 
 db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
 db.add_relationship(parent="products", child="orders", foreign_key="product_id")
@@ -72,14 +78,13 @@ db.plot()
 erDiagram
   "customers" {
     Int64 id PK
-    String region
+    String city
     Datetime[us] signed_up_at "row creation time"
   }
   "products" {
     Int64 id PK
-    String category
+    Categorical category
     Float64 price
-    Datetime[us] listed_at "row creation time"
   }
   "orders" {
     Int64 id PK
@@ -87,6 +92,8 @@ erDiagram
     Int64 product_id FK "-> products"
     Int64 quantity
     Datetime[us] placed_at "row creation time"
+    Datetime[us] payed_at "row update time"
+    Categorical payment_method "@ payed_at"
   }
   "customers" 1 to 0+ "orders" : ""
   "products" 1 to 0+ "orders" : ""

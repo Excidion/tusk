@@ -321,7 +321,7 @@ def describe_comments(
     if column in schema.row_update_times:
         comments.append("row update time")
     comments.extend(
-        f"updated by {update_time}"
+        f"@ {update_time}"
         for update_time, updated, _ in schema.column_updates
         # An update time carries its own label already, so naming it as its
         # own updater would only repeat itself.

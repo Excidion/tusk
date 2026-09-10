@@ -94,7 +94,7 @@ a name, so the conventional form is unusable there. Every construct joins with
 
 | meaning | column name |
 | --- | --- |
-| a parent's column | `customers__region` |
+| a parent's column | `customers__city` |
 | an aggregation | `MEAN__orders__quantity` |
 | a zero-arity aggregation | `COUNT__orders` |
 | stacked to depth 2 | `MEAN__orders__products__price` |

@@ -12,8 +12,16 @@ db = tusk.Database("shop")
 db.add_table(
     "customers", customers_lf, primary_key="id", row_creation_time="signed_up_at"
 )
-db.add_table("orders", orders_lf, primary_key="id", row_creation_time="placed_at")
+db.add_table("products", products_lf, primary_key="id")
+db.add_table(
+    "orders",
+    orders_lf,
+    primary_key="id",
+    row_creation_time="placed_at",
+    row_update_times={"payed_at": {"payed_at": None, "payment_method": None}},
+)
 db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+db.add_relationship(parent="products", child="orders", foreign_key="product_id")
 ```
 
 Both `add_table` and `add_relationship` return the database, so they chain.
@@ -127,29 +135,33 @@ For the shop database above, that gives:
 erDiagram
   "customers" {
     Int64 id PK
-    String region
+    String city
     Datetime[us] signed_up_at "row creation time"
   }
   "products" {
     Int64 id PK
-    String category
+    Categorical category
     Float64 price
-    Datetime[us] listed_at "row creation time"
   }
   "orders" {
     Int64 id PK
-    Int64 customer_id FK
-    Int64 product_id FK
+    Int64 customer_id FK "-> customers"
+    Int64 product_id FK "-> products"
     Int64 quantity
     Datetime[us] placed_at "row creation time"
+    Datetime[us] payed_at "row update time"
+    Categorical payment_method "@ payed_at"
   }
-  "customers" 1 to 0+ "orders" : "customer_id"
-  "products" 1 to 0+ "orders" : "product_id"
+  "customers" 1 to 0+ "orders" : ""
+  "products" 1 to 0+ "orders" : ""
 ```
 
 Each attribute row is the column's dtype, its name, its key marker, and a
-comment. `PK` and `FK` are Mermaid's own markers; the `row_creation_time` gets
-a comment instead, because Mermaid has no marker for it.
+comment. `PK` and `FK` are Mermaid's own markers; everything else travels in
+the comment, because Mermaid has no marker for it: the table a foreign key
+points at, the `row_creation_time`, each
+[`row_update_times`](#row-update-times) column, and `@ <update time>` on every
+column that update time fills in.
 
 `1 to 0+` reads as one parent row to zero or more child rows. A child whose
 `primary_key` *is* the foreign key can only ever match one parent row, and
@@ -171,7 +183,8 @@ pip install tusk-ml[plot]
 ```
 
 Wide tables make an unreadable picture. `columns="structural"` keeps only the
-primary key, the foreign keys and the `row_creation_time`; `columns=False`
+primary key, the foreign keys, the `row_creation_time`, the `row_update_times`
+and the columns they update; `columns=False`
 keeps only the table names and the lines between them:
 
 ```python

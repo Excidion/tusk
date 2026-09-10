@@ -220,7 +220,7 @@ Its own class, so it can be filtered independently, matching
 `describe_comments` in `plotting.py` gains two phrases:
 
 - `"row update time"` on an update-time column
-- `"updated by <update_time>"` on a masked column
+- `"@ <update_time>"` on a masked column
 
 `columns="structural"` needs no change: it shows exactly the columns whose
 `describe_role` is non-empty, so both new phrases pull their columns in
