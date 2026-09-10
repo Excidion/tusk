@@ -159,21 +159,17 @@ def test_a_generator_selector_still_checks_every_table():
 
 @pytest.fixture
 def spy(monkeypatch):
-    """Replace the registry with a recorder, so plumbing is observable."""
+    """Replace the registry with a recorder, so plumbing is observable.
+
+    Every default check keeps its real function, so the registry follows
+    DEFAULT_TABLE_CHECKS rather than listing names that go stale each time a
+    default is added. Only 'unique_primary_key' -- which scans, and so must
+    not run from add_table by default -- becomes the recorder.
+    """
     calls = []
-    monkeypatch.setattr(
-        "tusk.validation.TABLE_CHECKS",
-        {
-            "unique_primary_key": lambda f, s: calls.append(s.name),
-            "datetime_row_creation_time": check_dtype_row_creation_time,
-            "datetime_row_update_times": check_dtype_row_update_times,
-            "singly_masked_columns": check_singly_masked_columns,
-            "unmasked_primary_key": check_unmasked_primary_key,
-            "unmasked_row_creation_time": check_unmasked_row_creation_time,
-            "unchained_row_update_times": check_unchained_row_update_times,
-            "matching_fallback_dtypes": check_matching_fallback_dtypes,
-        },
-    )
+    registry = {name: validation.TABLE_CHECKS[name] for name in DEFAULT_TABLE_CHECKS}
+    registry["unique_primary_key"] = lambda frame, schema: calls.append(schema.name)
+    monkeypatch.setattr("tusk.validation.TABLE_CHECKS", registry)
     return calls
 
 
@@ -1248,17 +1244,6 @@ def test_a_table_without_row_update_times_passes_the_chain_check():
 
 def test_the_chain_check_runs_by_default():
     assert "unchained_row_update_times" in DEFAULT_TABLE_CHECKS
-
-
-def test_the_chain_check_precedes_the_duplicate_check():
-    # A chain also duplicates, because add_table gives the chained column a
-    # self-entry. Whichever check runs first writes the message the user
-    # reads, and 'give it one row_update_time' describes a declaration they
-    # did not write.
-    names = list(DEFAULT_TABLE_CHECKS)
-    assert names.index("unchained_row_update_times") < names.index(
-        "singly_masked_columns",
-    )
 
 
 def test_add_table_reports_a_chain_as_a_chain():

@@ -494,9 +494,6 @@ TABLE_CHECKS = {
 DEFAULT_TABLE_CHECKS = (
     "datetime_row_creation_time",
     "datetime_row_update_times",
-    # add_table gives a chained update time a self-entry, which leaves it
-    # listed twice, so a chain trips singly_masked_columns as well. This runs
-    # first to report the chain rather than a duplicate nobody wrote.
     "unchained_row_update_times",
     "singly_masked_columns",
     "unmasked_primary_key",
