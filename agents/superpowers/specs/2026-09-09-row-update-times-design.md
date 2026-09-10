@@ -131,17 +131,29 @@ decision 4.
 
 ## Validation
 
-Six new entries in `TABLE_CHECKS`. Five read no rows and run by default from
-`add_table`; the sixth scans and does not.
+Seven new entries in `TABLE_CHECKS`. Six read no rows and run by default from
+`add_table`; the seventh scans and does not.
 
 | Name | Raises when | Default |
 | --- | --- | --- |
 | `datetime_row_update_times` | an update-time column is not `Datetime` | on |
+| `unchained_row_update_times` | an update time is masked by another update time | on |
 | `singly_masked_columns` | one column is masked by two update times | on |
 | `unmasked_primary_key` | the primary key is masked | on |
 | `unmasked_row_creation_time` | the row creation time is masked | on |
 | `matching_fallback_dtypes` | a fallback does not fit its column's dtype | on |
 | `ordered_row_times` | some `update_time < row_creation_time` | off |
+
+`unchained_row_update_times` refuses a declaration where one update time is
+listed under another. Every column is rewound in one pass against the stored
+timestamps, so a chained update time would decide the columns below it using a
+value already known to be from after the cutoff — leaking it.
+
+It runs before `singly_masked_columns`, which a chain also trips: the chained
+update time does not list itself, so `add_table` inserts its self-entry, and it
+ends up listed twice — once under the update time above it, once under itself.
+Running first means the error names the chain instead of reporting a duplicate
+the user never wrote.
 
 `singly_masked_columns` counts the self-mask of decision 3 like any other
 entry, so declaring `{"a": {"b_time": 0}, "b_time": {...}}` fails: `a` masks

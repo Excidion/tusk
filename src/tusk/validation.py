@@ -172,6 +172,30 @@ def check_unmasked_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -
     )
 
 
+def check_unchained_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row update time is rewritten by another row update time.
+
+    The entry ``add_table`` adds for an update time that says nothing about
+    itself is not a chain. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the updates.
+
+    Raises:
+        ValidationError: If a row update time is listed under a different row
+            update time.
+    """
+    for update_time, column, _ in schema.column_updates:
+        if column == update_time or column not in schema.row_update_times:
+            continue
+        raise ValidationError(
+            f"row_update_time {column!r} of {schema.name!r} is itself listed "
+            f"under row_update_time {update_time!r}; an update time cannot say "
+            f"what other columns held before if it is unknown itself",
+        )
+
+
 def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no column is rewritten by two row update times.
 
@@ -458,6 +482,7 @@ TABLE_CHECKS = {
     "datetime_row_update_times": check_dtype_row_update_times,
     "unmasked_primary_key": check_unmasked_primary_key,
     "unmasked_row_creation_time": check_unmasked_row_creation_time,
+    "unchained_row_update_times": check_unchained_row_update_times,
     "singly_masked_columns": check_singly_masked_columns,
     "matching_fallback_dtypes": check_matching_fallback_dtypes,
     "ordered_row_times": check_ordered_row_times,
@@ -469,6 +494,10 @@ TABLE_CHECKS = {
 DEFAULT_TABLE_CHECKS = (
     "datetime_row_creation_time",
     "datetime_row_update_times",
+    # add_table gives a chained update time a self-entry, which leaves it
+    # listed twice, so a chain trips singly_masked_columns as well. This runs
+    # first to report the chain rather than a duplicate nobody wrote.
+    "unchained_row_update_times",
     "singly_masked_columns",
     "unmasked_primary_key",
     "unmasked_row_creation_time",

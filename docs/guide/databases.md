@@ -241,6 +241,23 @@ an order moved to another customer after the cutoff, with its foreign key given
 an earlier value of `None`, correctly stops contributing to either customer's
 aggregations at that cutoff.
 
+An update time may not be updated by another update time either. Chaining them
+
+```python
+row_update_times={
+    "updated_at": {"shipped_at": None},   # refused
+    "shipped_at": {"status": "pending"},
+}
+```
+
+is refused by the `unchained_row_update_times` check, which also runs by
+default. Every column is rewound in one pass, against the timestamps the table
+actually holds, so `status` would be decided by `shipped_at`'s stored value —
+the one already known to be from after the cutoff. The result contradicts
+itself: `shipped_at` comes back unknown, while the column it vouched for keeps
+a value from the future. Give each updated column an update time that is
+trustworthy on its own.
+
 ### What tusk cannot see
 
 A column that is overwritten in place and named in no `row_update_times` is

@@ -1,4 +1,5 @@
 import datetime as dt
+import warnings
 from zoneinfo import ZoneInfo
 
 import narwhals as nw
@@ -9,7 +10,11 @@ import pytest
 import tusk
 from tusk import validation
 from tusk.database import TableSchema
-from tusk.exceptions import TuskError, ValidationError
+from tusk.exceptions import (
+    ImplicitRowUpdateTimeMaskWarning,
+    TuskError,
+    ValidationError,
+)
 from tusk.validation import (
     DEFAULT_TABLE_CHECKS,
     check_cutoff_time_zone,
@@ -19,6 +24,7 @@ from tusk.validation import (
     check_non_null_primary_key,
     check_ordered_row_times,
     check_singly_masked_columns,
+    check_unchained_row_update_times,
     check_unique_primary_key,
     check_unmasked_primary_key,
     check_unmasked_row_creation_time,
@@ -164,6 +170,7 @@ def spy(monkeypatch):
             "singly_masked_columns": check_singly_masked_columns,
             "unmasked_primary_key": check_unmasked_primary_key,
             "unmasked_row_creation_time": check_unmasked_row_creation_time,
+            "unchained_row_update_times": check_unchained_row_update_times,
             "matching_fallback_dtypes": check_matching_fallback_dtypes,
         },
     )
@@ -985,25 +992,27 @@ def test_add_table_rejects_a_chained_row_update_time():
     # with_columns reads every mask's condition off the original frame, so
     # 'status' would leak shipped_at's raw post-cutoff value; add_table must
     # refuse this declaration rather than let base_frame produce it.
-    with pytest.raises(ValidationError, match="'shipped_at'"):
-        tusk.Database("d").add_table(
-            "orders",
-            pl.LazyFrame(
-                {
-                    "id": [1],
-                    "placed_at": [dt.datetime(2024, 1, 1)],
-                    "status": ["delivered"],
-                    "shipped_at": [dt.datetime(2024, 4, 1)],
-                    "updated_at": [dt.datetime(2024, 9, 1)],
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ImplicitRowUpdateTimeMaskWarning)
+        with pytest.raises(ValidationError, match="'shipped_at'"):
+            tusk.Database("d").add_table(
+                "orders",
+                pl.LazyFrame(
+                    {
+                        "id": [1],
+                        "placed_at": [dt.datetime(2024, 1, 1)],
+                        "status": ["delivered"],
+                        "shipped_at": [dt.datetime(2024, 4, 1)],
+                        "updated_at": [dt.datetime(2024, 9, 1)],
+                    },
+                ),
+                primary_key="id",
+                row_creation_time="placed_at",
+                row_update_times={
+                    "updated_at": {"shipped_at": None, "updated_at": None},
+                    "shipped_at": {"status": "pending"},
                 },
-            ),
-            primary_key="id",
-            row_creation_time="placed_at",
-            row_update_times={
-                "updated_at": {"shipped_at": None, "updated_at": None},
-                "shipped_at": {"status": "pending"},
-            },
-        )
+            )
 
 
 @pytest.mark.parametrize(
@@ -1175,3 +1184,103 @@ def test_no_default_check_reads_rows():
         {"updated_at": {"status": "pending", "updated_at": None}},
     )
     validate_table(Unreadable(), schema, DEFAULT_TABLE_CHECKS)  # ty: ignore[invalid-argument-type]
+
+
+def chained_schema():
+    """A schema where 'updated_at' rewrites 'shipped_at', which rewrites 'status'."""
+    return TableSchema(
+        "orders",
+        "id",
+        "placed_at",
+        {
+            "id": nw.Int64(),
+            "placed_at": nw.Datetime(),
+            "status": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "updated_at": {"shipped_at": None, "updated_at": None},
+            "shipped_at": {"status": "pending", "shipped_at": None},
+        },
+    )
+
+
+def test_a_chained_row_update_time_is_reported():
+    with pytest.raises(ValidationError) as excinfo:
+        check_unchained_row_update_times(frame([1]), chained_schema())
+    message = str(excinfo.value)
+    assert "'shipped_at'" in message
+    assert "'updated_at'" in message
+    assert "'orders'" in message
+
+
+def test_an_update_time_listing_only_itself_passes_the_chain_check():
+    check_unchained_row_update_times(
+        frame([1]),
+        updating_schema({"updated_at": {"status": "pending", "updated_at": None}}),
+    )
+
+
+def test_two_independent_update_times_pass_the_chain_check():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "note": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "shipped_at": {"status": "pending", "shipped_at": None},
+            "updated_at": {"note": None, "updated_at": None},
+        },
+    )
+    check_unchained_row_update_times(frame([1]), schema)
+
+
+def test_a_table_without_row_update_times_passes_the_chain_check():
+    check_unchained_row_update_times(frame([1]), updating_schema({}))
+
+
+def test_the_chain_check_runs_by_default():
+    assert "unchained_row_update_times" in DEFAULT_TABLE_CHECKS
+
+
+def test_the_chain_check_precedes_the_duplicate_check():
+    # A chain also duplicates, because add_table gives the chained column a
+    # self-entry. Whichever check runs first writes the message the user
+    # reads, and 'give it one row_update_time' describes a declaration they
+    # did not write.
+    names = list(DEFAULT_TABLE_CHECKS)
+    assert names.index("unchained_row_update_times") < names.index(
+        "singly_masked_columns",
+    )
+
+
+def test_add_table_reports_a_chain_as_a_chain():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ImplicitRowUpdateTimeMaskWarning)
+        with pytest.raises(ValidationError, match="itself listed under") as excinfo:
+            tusk.Database("d").add_table(
+                "orders",
+                pl.LazyFrame(
+                    {
+                        "id": [1],
+                        "placed_at": [dt.datetime(2024, 1, 1)],
+                        "status": ["delivered"],
+                        "shipped_at": [dt.datetime(2024, 4, 1)],
+                        "updated_at": [dt.datetime(2024, 9, 1)],
+                    },
+                ),
+                primary_key="id",
+                row_creation_time="placed_at",
+                row_update_times={
+                    "updated_at": {"shipped_at": None, "updated_at": None},
+                    "shipped_at": {"status": "pending"},
+                },
+            )
+    assert "give it one row_update_time" not in str(excinfo.value)
