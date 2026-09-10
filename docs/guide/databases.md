@@ -192,6 +192,7 @@ ride happens:
 Ask for features at a `cutoff_time` of 12:00 and the ride is visible, because it
 was booked two minutes earlier. So is its fare, a number nobody knew until
 12:25. Train on that and you are training on the answer.
+This would introduce **data leakage**, which can be avoided with `row_update_times`.
 
 `row_update_times` names the columns that were filled in later, and says what
 each held before:
@@ -217,11 +218,11 @@ held beforehand. At a cutoff of 12:00 the row now comes back with
 A null in an update time column means that moment never came. The ride was
 never picked up, so the row keeps what it holds, at every cutoff.
 
-### You choose the earlier value, not tusk
+### You havve to choose the earlier value
 
-The table kept only the current value, so tusk cannot work out the earlier one.
+The table keeps only the current value, so tusk cannot work out the earlier one.
 `None` says the value was unknown, which is right for a fare nobody had
-calculated yet. `0.0` is right for the tip, because no tip had been given.
+calculated yet. `0.0` might be right for the tip, because no tip had been given.
 Writing `None` there would quietly change every `SUM` and `MEAN` over tips.
 Both are your knowledge of your own data, so choose each one deliberately.
 
@@ -235,11 +236,11 @@ so you can choose a different value. Writing it yourself silences the warning.
 
 ### What cannot be filled in later
 
-The primary key and the `row_creation_time` may not appear in a mapping. The
-primary key is how a row is identified, and every visible row was created at or
+The primary key and the `row_creation_time` are not allowd to appear in a mapping.
+The primary key is how a row is identified, and every visible row was created at or
 before the cutoff already, so neither has an earlier value that means anything.
 
-A foreign key may. The case it is for is a driver assigned after the ride is
+A foreign can be filled in. The case it is for is a driver assigned after the ride is
 booked. Give `driver_id` an earlier value of `None` and the ride counts towards
 nobody's totals at a cutoff taken before a driver accepted it.
 
@@ -252,12 +253,7 @@ row_update_times = {
 }
 ```
 
-Every column needs an update time that is known in its own right.
-
-All three rules are checks that run by default, so a declaration like the one
-above is refused when you add the table.
-
-### What tusk cannot see
+### On multiple updates
 
 A column that changes more than once is not something `row_update_times` can
 describe. A ride status going from booked to accepted to completed has a
@@ -265,8 +261,3 @@ history, and the mapping gives a column one earlier value for all time. Record
 each step in its own column, the way `picked_up_at` and `dropped_off_at` do
 above. Or keep the history in a child table, where a cutoff filters the rows
 normally.
-
-Nothing in a schema says which columns get overwritten. A column that is
-rewritten in place and named in no `row_update_times` looks exactly like one
-that is never touched, so tusk reads it at face value and it leaks. Only you
-know which columns those are.
