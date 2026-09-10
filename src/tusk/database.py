@@ -10,7 +10,7 @@ from typing import Any
 import narwhals as nw
 
 from tusk.exceptions import (
-    ImplicitRowUpdateTimeMaskWarning,
+    ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
     SchemaError,
 )
@@ -142,7 +142,7 @@ class Database:
 
         Warns:
             MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
-            ImplicitRowUpdateTimeMaskWarning: If a ``row_update_times`` key
+            ImplicitEarlierValueWarning: If a ``row_update_times`` key
                 does not list itself, so tusk gave it a null value.
         """
         if name in self._schemas:
@@ -512,7 +512,7 @@ def _warn_about_incomplete_row_update_times(incomplete: list[str], table: str) -
             f"row_update_time {update_time!r} of {table!r} does not say what "
             f"it held before the update, so tusk reads it as null; list it "
             f"under itself to choose a value",
-            ImplicitRowUpdateTimeMaskWarning,
+            ImplicitEarlierValueWarning,
             stacklevel=3,
         )
 

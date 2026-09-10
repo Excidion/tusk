@@ -40,7 +40,7 @@ The spec and this plan use *mask* for the swap operation. In user-facing strings
   - `TableSchema.row_update_times: Mapping[str, Mapping[str, Any]]`, fifth field, defaulting to `{}`. Fully normalized: plain nested dicts, self-entries already inserted.
   - `TableSchema.column_updates -> tuple[tuple[str, str, Any], ...]` — property yielding `(update_time, column, pre_update_value)` triples in declaration order. **Every later task iterates this, not the raw mapping.**
   - `Database.add_table(..., row_update_times=None, ...)` — fifth positional parameter, after `row_creation_time` and before the keyword-only `validate`.
-  - `tusk.exceptions.ImplicitRowUpdateTimeMaskWarning`
+  - `tusk.exceptions.ImplicitEarlierValueWarning`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -93,7 +93,7 @@ def test_a_table_without_row_update_times_has_an_empty_mapping():
 
 
 def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
-    with pytest.warns(ImplicitRowUpdateTimeMaskWarning, match="'updated_at'"):
+    with pytest.warns(ImplicitEarlierValueWarning, match="'updated_at'"):
         db = tusk.Database("d").add_table(
             "orders",
             pl.LazyFrame(
@@ -111,7 +111,7 @@ def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
 
 def test_an_update_time_that_lists_itself_warns_nothing():
     with warnings.catch_warnings():
-        warnings.simplefilter("error", ImplicitRowUpdateTimeMaskWarning)
+        warnings.simplefilter("error", ImplicitEarlierValueWarning)
         tusk.Database("d").add_table(
             "orders",
             pl.LazyFrame(
@@ -125,7 +125,7 @@ def test_an_update_time_that_lists_itself_warns_nothing():
 def test_only_the_update_time_nothing_covers_is_warned_about():
     # 'first' updates 'second', so 'second' is already covered and only
     # 'first' is missing a pre-update value of its own.
-    with pytest.warns(ImplicitRowUpdateTimeMaskWarning) as caught:
+    with pytest.warns(ImplicitEarlierValueWarning) as caught:
         tusk.Database("d").add_table(
             "orders",
             pl.LazyFrame(
@@ -200,11 +200,11 @@ def test_the_declaration_is_copied_not_aliased():
     assert db.schema("orders").row_update_times["updated_at"]["status"] == "pending"
 ```
 
-Add `import warnings` and extend the existing imports at the top of the file so `ImplicitRowUpdateTimeMaskWarning` and `SchemaError` resolve:
+Add `import warnings` and extend the existing imports at the top of the file so `ImplicitEarlierValueWarning` and `SchemaError` resolve:
 
 ```python
 from tusk.exceptions import (
-    ImplicitRowUpdateTimeMaskWarning,
+    ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
     SchemaError,
 )
@@ -215,14 +215,14 @@ from tusk.exceptions import (
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_database.py -k row_update or column_updates or update_time -v`
-Expected: collection error — `ImportError: cannot import name 'ImplicitRowUpdateTimeMaskWarning'`.
+Expected: collection error — `ImportError: cannot import name 'ImplicitEarlierValueWarning'`.
 
 - [ ] **Step 3: Add the warning class**
 
 Append to `src/tusk/exceptions.py`:
 
 ```python
-class ImplicitRowUpdateTimeMaskWarning(UserWarning):
+class ImplicitEarlierValueWarning(UserWarning):
     """Warns that a row update time was given a null pre-update value.
 
     An update time listed under no update time is read straight from the
@@ -298,7 +298,7 @@ Add to its `Args:` block, after `row_creation_time`:
 Add to its `Warns:` block:
 
 ```
-            ImplicitRowUpdateTimeMaskWarning: If a ``row_update_times`` key is
+            ImplicitEarlierValueWarning: If a ``row_update_times`` key is
                 absent from every mapping, so tusk gave it a null value.
 ```
 
@@ -417,7 +417,7 @@ def _warn_about_incomplete_row_update_times(incomplete: list[str], table: str) -
             f"row_update_time {update_time!r} of {table!r} does not say what "
             f"it held before the update, so tusk reads it as null; list it "
             f"under itself to choose a value",
-            ImplicitRowUpdateTimeMaskWarning,
+            ImplicitEarlierValueWarning,
             stacklevel=3,
         )
 
@@ -445,7 +445,7 @@ Import the warning at the top of `database.py`:
 
 ```python
 from tusk.exceptions import (
-    ImplicitRowUpdateTimeMaskWarning,
+    ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
     SchemaError,
 )
@@ -534,7 +534,7 @@ def updating_db():
     )
 ```
 
-`updated_at` is listed under itself so the fixture raises no `ImplicitRowUpdateTimeMaskWarning`; Task 1 already covers the warning.
+`updated_at` is listed under itself so the fixture raises no `ImplicitEarlierValueWarning`; Task 1 already covers the warning.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -865,7 +865,7 @@ git commit -m "feat: serve pre-update values for columns updated after the cutof
 
 **Interfaces:**
 - Consumes: `TableSchema.row_update_times`, `TableSchema.column_updates`.
-- Produces: `check_dtype_row_update_times`, `check_unmasked_primary_key`, `check_unmasked_row_creation_time` — all `(frame: nw.LazyFrame, schema: TableSchema) -> None`, registered in `TABLE_CHECKS` under `"datetime_row_update_times"`, `"unmasked_primary_key"`, `"unmasked_row_creation_time"`. Also `_updating_row_update_time(schema, column) -> str | None`, reused by Task 4's tests only indirectly.
+- Produces: `check_dtype_row_update_times`, `check_never_updated_primary_key`, `check_never_updated_row_creation_time` — all `(frame: nw.LazyFrame, schema: TableSchema) -> None`, registered in `TABLE_CHECKS` under `"datetime_row_update_times"`, `"never_updated_primary_key"`, `"never_updated_row_creation_time"`. Also `_updating_row_update_time(schema, column) -> str | None`, reused by Task 4's tests only indirectly.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -913,17 +913,17 @@ def test_a_table_without_row_update_times_passes_the_dtype_check():
 def test_an_updated_primary_key_is_reported():
     schema = updating_schema({"updated_at": {"id": None, "updated_at": None}})
     with pytest.raises(ValidationError, match="primary_key 'id'"):
-        check_unmasked_primary_key(frame([1]), schema)
+        check_never_updated_primary_key(frame([1]), schema)
 
 
 def test_an_untouched_primary_key_passes():
-    check_unmasked_primary_key(
+    check_never_updated_primary_key(
         frame([1]), updating_schema({"updated_at": {"status": "pending"}})
     )
 
 
 def test_a_table_without_a_primary_key_passes_the_unmasked_check():
-    check_unmasked_primary_key(
+    check_never_updated_primary_key(
         frame([1]),
         updating_schema({"updated_at": {"status": "pending"}}, primary_key=None),
     )
@@ -935,11 +935,11 @@ def test_an_updated_row_creation_time_is_reported():
         row_creation_time="created_at",
     )
     with pytest.raises(ValidationError, match="row_creation_time 'created_at'"):
-        check_unmasked_row_creation_time(frame([1]), schema)
+        check_never_updated_row_creation_time(frame([1]), schema)
 
 
 def test_an_untouched_row_creation_time_passes():
-    check_unmasked_row_creation_time(
+    check_never_updated_row_creation_time(
         frame([1]),
         updating_schema(
             {"updated_at": {"status": "pending"}}, row_creation_time="created_at"
@@ -948,12 +948,12 @@ def test_an_untouched_row_creation_time_passes():
 
 
 def test_a_table_without_a_row_creation_time_passes_the_unmasked_check():
-    check_unmasked_row_creation_time(
+    check_never_updated_row_creation_time(
         frame([1]), updating_schema({"updated_at": {"status": "pending"}})
     )
 ```
 
-Extend the `from tusk.validation import (...)` block with `check_dtype_row_update_times`, `check_unmasked_primary_key`, `check_unmasked_row_creation_time`.
+Extend the `from tusk.validation import (...)` block with `check_dtype_row_update_times`, `check_never_updated_primary_key`, `check_never_updated_row_creation_time`.
 
 Note: the module's existing `frame()` helper builds a one-column `id` frame. These checks read only the schema, so the frame's shape is irrelevant — that is why every call passes `frame([1])`.
 
@@ -989,7 +989,7 @@ def check_dtype_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> No
         )
 
 
-def check_unmasked_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_never_updated_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row update time rewrites the primary key.
 
     A table with no ``primary_key`` is skipped. Reads the schema only.
@@ -1012,7 +1012,7 @@ def check_unmasked_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None
     )
 
 
-def check_unmasked_row_creation_time(
+def check_never_updated_row_creation_time(
     frame: nw.LazyFrame, schema: TableSchema
 ) -> None:
     """Confirm no row update time rewrites the row creation time.
@@ -1065,8 +1065,8 @@ TABLE_CHECKS = {
     "unique_primary_key": check_unique_primary_key,
     "datetime_row_creation_time": check_dtype_row_creation_time,
     "datetime_row_update_times": check_dtype_row_update_times,
-    "unmasked_primary_key": check_unmasked_primary_key,
-    "unmasked_row_creation_time": check_unmasked_row_creation_time,
+    "never_updated_primary_key": check_never_updated_primary_key,
+    "never_updated_row_creation_time": check_never_updated_row_creation_time,
 }
 ```
 
@@ -1090,7 +1090,7 @@ git commit -m "feat: check row update time dtypes and untouched key columns"
 
 ---
 
-### Task 4: singly_masked_columns
+### Task 4: singly_updated_columns
 
 **Files:**
 - Modify: `src/tusk/validation.py` (one check, one `TABLE_CHECKS` entry)
@@ -1098,7 +1098,7 @@ git commit -m "feat: check row update time dtypes and untouched key columns"
 
 **Interfaces:**
 - Consumes: `TableSchema.column_updates`, the `updating_schema` test helper from Task 3.
-- Produces: `check_singly_masked_columns(frame, schema) -> None`, registered as `"singly_masked_columns"`.
+- Produces: `check_singly_updated_columns(frame, schema) -> None`, registered as `"singly_updated_columns"`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1122,7 +1122,7 @@ def test_a_column_updated_by_two_update_times_is_reported():
         },
     )
     with pytest.raises(ValidationError) as excinfo:
-        check_singly_masked_columns(frame([1]), schema)
+        check_singly_updated_columns(frame([1]), schema)
     message = str(excinfo.value)
     assert "'status'" in message
     assert "'shipped_at'" in message
@@ -1130,7 +1130,7 @@ def test_a_column_updated_by_two_update_times_is_reported():
 
 
 def test_one_update_time_over_many_columns_passes():
-    check_singly_masked_columns(
+    check_singly_updated_columns(
         frame([1]),
         updating_schema({"updated_at": {"status": "pending", "updated_at": None}}),
     )
@@ -1153,7 +1153,7 @@ def test_two_update_times_over_different_columns_pass():
             "updated_at": {"note": None, "updated_at": None},
         },
     )
-    check_singly_masked_columns(frame([1]), schema)
+    check_singly_updated_columns(frame([1]), schema)
 
 
 def test_an_update_time_updated_by_another_one_is_reported():
@@ -1167,22 +1167,22 @@ def test_an_update_time_updated_by_another_one_is_reported():
         {"first": {"second": None, "first": None}, "second": {"second": None}},
     )
     with pytest.raises(ValidationError, match="'second'"):
-        check_singly_masked_columns(frame([1]), schema)
+        check_singly_updated_columns(frame([1]), schema)
 ```
 
-Add `check_singly_masked_columns` to the `from tusk.validation import (...)` block.
+Add `check_singly_updated_columns` to the `from tusk.validation import (...)` block.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_validation.py -k singly -v`
-Expected: collection error — `ImportError: cannot import name 'check_singly_masked_columns'`.
+Expected: collection error — `ImportError: cannot import name 'check_singly_updated_columns'`.
 
 - [ ] **Step 3: Implement the check**
 
-In `src/tusk/validation.py`, insert after `check_unmasked_row_creation_time`:
+In `src/tusk/validation.py`, insert after `check_never_updated_row_creation_time`:
 
 ```python
-def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_singly_updated_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no column is rewritten by two row update times.
 
     Two update times over one column give it two earlier values and two
@@ -1211,7 +1211,7 @@ def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> Non
 Register it in `TABLE_CHECKS`, after `"datetime_row_update_times"`:
 
 ```python
-    "singly_masked_columns": check_singly_masked_columns,
+    "singly_updated_columns": check_singly_updated_columns,
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1232,7 +1232,7 @@ git commit -m "feat: reject a column updated by two row update times"
 
 ---
 
-### Task 5: matching_fallback_dtypes
+### Task 5: matching_earlier_value_dtypes
 
 **Files:**
 - Modify: `src/tusk/validation.py` (one check, one private helper, one `TABLE_CHECKS` entry, one import)
@@ -1240,7 +1240,7 @@ git commit -m "feat: reject a column updated by two row update times"
 
 **Interfaces:**
 - Consumes: `TableSchema.column_updates`.
-- Produces: `check_matching_fallback_dtypes(frame, schema) -> None`, registered as `"matching_fallback_dtypes"`; `_fits_dtype(value, dtype) -> bool`.
+- Produces: `check_matching_earlier_value_dtypes(frame, schema) -> None`, registered as `"matching_earlier_value_dtypes"`; `_fits_dtype(value, dtype) -> bool`.
 
 Background you need: narwhals dtype instances expose `is_integer()`, `is_float()`, `is_boolean()`, `is_temporal()` and compare equal to their class (`nw.Datetime() == nw.Datetime` is `True`, `nw.Date() == nw.Datetime` is `False`). Both the class and an instance answer these, so a schema built with `nw.Int64` and one built with `nw.Int64()` behave identically. In Python `bool` is a subclass of `int` and `datetime` is a subclass of `date`, so those two pairs must be tested in the narrow-first order below.
 
@@ -1272,7 +1272,7 @@ def test_a_fitting_pre_update_value_passes(value, dtype):
         {"id": nw.Int64(), "column": dtype, "updated_at": nw.Datetime()},
         {"updated_at": {"column": value, "updated_at": None}},
     )
-    check_matching_fallback_dtypes(frame([1]), schema)
+    check_matching_earlier_value_dtypes(frame([1]), schema)
 
 
 @pytest.mark.parametrize(
@@ -1296,22 +1296,22 @@ def test_a_misfitting_pre_update_value_is_reported(value, dtype):
         {"updated_at": {"column": value, "updated_at": None}},
     )
     with pytest.raises(ValidationError) as excinfo:
-        check_matching_fallback_dtypes(frame([1]), schema)
+        check_matching_earlier_value_dtypes(frame([1]), schema)
     message = str(excinfo.value)
     assert "'column'" in message
     assert "'updated_at'" in message
 
 
 def test_a_table_without_row_update_times_passes_the_value_check():
-    check_matching_fallback_dtypes(frame([1]), updating_schema({}))
+    check_matching_earlier_value_dtypes(frame([1]), updating_schema({}))
 ```
 
-Add `check_matching_fallback_dtypes` to the `from tusk.validation import (...)` block. `dt` is already imported at the top of the file.
+Add `check_matching_earlier_value_dtypes` to the `from tusk.validation import (...)` block. `dt` is already imported at the top of the file.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_validation.py -k pre_update -v`
-Expected: collection error — `ImportError: cannot import name 'check_matching_fallback_dtypes'`.
+Expected: collection error — `ImportError: cannot import name 'check_matching_earlier_value_dtypes'`.
 
 - [ ] **Step 3: Implement the check**
 
@@ -1321,10 +1321,10 @@ Change the datetime import at the top of `src/tusk/validation.py`:
 from datetime import date, datetime
 ```
 
-Insert after `check_singly_masked_columns`:
+Insert after `check_singly_updated_columns`:
 
 ```python
-def check_matching_fallback_dtypes(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_matching_earlier_value_dtypes(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm every declared pre-update value fits the column it replaces.
 
     Reads the schema only. A null fits every column.
@@ -1384,10 +1384,10 @@ def _fits_dtype(value: Any, dtype: Any) -> bool:
 
 `Any` is already imported from `typing` — confirm, and add it if the `TYPE_CHECKING` refactor left it out.
 
-Register it in `TABLE_CHECKS`, after `"singly_masked_columns"`:
+Register it in `TABLE_CHECKS`, after `"singly_updated_columns"`:
 
 ```python
-    "matching_fallback_dtypes": check_matching_fallback_dtypes,
+    "matching_earlier_value_dtypes": check_matching_earlier_value_dtypes,
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1512,7 +1512,7 @@ Expected: collection error — `ImportError: cannot import name 'check_ordered_r
 
 - [ ] **Step 3: Implement the check**
 
-In `src/tusk/validation.py`, insert after `check_matching_fallback_dtypes`:
+In `src/tusk/validation.py`, insert after `check_matching_earlier_value_dtypes`:
 
 ```python
 def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
@@ -1697,10 +1697,10 @@ In `src/tusk/validation.py`, directly below `TABLE_CHECKS`:
 DEFAULT_TABLE_CHECKS = (
     "datetime_row_creation_time",
     "datetime_row_update_times",
-    "singly_masked_columns",
-    "unmasked_primary_key",
-    "unmasked_row_creation_time",
-    "matching_fallback_dtypes",
+    "singly_updated_columns",
+    "never_updated_primary_key",
+    "never_updated_row_creation_time",
+    "matching_earlier_value_dtypes",
 )
 ```
 
@@ -1758,10 +1758,10 @@ def spy(monkeypatch):
             "unique_primary_key": lambda f, s: calls.append(s.name),
             "datetime_row_creation_time": check_dtype_row_creation_time,
             "datetime_row_update_times": check_dtype_row_update_times,
-            "singly_masked_columns": check_singly_masked_columns,
-            "unmasked_primary_key": check_unmasked_primary_key,
-            "unmasked_row_creation_time": check_unmasked_row_creation_time,
-            "matching_fallback_dtypes": check_matching_fallback_dtypes,
+            "singly_updated_columns": check_singly_updated_columns,
+            "never_updated_primary_key": check_never_updated_primary_key,
+            "never_updated_row_creation_time": check_never_updated_row_creation_time,
+            "matching_earlier_value_dtypes": check_matching_earlier_value_dtypes,
         },
     )
     return calls
@@ -1980,7 +1980,7 @@ original one and is visible at every cutoff.
 next be touched" unless `updated_at` gets an earlier value of its own. tusk
 therefore adds `"updated_at": None` to the mapping when you leave it out, and
 warns with
-[`ImplicitRowUpdateTimeMaskWarning`][tusk.exceptions.ImplicitRowUpdateTimeMaskWarning]
+[`ImplicitEarlierValueWarning`][tusk.exceptions.ImplicitEarlierValueWarning]
 so you can pick a different value. Listing it yourself silences the warning.
 
 ### What cannot be updated
@@ -2030,7 +2030,7 @@ Make the same addition to the `cutoff_time` entry in `src/tusk/feature_list.py`.
 - [ ] **Step 4: Build the docs**
 
 Run: `uv run --group docs zensical build --clean`
-Expected: build succeeds with no warning about a broken cross-reference. If `[tusk.exceptions.ImplicitRowUpdateTimeMaskWarning]` does not resolve, check how the other exception cross-references in `docs/` are spelled and match them.
+Expected: build succeeds with no warning about a broken cross-reference. If `[tusk.exceptions.ImplicitEarlierValueWarning]` does not resolve, check how the other exception cross-references in `docs/` are spelled and match them.
 
 - [ ] **Step 5: Run the whole suite and lint**
 

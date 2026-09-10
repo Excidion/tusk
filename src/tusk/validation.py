@@ -126,7 +126,7 @@ def check_dtype_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> No
         )
 
 
-def check_unmasked_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_never_updated_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row update time rewrites the primary key.
 
     A table with no ``primary_key`` is skipped. Reads the schema only.
@@ -149,7 +149,9 @@ def check_unmasked_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None
     )
 
 
-def check_unmasked_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_never_updated_row_creation_time(
+    frame: nw.LazyFrame, schema: TableSchema
+) -> None:
     """Confirm no row update time rewrites the row creation time.
 
     A table with no ``row_creation_time`` is skipped. Reads the schema only.
@@ -196,7 +198,7 @@ def check_unchained_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -
         )
 
 
-def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_singly_updated_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no column is rewritten by two row update times.
 
     The entry ``add_table`` adds for an update time that says nothing about
@@ -220,7 +222,9 @@ def check_singly_masked_columns(frame: nw.LazyFrame, schema: TableSchema) -> Non
         seen[column] = update_time
 
 
-def check_matching_fallback_dtypes(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_matching_earlier_value_dtypes(
+    frame: nw.LazyFrame, schema: TableSchema
+) -> None:
     """Confirm every declared pre-update value fits the column it replaces.
 
     Reads the schema only. A null fits every column.
@@ -480,11 +484,11 @@ TABLE_CHECKS = {
     "unique_primary_key": check_unique_primary_key,
     "datetime_row_creation_time": check_dtype_row_creation_time,
     "datetime_row_update_times": check_dtype_row_update_times,
-    "unmasked_primary_key": check_unmasked_primary_key,
-    "unmasked_row_creation_time": check_unmasked_row_creation_time,
+    "never_updated_primary_key": check_never_updated_primary_key,
+    "never_updated_row_creation_time": check_never_updated_row_creation_time,
     "unchained_row_update_times": check_unchained_row_update_times,
-    "singly_masked_columns": check_singly_masked_columns,
-    "matching_fallback_dtypes": check_matching_fallback_dtypes,
+    "singly_updated_columns": check_singly_updated_columns,
+    "matching_earlier_value_dtypes": check_matching_earlier_value_dtypes,
     "ordered_row_times": check_ordered_row_times,
 }
 
@@ -495,10 +499,10 @@ DEFAULT_TABLE_CHECKS = (
     "datetime_row_creation_time",
     "datetime_row_update_times",
     "unchained_row_update_times",
-    "singly_masked_columns",
-    "unmasked_primary_key",
-    "unmasked_row_creation_time",
-    "matching_fallback_dtypes",
+    "singly_updated_columns",
+    "never_updated_primary_key",
+    "never_updated_row_creation_time",
+    "matching_earlier_value_dtypes",
 )
 
 RELATIONSHIP_CHECKS = {

@@ -11,7 +11,7 @@ import tusk
 from tusk import validation
 from tusk.database import TableSchema
 from tusk.exceptions import (
-    ImplicitRowUpdateTimeMaskWarning,
+    ImplicitEarlierValueWarning,
     TuskError,
     ValidationError,
 )
@@ -20,14 +20,14 @@ from tusk.validation import (
     check_cutoff_time_zone,
     check_dtype_row_creation_time,
     check_dtype_row_update_times,
-    check_matching_fallback_dtypes,
+    check_matching_earlier_value_dtypes,
+    check_never_updated_primary_key,
+    check_never_updated_row_creation_time,
     check_non_null_primary_key,
     check_ordered_row_times,
-    check_singly_masked_columns,
+    check_singly_updated_columns,
     check_unchained_row_update_times,
     check_unique_primary_key,
-    check_unmasked_primary_key,
-    check_unmasked_row_creation_time,
     validate_table,
 )
 
@@ -878,17 +878,17 @@ def test_a_table_without_row_update_times_passes_the_dtype_check():
 def test_an_updated_primary_key_is_reported():
     schema = updating_schema({"updated_at": {"id": None, "updated_at": None}})
     with pytest.raises(ValidationError, match="primary_key 'id'"):
-        check_unmasked_primary_key(frame([1]), schema)
+        check_never_updated_primary_key(frame([1]), schema)
 
 
 def test_an_untouched_primary_key_passes():
-    check_unmasked_primary_key(
+    check_never_updated_primary_key(
         frame([1]), updating_schema({"updated_at": {"status": "pending"}})
     )
 
 
 def test_a_table_without_a_primary_key_passes_the_unmasked_check():
-    check_unmasked_primary_key(
+    check_never_updated_primary_key(
         frame([1]),
         updating_schema({"updated_at": {"status": "pending"}}, primary_key=None),
     )
@@ -900,11 +900,11 @@ def test_an_updated_row_creation_time_is_reported():
         row_creation_time="created_at",
     )
     with pytest.raises(ValidationError, match="row_creation_time 'created_at'"):
-        check_unmasked_row_creation_time(frame([1]), schema)
+        check_never_updated_row_creation_time(frame([1]), schema)
 
 
 def test_an_untouched_row_creation_time_passes():
-    check_unmasked_row_creation_time(
+    check_never_updated_row_creation_time(
         frame([1]),
         updating_schema(
             {"updated_at": {"status": "pending"}}, row_creation_time="created_at"
@@ -913,7 +913,7 @@ def test_an_untouched_row_creation_time_passes():
 
 
 def test_a_table_without_a_row_creation_time_passes_the_unmasked_check():
-    check_unmasked_row_creation_time(
+    check_never_updated_row_creation_time(
         frame([1]), updating_schema({"updated_at": {"status": "pending"}})
     )
 
@@ -935,7 +935,7 @@ def test_a_column_updated_by_two_update_times_is_reported():
         },
     )
     with pytest.raises(ValidationError) as excinfo:
-        check_singly_masked_columns(frame([1]), schema)
+        check_singly_updated_columns(frame([1]), schema)
     message = str(excinfo.value)
     assert "'status'" in message
     assert "'shipped_at'" in message
@@ -943,7 +943,7 @@ def test_a_column_updated_by_two_update_times_is_reported():
 
 
 def test_one_update_time_over_many_columns_passes():
-    check_singly_masked_columns(
+    check_singly_updated_columns(
         frame([1]),
         updating_schema({"updated_at": {"status": "pending", "updated_at": None}}),
     )
@@ -966,7 +966,7 @@ def test_two_update_times_over_different_columns_pass():
             "updated_at": {"note": None, "updated_at": None},
         },
     )
-    check_singly_masked_columns(frame([1]), schema)
+    check_singly_updated_columns(frame([1]), schema)
 
 
 def test_an_update_time_updated_by_another_one_is_reported():
@@ -980,7 +980,7 @@ def test_an_update_time_updated_by_another_one_is_reported():
         {"first": {"second": None, "first": None}, "second": {"second": None}},
     )
     with pytest.raises(ValidationError, match="'second'"):
-        check_singly_masked_columns(frame([1]), schema)
+        check_singly_updated_columns(frame([1]), schema)
 
 
 def test_add_table_rejects_a_chained_row_update_time():
@@ -989,7 +989,7 @@ def test_add_table_rejects_a_chained_row_update_time():
     # 'status' would leak shipped_at's raw post-cutoff value; add_table must
     # refuse this declaration rather than let base_frame produce it.
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ImplicitRowUpdateTimeMaskWarning)
+        warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
         with pytest.raises(ValidationError, match="'shipped_at'"):
             tusk.Database("d").add_table(
                 "orders",
@@ -1037,7 +1037,7 @@ def test_a_fitting_pre_update_value_passes(value, dtype):
         {"id": nw.Int64(), "column": dtype, "updated_at": nw.Datetime()},
         {"updated_at": {"column": value, "updated_at": None}},
     )
-    check_matching_fallback_dtypes(frame([1]), schema)
+    check_matching_earlier_value_dtypes(frame([1]), schema)
 
 
 @pytest.mark.parametrize(
@@ -1061,14 +1061,14 @@ def test_a_misfitting_pre_update_value_is_reported(value, dtype):
         {"updated_at": {"column": value, "updated_at": None}},
     )
     with pytest.raises(ValidationError) as excinfo:
-        check_matching_fallback_dtypes(frame([1]), schema)
+        check_matching_earlier_value_dtypes(frame([1]), schema)
     message = str(excinfo.value)
     assert "'column'" in message
     assert "'updated_at'" in message
 
 
 def test_a_table_without_row_update_times_passes_the_value_check():
-    check_matching_fallback_dtypes(frame([1]), updating_schema({}))
+    check_matching_earlier_value_dtypes(frame([1]), updating_schema({}))
 
 
 def times_frame(created, updated):
@@ -1248,7 +1248,7 @@ def test_the_chain_check_runs_by_default():
 
 def test_add_table_reports_a_chain_as_a_chain():
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ImplicitRowUpdateTimeMaskWarning)
+        warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
         with pytest.raises(ValidationError, match="itself listed under") as excinfo:
             tusk.Database("d").add_table(
                 "orders",

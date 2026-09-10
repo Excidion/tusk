@@ -230,7 +230,7 @@ Both are your knowledge of your own data, so choose each one deliberately.
 `picked_up_at` is a column like any other, so `MAX(rides.picked_up_at)` would
 report a pickup that has not happened yet. tusk therefore adds
 `"picked_up_at": None` to the mapping when you leave it out, and warns with
-[`ImplicitRowUpdateTimeMaskWarning`][tusk.exceptions.ImplicitRowUpdateTimeMaskWarning]
+[`ImplicitEarlierValueWarning`][tusk.exceptions.ImplicitEarlierValueWarning]
 so you can choose a different value. Writing it yourself silences the warning.
 
 ### What cannot be filled in later
@@ -246,8 +246,8 @@ nobody's totals at a cutoff taken before a driver accepted it.
 One update time may not be listed under another:
 
 ```python
-row_update_times={
-    "dropped_off_at": {"picked_up_at": None},   # refused
+row_update_times = {
+    "dropped_off_at": {"picked_up_at": None},  # refused
     "picked_up_at": {"fare": None},
 }
 ```

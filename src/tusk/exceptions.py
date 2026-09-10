@@ -32,7 +32,7 @@ class MissingPrimaryKeyWarning(UserWarning):
     """Warns that a table without a primary key has reduced capabilities."""
 
 
-class ImplicitRowUpdateTimeMaskWarning(UserWarning):
+class ImplicitEarlierValueWarning(UserWarning):
     """Warns that a row update time was given a null pre-update value.
 
     An update time listed under no update time is read straight from the

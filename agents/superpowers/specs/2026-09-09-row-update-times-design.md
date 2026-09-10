@@ -137,11 +137,11 @@ Seven new entries in `TABLE_CHECKS`. Six read no rows and run by default from
 | Name | Raises when | Default |
 | --- | --- | --- |
 | `datetime_row_update_times` | an update-time column is not `Datetime` | on |
-| `unchained_row_update_times` | an update time is masked by another update time | on |
-| `singly_masked_columns` | one column is masked by two update times | on |
-| `unmasked_primary_key` | the primary key is masked | on |
-| `unmasked_row_creation_time` | the row creation time is masked | on |
-| `matching_fallback_dtypes` | a fallback does not fit its column's dtype | on |
+| `unchained_row_update_times` | an update time is updated by another update time | on |
+| `singly_updated_columns` | one column is updated by two update times | on |
+| `never_updated_primary_key` | the primary key is updated | on |
+| `never_updated_row_creation_time` | the row creation time is updated | on |
+| `matching_earlier_value_dtypes` | an earlier value does not fit its column's dtype | on |
 | `ordered_row_times` | some `update_time < row_creation_time` | off |
 
 `unchained_row_update_times` refuses a declaration where one update time is
@@ -149,25 +149,25 @@ listed under another. Every column is rewound in one pass against the stored
 timestamps, so a chained update time would decide the columns below it using a
 value already known to be from after the cutoff — leaking it.
 
-It runs before `singly_masked_columns`, which a chain also trips: the chained
+It runs before `singly_updated_columns`, which a chain also trips: the chained
 update time does not list itself, so `add_table` inserts its self-entry, and it
 ends up listed twice — once under the update time above it, once under itself.
 Running first means the error names the chain instead of reporting a duplicate
 the user never wrote.
 
-`singly_masked_columns` counts the self-mask of decision 3 like any other
-entry, so declaring `{"a": {"b_time": 0}, "b_time": {...}}` fails: `a` masks
-`b_time` and `b_time` masks itself.
+`singly_updated_columns` counts the self-entry of decision 3 like any other,
+so declaring `{"a": {"b_time": 0}, "b_time": {...}}` fails: `a` updates
+`b_time` and `b_time` updates itself.
 
 `datetime_row_update_times` mirrors the existing
 `datetime_row_creation_time`: a `Date` has no time of day and compares against
 a cutoff differently across backends.
 
-`matching_fallback_dtypes` compares each fallback against
+`matching_earlier_value_dtypes` compares each earlier value against
 `schema.dtypes[column]` without reading a row, the same shape of check as
 `matching_key_dtypes`. Its purpose is the error site: `{"score": "pending"}`
 against an `Int64` otherwise fails inside a lazy query plan at `collect()`,
-far from the `add_table` call that caused it. A `None` fallback always passes.
+far from the `add_table` call that caused it. A `None` always passes.
 
 `ordered_row_times` is the only check here that scans, so it stays off and is
 reachable through `db.validate(tables="ordered_row_times")`. An update
@@ -184,10 +184,10 @@ were declared to mean.
 DEFAULT_TABLE_CHECKS = (
     "datetime_row_creation_time",
     "datetime_row_update_times",
-    "singly_masked_columns",
-    "unmasked_primary_key",
-    "unmasked_row_creation_time",
-    "matching_fallback_dtypes",
+    "singly_updated_columns",
+    "never_updated_primary_key",
+    "never_updated_row_creation_time",
+    "matching_earlier_value_dtypes",
 )
 ```
 
@@ -208,7 +208,7 @@ because they describe a malformed declaration rather than a defect in data:
 New in `exceptions.py`:
 
 ```python
-class ImplicitRowUpdateTimeMaskWarning(UserWarning):
+class ImplicitEarlierValueWarning(UserWarning):
     """Warns that an update-time column was masked with a null fallback."""
 ```
 

@@ -9,7 +9,7 @@ import pytest
 import tusk
 from tusk.database import Relationship
 from tusk.exceptions import (
-    ImplicitRowUpdateTimeMaskWarning,
+    ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
     SchemaError,
     ValidationError,
@@ -166,7 +166,7 @@ def test_a_table_without_row_update_times_has_an_empty_mapping():
 
 
 def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
-    with pytest.warns(ImplicitRowUpdateTimeMaskWarning, match="'updated_at'"):
+    with pytest.warns(ImplicitEarlierValueWarning, match="'updated_at'"):
         db = tusk.Database("d").add_table(
             "orders",
             pl.LazyFrame(
@@ -184,7 +184,7 @@ def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
 
 def test_an_update_time_that_lists_itself_warns_nothing():
     with warnings.catch_warnings():
-        warnings.simplefilter("error", ImplicitRowUpdateTimeMaskWarning)
+        warnings.simplefilter("error", ImplicitEarlierValueWarning)
         tusk.Database("d").add_table(
             "orders",
             pl.LazyFrame(
@@ -198,9 +198,9 @@ def test_an_update_time_that_lists_itself_warns_nothing():
 def test_a_chained_update_time_warns_about_both_and_is_rejected():
     # 'first' updates 'second', and 'second' also lacks a pre-update value of
     # its own, so both get an implicit self-entry -- which leaves 'second'
-    # listed under both 'first' and itself, and singly_masked_columns rejects
+    # listed under both 'first' and itself, and singly_updated_columns rejects
     # that chain rather than letting a later mask read a not-yet-masked value.
-    with pytest.warns(ImplicitRowUpdateTimeMaskWarning) as caught:
+    with pytest.warns(ImplicitEarlierValueWarning) as caught:
         with pytest.raises(ValidationError, match="'second'"):
             tusk.Database("d").add_table(
                 "orders",
@@ -321,7 +321,7 @@ def test_add_table_rejects_a_chained_row_update_time_by_default():
     # value and leak it -- add_table must refuse the declaration outright
     # rather than produce a frame that could leak.
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ImplicitRowUpdateTimeMaskWarning)
+        warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
         with pytest.raises(ValidationError, match="'shipped_at'"):
             tusk.Database("d").add_table(
                 "orders",
