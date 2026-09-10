@@ -190,7 +190,7 @@ ride happens:
 | 1 | 11:58 | 12:03 | 12:25 | 24.50 | 3.00 |
 
 Ask for features at a `cutoff_time` of 12:00 and the ride is visible, because it
-was booked two minutes earlier. So is its fare — a number nobody knew until
+was booked two minutes earlier. So is its fare, a number nobody knew until
 12:25. Train on that and you are training on the answer.
 
 `row_update_times` names the columns that were filled in later, and says what
@@ -214,15 +214,15 @@ inner mapping lists the columns that moment filled in, each with the value it
 held beforehand. At a cutoff of 12:00 the row now comes back with
 `picked_up_at`, `dropped_off_at` and `fare` all null, and `tip` as `0.0`.
 
-A null in an update time column means that moment never came — the ride was
-never picked up — so the row keeps what it holds, at every cutoff.
+A null in an update time column means that moment never came. The ride was
+never picked up, so the row keeps what it holds, at every cutoff.
 
 ### You choose the earlier value, not tusk
 
 The table kept only the current value, so tusk cannot work out the earlier one.
 `None` says the value was unknown, which is right for a fare nobody had
-calculated yet. `0.0` is right for the tip, because no tip had been given — and
-writing `None` there would quietly change every `SUM` and `MEAN` over tips.
+calculated yet. `0.0` is right for the tip, because no tip had been given.
+Writing `None` there would quietly change every `SUM` and `MEAN` over tips.
 Both are your knowledge of your own data, so choose each one deliberately.
 
 ### The update time describes itself too
@@ -239,10 +239,9 @@ The primary key and the `row_creation_time` may not appear in a mapping. The
 primary key is how a row is identified, and every visible row was created at or
 before the cutoff already, so neither has an earlier value that means anything.
 
-Foreign keys **may** be, and it is one of the more useful cases: a ride
-reassigned to another driver after the cutoff, with its `driver_id` given an
-earlier value of `None`, correctly stops counting towards either driver's
-totals at that cutoff.
+A foreign key may. The case it is for is a driver assigned after the ride is
+booked. Give `driver_id` an earlier value of `None` and the ride counts towards
+nobody's totals at a cutoff taken before a driver accepted it.
 
 One update time may not be listed under another:
 
@@ -253,33 +252,21 @@ row_update_times={
 }
 ```
 
-This says the dropoff filled in the pickup time, and the pickup filled in the
-fare. tusk works out every column in one pass, reading the times the table
-actually holds, so at a cutoff of 12:10 the row would claim the pickup time is
-unknown while still showing the 24.50 fare — a fare it only showed because that
-same pickup time, read at face value, said the ride had already started. Each
-column needs an update time that is known in its own right.
+Every column needs an update time that is known in its own right.
 
 All three rules are checks that run by default, so a declaration like the one
 above is refused when you add the table.
 
-### The words the checks use
-
-The checks are named in older vocabulary than this page: a column given an
-earlier value is *masked*, and the value is its *fallback*. That is where
-`singly_masked_columns`, `unmasked_primary_key` and `matching_fallback_dtypes`
-get their names. See [validation](#validation) for running them by name.
-
 ### What tusk cannot see
 
-A column that is overwritten in place and named in no `row_update_times` is
-indistinguishable, to tusk, from one that is never touched. It will be read at
-face value and it will leak. Nothing in a schema reveals which columns are
-rewritten; only you know that.
+A column that changes more than once is not something `row_update_times` can
+describe. A ride status going from booked to accepted to completed has a
+history, and the mapping gives a column one earlier value for all time. Record
+each step in its own column, the way `picked_up_at` and `dropped_off_at` do
+above. Or keep the history in a child table, where a cutoff filters the rows
+normally.
 
-This is also why a column that changes many times — a status that goes from
-booked to accepted to completed — is a poor fit. `row_update_times` gives it
-one earlier value for all time, and a column with a history has more than one.
-Where you can, record each step in its own column, as `picked_up_at` and
-`dropped_off_at` do above, or keep the history in a child table and let a
-cutoff filter its rows.
+Nothing in a schema says which columns get overwritten. A column that is
+rewritten in place and named in no `row_update_times` looks exactly like one
+that is never touched, so tusk reads it at face value and it leaks. Only you
+know which columns those are.
