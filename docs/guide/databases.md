@@ -177,3 +177,87 @@ keeps only the table names and the lines between them:
 ```python
 db.plot(columns="structural")
 ```
+
+## Row update times
+
+`row_creation_time` decides whether a **row** is visible at a cutoff. It says
+nothing about the columns inside it. Take a table of taxi rides, where the row
+appears when the ride is booked and several columns are filled in later, as the
+ride happens:
+
+| id | booked_at | picked_up_at | dropped_off_at | fare | tip |
+| -- | --------- | ------------ | -------------- | ---- | --- |
+| 1 | 11:58 | 12:03 | 12:25 | 24.50 | 3.00 |
+
+Ask for features at a `cutoff_time` of 12:00 and the ride is visible, because it
+was booked two minutes earlier. So is its fare, a number nobody knew until
+12:25. Train on that and you are training on the answer.
+This would introduce **data leakage**, which can be avoided with `row_update_times`.
+
+`row_update_times` names the columns that were filled in later, and says what
+each held before:
+
+```python
+db.add_table(
+    "rides",
+    rides,
+    primary_key="id",
+    row_creation_time="booked_at",
+    row_update_times={
+        "picked_up_at": {"picked_up_at": None},
+        "dropped_off_at": {"fare": None, "tip": 0.0, "dropped_off_at": None},
+    },
+)
+```
+
+The outer key is a column recording when something happened to the ride. The
+inner mapping lists the columns that moment filled in, each with the value it
+held beforehand. At a cutoff of 12:00 the row now comes back with
+`picked_up_at`, `dropped_off_at` and `fare` all null, and `tip` as `0.0`.
+
+A null in an update time column means that moment never came. The ride was
+never picked up, so the row keeps what it holds, at every cutoff.
+
+### You havve to choose the earlier value
+
+The table keeps only the current value, so tusk cannot work out the earlier one.
+`None` says the value was unknown, which is right for a fare nobody had
+calculated yet. `0.0` might be right for the tip, because no tip had been given.
+Writing `None` there would quietly change every `SUM` and `MEAN` over tips.
+Both are your knowledge of your own data, so choose each one deliberately.
+
+### The update time describes itself too
+
+`picked_up_at` is a column like any other, so `MAX(rides.picked_up_at)` would
+report a pickup that has not happened yet. tusk therefore adds
+`"picked_up_at": None` to the mapping when you leave it out, and warns with
+[`ImplicitEarlierValueWarning`][tusk.exceptions.ImplicitEarlierValueWarning]
+so you can choose a different value. Writing it yourself silences the warning.
+
+### What cannot be filled in later
+
+The primary key and the `row_creation_time` are not allowd to appear in a mapping.
+The primary key is how a row is identified, and every visible row was created at or
+before the cutoff already, so neither has an earlier value that means anything.
+
+A foreign can be filled in. The case it is for is a driver assigned after the ride is
+booked. Give `driver_id` an earlier value of `None` and the ride counts towards
+nobody's totals at a cutoff taken before a driver accepted it.
+
+One update time may not be listed under another:
+
+```python
+row_update_times = {
+    "dropped_off_at": {"picked_up_at": None},  # refused
+    "picked_up_at": {"fare": None},
+}
+```
+
+### On multiple updates
+
+A column that changes more than once is not something `row_update_times` can
+describe. A ride status going from booked to accepted to completed has a
+history, and the mapping gives a column one earlier value for all time. Record
+each step in its own column, the way `picked_up_at` and `dropped_off_at` do
+above. Or keep the history in a child table, where a cutoff filters the rows
+normally.

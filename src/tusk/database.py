@@ -4,14 +4,23 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import narwhals as nw
 
-from tusk.exceptions import MissingPrimaryKeyWarning, SchemaError
+from tusk.exceptions import (
+    ImplicitEarlierValueWarning,
+    MissingPrimaryKeyWarning,
+    SchemaError,
+)
 from tusk.plotting import SchemaDiagram
-from tusk.validation import validate_database, validate_relationship, validate_table
+from tusk.validation import (
+    DEFAULT_TABLE_CHECKS,
+    validate_database,
+    validate_relationship,
+    validate_table,
+)
 
 
 @dataclass(frozen=True)
@@ -23,12 +32,25 @@ class TableSchema:
         primary_key: Column uniquely identifying a row, if declared.
         row_creation_time: Column recording when a row became knowable.
         dtypes: Mapping of column name to narwhals dtype.
+        row_update_times: Mapping of each column recording an update time to
+            the columns that update rewrote, each mapped to the value it held
+            before the update.
     """
 
     name: str
     primary_key: str | None
     row_creation_time: str | None
     dtypes: Mapping[str, Any]
+    row_update_times: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+
+    @property
+    def column_updates(self) -> tuple[tuple[str, str, Any], ...]:
+        """Every update as a (row update time, column, pre-update value) triple."""
+        return tuple(
+            (update_time, column, value)
+            for update_time, updated in self.row_update_times.items()
+            for column, value in updated.items()
+        )
 
 
 @dataclass(frozen=True)
@@ -80,10 +102,14 @@ class Database:
         table: Any,
         primary_key: str | None = None,
         row_creation_time: str | None = None,
+        row_update_times: Mapping[str, Mapping[str, Any]] | None = None,
         *,
-        validate: bool | str | Iterable[str] = "datetime_row_creation_time",
+        validate: bool | str | Iterable[str] = DEFAULT_TABLE_CHECKS,
     ) -> Database:
         """Add a table to the database.
+
+        A selected check that fails raises
+        :class:`~tusk.exceptions.ValidationError`.
 
         Args:
             name: Name to register the table under.
@@ -94,10 +120,18 @@ class Database:
                 table used as a relationship parent or as the DFS target.
             row_creation_time: Column recording when a row became knowable.
                 Required for order-dependent primitives on this table.
+            row_update_times: Maps each column recording when a row was
+                updated to the columns that update rewrote, each mapped to the
+                value it held before. Computing a feature matrix under a
+                ``cutoff_time`` gives those columns their earlier value on
+                every row updated after the cutoff. An update time column that
+                does not list itself is added to its own mapping with a null
+                value.
             validate: Pick a string or list of strings from
                 [here](validation/#tusk.validation.TABLE_CHECKS)
                 to enable specific checks.
-                `True` runs every check, `False` runs none.
+                `True` runs every check, `False` runs none. The default runs
+                every check that needs no query.
 
         Returns:
             This database, to allow chaining.
@@ -108,6 +142,8 @@ class Database:
 
         Warns:
             MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
+            ImplicitEarlierValueWarning: If a ``row_update_times`` key
+                does not list itself, so tusk gave it a null value.
         """
         if name in self._schemas:
             raise SchemaError(f"table {name!r} is already in this database")
@@ -140,6 +176,12 @@ class Database:
             if column is not None and column not in dtypes:
                 raise SchemaError(f"{label} {column!r} is not a column of {name!r}")
 
+        row_update_times = _normalize_row_update_times(row_update_times, name)
+        _reject_unknown_updated_columns(row_update_times, dtypes, name)
+        incomplete = _row_update_times_without_a_value(row_update_times)
+        _warn_about_incomplete_row_update_times(incomplete, name)
+        row_update_times = _insert_own_values(row_update_times, incomplete)
+
         if primary_key is None:
             warnings.warn(
                 f"{name!r} has no primary_key: it cannot be used as a "
@@ -149,7 +191,13 @@ class Database:
                 stacklevel=2,
             )
 
-        schema = TableSchema(name, primary_key, row_creation_time, dtypes)
+        schema = TableSchema(
+            name=name,
+            primary_key=primary_key,
+            row_creation_time=row_creation_time,
+            dtypes=dtypes,
+            row_update_times=row_update_times,
+        )
         validate_table(lazy, schema, validate)
 
         self._frames[name] = lazy
@@ -243,7 +291,8 @@ class Database:
         Args:
             columns: True lists every column, False lists none, and
                 ``"structural"`` lists only the primary key, the foreign keys,
-                and the ``row_creation_time``.
+                the ``row_creation_time``, the ``row_update_times``, and the
+                columns they update.
 
         Returns:
             The diagram, which renders itself in a notebook and writes itself
@@ -370,3 +419,118 @@ def _reject_composite(value: Any, label: str) -> None:
     """
     if isinstance(value, (list, tuple)):
         raise SchemaError(f"composite {label} is not supported; got {value!r}")
+
+
+def _normalize_row_update_times(
+    row_update_times: Mapping[str, Mapping[str, Any]] | None,
+    table: str,
+) -> dict[str, dict[str, Any]]:
+    """Copy a row update time declaration into plain nested dicts.
+
+    Args:
+        row_update_times: The declaration, or None.
+        table: Table name, used in the message.
+
+    Returns:
+        The declaration as nested dicts, empty when None was given.
+
+    Raises:
+        SchemaError: If it is not a mapping of column name to mapping.
+    """
+    if row_update_times is None:
+        return {}
+    if not isinstance(row_update_times, Mapping):
+        raise SchemaError(
+            f"row_update_times of {table!r} must map each update time column "
+            f"to the columns it updates; got {row_update_times!r}",
+        )
+    normalized = {}
+    for update_time, updated in row_update_times.items():
+        if not isinstance(updated, Mapping):
+            raise SchemaError(
+                f"row_update_time {update_time!r} of {table!r} must map each "
+                f"column it updates to that column's pre-update value; "
+                f"got {updated!r}",
+            )
+        normalized[update_time] = dict(updated)
+    return normalized
+
+
+def _reject_unknown_updated_columns(
+    row_update_times: Mapping[str, Mapping[str, Any]],
+    dtypes: Mapping[str, Any],
+    table: str,
+) -> None:
+    """Raise if a row update time declaration names a column the table lacks.
+
+    Args:
+        row_update_times: The normalized declaration.
+        dtypes: The table's columns.
+        table: Table name, used in the message.
+
+    Raises:
+        SchemaError: If an update time or an updated column is not a column of
+            the table.
+    """
+    for update_time, updated in row_update_times.items():
+        if update_time not in dtypes:
+            raise SchemaError(
+                f"row_update_time {update_time!r} is not a column of {table!r}",
+            )
+        unknown = [column for column in updated if column not in dtypes]
+        if unknown:
+            raise SchemaError(
+                f"{unknown[0]!r}, listed under row_update_time "
+                f"{update_time!r}, is not a column of {table!r}",
+            )
+
+
+def _row_update_times_without_a_value(
+    row_update_times: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Return the update time columns that do not list themselves.
+
+    Args:
+        row_update_times: The normalized declaration.
+
+    Returns:
+        Their names, in declaration order.
+    """
+    return [name for name, updated in row_update_times.items() if name not in updated]
+
+
+def _warn_about_incomplete_row_update_times(incomplete: list[str], table: str) -> None:
+    """Warn that tusk will read each named column as null before its update.
+
+    Args:
+        incomplete: Update time columns nothing gives a value, as built by
+            :func:`_row_update_times_without_a_value`.
+        table: Table name, used in the message.
+    """
+    for update_time in incomplete:
+        warnings.warn(
+            f"row_update_time {update_time!r} of {table!r} does not say what "
+            f"it held before the update, so tusk reads it as null; list it "
+            f"under itself to choose a value",
+            ImplicitEarlierValueWarning,
+            stacklevel=3,
+        )
+
+
+def _insert_own_values(
+    row_update_times: Mapping[str, Mapping[str, Any]],
+    incomplete: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Give each update time column named in ``incomplete`` a null value.
+
+    Args:
+        row_update_times: The normalized declaration.
+        incomplete: Update time columns nothing gives a value.
+
+    Returns:
+        The declaration with a null entry added for each of them.
+    """
+    completed = {key: dict(values) for key, values in row_update_times.items()}
+    for update_time in incomplete:
+        completed[update_time][update_time] = None
+    return completed

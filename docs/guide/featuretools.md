@@ -13,6 +13,7 @@ different answer.
   | `EntitySet` | `Database` |
   | `EntitySet(id=…)` | `Database(name=…)` |
   | `es.add_dataframe(dataframe_name=…, dataframe=…, index=…, time_index=…)` | `db.add_table(name, table, primary_key=…, row_creation_time=…)` |
+  | `es.set_secondary_time_index(dataframe_name=…, secondary_time_index={col: [...]})` | `db.add_table(..., row_update_times={col: {...}})` |
   | `dfs(entityset=…, target_dataframe_name=…)` | `deep_feature_synthesis(database=…, target_table=…)` |
   | `calculate_feature_matrix(features, entityset)` | `apply_features(features, database)` |
 
@@ -39,6 +40,11 @@ different answer.
 - **`primary_key` and `row_creation_time`** rather than `index` and
   `time_index`. Narwhals has no index concept, and `row_creation_time` names
   what the column means: when the row became knowable.
+
+- **`row_update_times` asks what the column held before** where
+  `set_secondary_time_index` always nulls it. A tip that had not been given yet
+  is `0`, not unknown, and only you know that. See [row update
+  times](databases.md#row-update-times).
 
 - **Three-argument relationships.** `add_relationship(parent=, child=,
   foreign_key=)` — the parent side is always the parent's primary key.

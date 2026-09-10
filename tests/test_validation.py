@@ -1,4 +1,5 @@
 import datetime as dt
+import warnings
 from zoneinfo import ZoneInfo
 
 import narwhals as nw
@@ -9,11 +10,23 @@ import pytest
 import tusk
 from tusk import validation
 from tusk.database import TableSchema
-from tusk.exceptions import TuskError, ValidationError
+from tusk.exceptions import (
+    ImplicitEarlierValueWarning,
+    TuskError,
+    ValidationError,
+)
 from tusk.validation import (
+    DEFAULT_TABLE_CHECKS,
     check_cutoff_time_zone,
     check_dtype_row_creation_time,
+    check_dtype_row_update_times,
+    check_matching_earlier_value_dtypes,
+    check_never_updated_primary_key,
+    check_never_updated_row_creation_time,
     check_non_null_primary_key,
+    check_ordered_row_times,
+    check_singly_updated_columns,
+    check_unchained_row_update_times,
     check_unique_primary_key,
     validate_table,
 )
@@ -146,15 +159,17 @@ def test_a_generator_selector_still_checks_every_table():
 
 @pytest.fixture
 def spy(monkeypatch):
-    """Replace the registry with a recorder, so plumbing is observable."""
+    """Replace the registry with a recorder, so plumbing is observable.
+
+    Every default check keeps its real function, so the registry follows
+    DEFAULT_TABLE_CHECKS rather than listing names that go stale each time a
+    default is added. Only 'unique_primary_key' -- which scans, and so must
+    not run from add_table by default -- becomes the recorder.
+    """
     calls = []
-    monkeypatch.setattr(
-        "tusk.validation.TABLE_CHECKS",
-        {
-            "unique_primary_key": lambda f, s: calls.append(s.name),
-            "datetime_row_creation_time": check_dtype_row_creation_time,
-        },
-    )
+    registry = {name: validation.TABLE_CHECKS[name] for name in DEFAULT_TABLE_CHECKS}
+    registry["unique_primary_key"] = lambda frame, schema: calls.append(schema.name)
+    monkeypatch.setattr("tusk.validation.TABLE_CHECKS", registry)
     return calls
 
 
@@ -820,3 +835,437 @@ def test_add_relationship_runs_the_join_when_asked():
 def test_add_relationship_rejects_a_table_check_name():
     with pytest.raises(ValueError, match="unknown check 'unique_primary_key'"):
         linked([1], [1], validate="unique_primary_key")
+
+
+def updating_schema(row_update_times, primary_key="id", row_creation_time=None):
+    """A schema over id / status / created_at / updated_at."""
+    return TableSchema(
+        "orders",
+        primary_key,
+        row_creation_time,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "created_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        row_update_times,
+    )
+
+
+def test_a_date_row_update_time_is_reported():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "updated_on": nw.Date()},
+        {"updated_on": {"updated_on": None}},
+    )
+    with pytest.raises(ValidationError, match="row_update_time 'updated_on'"):
+        check_dtype_row_update_times(frame([1]), schema)
+
+
+def test_a_datetime_row_update_time_passes():
+    check_dtype_row_update_times(
+        frame([1]), updating_schema({"updated_at": {"updated_at": None}})
+    )
+
+
+def test_a_table_without_row_update_times_passes_the_dtype_check():
+    check_dtype_row_update_times(frame([1]), updating_schema({}))
+
+
+def test_an_updated_primary_key_is_reported():
+    schema = updating_schema({"updated_at": {"id": None, "updated_at": None}})
+    with pytest.raises(ValidationError, match="primary_key 'id'"):
+        check_never_updated_primary_key(frame([1]), schema)
+
+
+def test_an_untouched_primary_key_passes():
+    check_never_updated_primary_key(
+        frame([1]), updating_schema({"updated_at": {"status": "pending"}})
+    )
+
+
+def test_a_table_without_a_primary_key_passes_the_unmasked_check():
+    check_never_updated_primary_key(
+        frame([1]),
+        updating_schema({"updated_at": {"status": "pending"}}, primary_key=None),
+    )
+
+
+def test_an_updated_row_creation_time_is_reported():
+    schema = updating_schema(
+        {"updated_at": {"created_at": None, "updated_at": None}},
+        row_creation_time="created_at",
+    )
+    with pytest.raises(ValidationError, match="row_creation_time 'created_at'"):
+        check_never_updated_row_creation_time(frame([1]), schema)
+
+
+def test_an_untouched_row_creation_time_passes():
+    check_never_updated_row_creation_time(
+        frame([1]),
+        updating_schema(
+            {"updated_at": {"status": "pending"}}, row_creation_time="created_at"
+        ),
+    )
+
+
+def test_a_table_without_a_row_creation_time_passes_the_unmasked_check():
+    check_never_updated_row_creation_time(
+        frame([1]), updating_schema({"updated_at": {"status": "pending"}})
+    )
+
+
+def test_a_column_updated_by_two_update_times_is_reported():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "shipped_at": {"status": "pending"},
+            "updated_at": {"status": "unknown"},
+        },
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_singly_updated_columns(frame([1]), schema)
+    message = str(excinfo.value)
+    assert "'status'" in message
+    assert "'shipped_at'" in message
+    assert "'updated_at'" in message
+
+
+def test_one_update_time_over_many_columns_passes():
+    check_singly_updated_columns(
+        frame([1]),
+        updating_schema({"updated_at": {"status": "pending", "updated_at": None}}),
+    )
+
+
+def test_two_update_times_over_different_columns_pass():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "note": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "shipped_at": {"status": "pending", "shipped_at": None},
+            "updated_at": {"note": None, "updated_at": None},
+        },
+    )
+    check_singly_updated_columns(frame([1]), schema)
+
+
+def test_an_update_time_updated_by_another_one_is_reported():
+    # 'first' rewrites 'second', and add_table also gives 'second' an entry of
+    # its own, so 'second' ends up with two.
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "first": nw.Datetime(), "second": nw.Datetime()},
+        {"first": {"second": None, "first": None}, "second": {"second": None}},
+    )
+    with pytest.raises(ValidationError, match="'second'"):
+        check_singly_updated_columns(frame([1]), schema)
+
+
+def test_add_table_rejects_a_chained_row_update_time():
+    # 'updated_at' masks 'shipped_at', which in turn masks 'status'. A single
+    # with_columns reads every mask's condition off the original frame, so
+    # 'status' would leak shipped_at's raw post-cutoff value; add_table must
+    # refuse this declaration rather than let base_frame produce it.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
+        with pytest.raises(ValidationError, match="'shipped_at'"):
+            tusk.Database("d").add_table(
+                "orders",
+                pl.LazyFrame(
+                    {
+                        "id": [1],
+                        "placed_at": [dt.datetime(2024, 1, 1)],
+                        "status": ["delivered"],
+                        "shipped_at": [dt.datetime(2024, 4, 1)],
+                        "updated_at": [dt.datetime(2024, 9, 1)],
+                    },
+                ),
+                primary_key="id",
+                row_creation_time="placed_at",
+                row_update_times={
+                    "updated_at": {"shipped_at": None, "updated_at": None},
+                    "shipped_at": {"status": "pending"},
+                },
+            )
+
+
+@pytest.mark.parametrize(
+    ("value", "dtype"),
+    [
+        (None, nw.Int64()),
+        (None, nw.String()),
+        (1, nw.Int64()),
+        (1, nw.Float64()),
+        (1.5, nw.Float64()),
+        (0, nw.Decimal()),
+        (0.5, nw.Decimal()),
+        (True, nw.Boolean()),
+        ("pending", nw.String()),
+        ("pending", nw.Categorical()),
+        (dt.datetime(2024, 1, 1), nw.Datetime()),
+        (dt.date(2024, 1, 1), nw.Date()),
+        ([1, 2], nw.Int64()),
+    ],
+)
+def test_a_fitting_pre_update_value_passes(value, dtype):
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "column": dtype, "updated_at": nw.Datetime()},
+        {"updated_at": {"column": value, "updated_at": None}},
+    )
+    check_matching_earlier_value_dtypes(frame([1]), schema)
+
+
+@pytest.mark.parametrize(
+    ("value", "dtype"),
+    [
+        ("pending", nw.Int64()),
+        (1.5, nw.Int64()),
+        (True, nw.Int64()),
+        (1, nw.String()),
+        (1, nw.Boolean()),
+        (dt.date(2024, 1, 1), nw.Datetime()),
+        (dt.datetime(2024, 1, 1), nw.Date()),
+    ],
+)
+def test_a_misfitting_pre_update_value_is_reported(value, dtype):
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {"id": nw.Int64(), "column": dtype, "updated_at": nw.Datetime()},
+        {"updated_at": {"column": value, "updated_at": None}},
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_matching_earlier_value_dtypes(frame([1]), schema)
+    message = str(excinfo.value)
+    assert "'column'" in message
+    assert "'updated_at'" in message
+
+
+def test_a_table_without_row_update_times_passes_the_value_check():
+    check_matching_earlier_value_dtypes(frame([1]), updating_schema({}))
+
+
+def times_frame(created, updated):
+    """A frame of creation and update timestamps."""
+    return nw.from_native(
+        pl.LazyFrame(
+            {"created_at": created, "updated_at": updated},
+            schema={"created_at": pl.Datetime, "updated_at": pl.Datetime},
+        ),
+    )
+
+
+def times_schema():
+    """A schema over created_at and updated_at, the latter updating itself."""
+    return TableSchema(
+        "orders",
+        None,
+        "created_at",
+        {"created_at": nw.Datetime(), "updated_at": nw.Datetime()},
+        {"updated_at": {"updated_at": None}},
+    )
+
+
+def test_an_update_before_the_creation_is_reported():
+    got = times_frame(
+        [dt.datetime(2024, 3, 1)] * 2,
+        [dt.datetime(2024, 1, 1), dt.datetime(2024, 5, 1)],
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        check_ordered_row_times(got, times_schema())
+    message = str(excinfo.value)
+    assert "'updated_at'" in message
+    assert "'created_at'" in message
+    assert "1 rows" in message
+
+
+def test_updates_at_or_after_the_creation_pass():
+    check_ordered_row_times(
+        times_frame(
+            [dt.datetime(2024, 3, 1)] * 2,
+            [dt.datetime(2024, 3, 1), dt.datetime(2024, 5, 1)],
+        ),
+        times_schema(),
+    )
+
+
+def test_a_null_update_time_passes_the_order_check():
+    check_ordered_row_times(
+        times_frame([dt.datetime(2024, 3, 1)], [None]), times_schema()
+    )
+
+
+def test_a_table_without_a_row_creation_time_passes_the_order_check():
+    schema = TableSchema(
+        "orders",
+        None,
+        None,
+        {"created_at": nw.Datetime(), "updated_at": nw.Datetime()},
+        {"updated_at": {"updated_at": None}},
+    )
+    check_ordered_row_times(
+        times_frame([dt.datetime(2024, 3, 1)], [dt.datetime(2024, 1, 1)]), schema
+    )
+
+
+def test_a_table_without_row_update_times_passes_the_order_check():
+    schema = TableSchema(
+        "orders",
+        None,
+        "created_at",
+        {"created_at": nw.Datetime(), "updated_at": nw.Datetime()},
+        {},
+    )
+    check_ordered_row_times(
+        times_frame([dt.datetime(2024, 3, 1)], [dt.datetime(2024, 1, 1)]), schema
+    )
+
+
+def test_the_order_check_is_not_in_the_add_table_default():
+    # It scans, so add_table must not pay for it.
+    assert "ordered_row_times" not in DEFAULT_TABLE_CHECKS
+
+
+def test_every_default_check_is_registered():
+    assert set(DEFAULT_TABLE_CHECKS) <= set(validation.TABLE_CHECKS)
+
+
+def test_no_default_check_reads_rows():
+    """Every default check must answer from the schema alone.
+
+    A frame that raises on any access proves it: if a check touched the data,
+    this test would see the exception instead of a clean pass.
+    """
+
+    class Unreadable:
+        def __getattr__(self, name):
+            raise AssertionError(f"a default check read the frame: {name}")
+
+    schema = TableSchema(
+        "orders",
+        "id",
+        "created_at",
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "created_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {"updated_at": {"status": "pending", "updated_at": None}},
+    )
+    validate_table(Unreadable(), schema, DEFAULT_TABLE_CHECKS)  # ty: ignore[invalid-argument-type]
+
+
+def chained_schema():
+    """A schema where 'updated_at' rewrites 'shipped_at', which rewrites 'status'."""
+    return TableSchema(
+        "orders",
+        "id",
+        "placed_at",
+        {
+            "id": nw.Int64(),
+            "placed_at": nw.Datetime(),
+            "status": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "updated_at": {"shipped_at": None, "updated_at": None},
+            "shipped_at": {"status": "pending", "shipped_at": None},
+        },
+    )
+
+
+def test_a_chained_row_update_time_is_reported():
+    with pytest.raises(ValidationError) as excinfo:
+        check_unchained_row_update_times(frame([1]), chained_schema())
+    message = str(excinfo.value)
+    assert "'shipped_at'" in message
+    assert "'updated_at'" in message
+    assert "'orders'" in message
+
+
+def test_an_update_time_listing_only_itself_passes_the_chain_check():
+    check_unchained_row_update_times(
+        frame([1]),
+        updating_schema({"updated_at": {"status": "pending", "updated_at": None}}),
+    )
+
+
+def test_two_independent_update_times_pass_the_chain_check():
+    schema = TableSchema(
+        "orders",
+        "id",
+        None,
+        {
+            "id": nw.Int64(),
+            "status": nw.String(),
+            "note": nw.String(),
+            "shipped_at": nw.Datetime(),
+            "updated_at": nw.Datetime(),
+        },
+        {
+            "shipped_at": {"status": "pending", "shipped_at": None},
+            "updated_at": {"note": None, "updated_at": None},
+        },
+    )
+    check_unchained_row_update_times(frame([1]), schema)
+
+
+def test_a_table_without_row_update_times_passes_the_chain_check():
+    check_unchained_row_update_times(frame([1]), updating_schema({}))
+
+
+def test_the_chain_check_runs_by_default():
+    assert "unchained_row_update_times" in DEFAULT_TABLE_CHECKS
+
+
+def test_add_table_reports_a_chain_as_a_chain():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
+        with pytest.raises(ValidationError, match="itself listed under") as excinfo:
+            tusk.Database("d").add_table(
+                "orders",
+                pl.LazyFrame(
+                    {
+                        "id": [1],
+                        "placed_at": [dt.datetime(2024, 1, 1)],
+                        "status": ["delivered"],
+                        "shipped_at": [dt.datetime(2024, 4, 1)],
+                        "updated_at": [dt.datetime(2024, 9, 1)],
+                    },
+                ),
+                primary_key="id",
+                row_creation_time="placed_at",
+                row_update_times={
+                    "updated_at": {"shipped_at": None, "updated_at": None},
+                    "shipped_at": {"status": "pending"},
+                },
+            )
+    assert "give it one row_update_time" not in str(excinfo.value)

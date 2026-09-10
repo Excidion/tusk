@@ -7,8 +7,8 @@ Nothing here runs unless the caller asks, through
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
-from typing import TYPE_CHECKING
+from datetime import date, datetime
+from typing import TYPE_CHECKING, Any
 
 import narwhals as nw
 
@@ -102,6 +102,181 @@ def check_dtype_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> N
     raise ValidationError(
         f"row_creation_time {column!r} of {schema.name!r} is {dtype}, expected Datetime"
     )
+
+
+def check_dtype_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm every declared row update time is a Datetime, not a Date.
+
+    A table with no ``row_update_times`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the columns to check.
+
+    Raises:
+        ValidationError: If a row update time column is not a Datetime.
+    """
+    for column in schema.row_update_times:
+        dtype = schema.dtypes[column]
+        if dtype == nw.Datetime:
+            continue
+        raise ValidationError(
+            f"row_update_time {column!r} of {schema.name!r} is {dtype}, "
+            f"expected Datetime",
+        )
+
+
+def check_never_updated_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row update time rewrites the primary key.
+
+    A table with no ``primary_key`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the column to check.
+
+    Raises:
+        ValidationError: If a row update time lists the primary key.
+    """
+    update_time = _updating_row_update_time(schema, schema.primary_key)
+    if update_time is None:
+        return
+
+    raise ValidationError(
+        f"primary_key {schema.primary_key!r} of {schema.name!r} is listed "
+        f"under row_update_time {update_time!r}; the primary key names the "
+        f"feature matrix's rows, so it cannot be served an earlier value",
+    )
+
+
+def check_never_updated_row_creation_time(
+    frame: nw.LazyFrame, schema: TableSchema
+) -> None:
+    """Confirm no row update time rewrites the row creation time.
+
+    A table with no ``row_creation_time`` is skipped. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the column to check.
+
+    Raises:
+        ValidationError: If a row update time lists the row creation time.
+    """
+    update_time = _updating_row_update_time(schema, schema.row_creation_time)
+    if update_time is None:
+        return
+
+    raise ValidationError(
+        f"row_creation_time {schema.row_creation_time!r} of {schema.name!r} "
+        f"is listed under row_update_time {update_time!r}; every visible row "
+        f"was created at or before the cutoff already",
+    )
+
+
+def check_unchained_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row update time is rewritten by another row update time.
+
+    The entry ``add_table`` adds for an update time that says nothing about
+    itself is not a chain. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the updates.
+
+    Raises:
+        ValidationError: If a row update time is listed under a different row
+            update time.
+    """
+    for update_time, column, _ in schema.column_updates:
+        if column == update_time or column not in schema.row_update_times:
+            continue
+        raise ValidationError(
+            f"row_update_time {column!r} of {schema.name!r} is itself listed "
+            f"under row_update_time {update_time!r}; an update time cannot say "
+            f"what other columns held before if it is unknown itself",
+        )
+
+
+def check_singly_updated_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no column is rewritten by two row update times.
+
+    The entry ``add_table`` adds for an update time that says nothing about
+    itself counts like any other. Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the updates.
+
+    Raises:
+        ValidationError: If one column appears under two row update times.
+    """
+    seen: dict[str, str] = {}
+    for update_time, column, _ in schema.column_updates:
+        if column in seen:
+            raise ValidationError(
+                f"{column!r} of {schema.name!r} is listed under both "
+                f"row_update_time {seen[column]!r} and row_update_time "
+                f"{update_time!r}; give it one row_update_time",
+            )
+        seen[column] = update_time
+
+
+def check_matching_earlier_value_dtypes(
+    frame: nw.LazyFrame, schema: TableSchema
+) -> None:
+    """Confirm every declared pre-update value fits the column it replaces.
+
+    Reads the schema only. A null fits every column.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, naming the updates.
+
+    Raises:
+        ValidationError: If a pre-update value does not fit its column's dtype.
+    """
+    for update_time, column, value in schema.column_updates:
+        dtype = schema.dtypes[column]
+        if _fits_dtype(value, dtype):
+            continue
+        raise ValidationError(
+            f"{value!r}, listed for {column!r} of {schema.name!r} under "
+            f"row_update_time {update_time!r}, is not a {dtype} value",
+        )
+
+
+def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row was updated before it was created.
+
+    Scans the table. A table with no ``row_creation_time`` or no
+    ``row_update_times`` is skipped, as is a row whose update time is null:
+    a row that was never updated has no order to check.
+
+    Args:
+        frame: The table's lazy frame.
+        schema: The table's schema, naming the columns to compare.
+
+    Raises:
+        ValidationError: If an update time is before the row creation time.
+    """
+    created = schema.row_creation_time
+    if created is None or not schema.row_update_times:
+        return
+
+    early = frame.select(
+        (nw.col(update_time) < nw.col(created)).sum().alias(update_time)
+        for update_time in schema.row_update_times
+    ).collect()
+
+    for update_time in schema.row_update_times:
+        rows = early[update_time].item()
+        if not rows:
+            continue
+        raise ValidationError(
+            f"row_update_time {update_time!r} of {schema.name!r} is before "
+            f"row_creation_time {created!r} in {rows} rows",
+        )
 
 
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
@@ -252,11 +427,83 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
     )
 
 
+def _updating_row_update_time(schema: TableSchema, column: str | None) -> str | None:
+    """Return the row update time that rewrites a column.
+
+    Args:
+        schema: The table's schema.
+        column: The column to look for, or None.
+
+    Returns:
+        The first row update time listing it, or None when nothing does.
+    """
+    if column is None:
+        return None
+    for update_time, updated, _ in schema.column_updates:
+        if updated == column:
+            return update_time
+    return None
+
+
+def _fits_dtype(value: Any, dtype: Any) -> bool:
+    """Decide whether a Python value can stand in for a narwhals dtype.
+
+    A null fits every column. A value of a Python type this function does not
+    check for fits every dtype.
+
+    Args:
+        value: The declared pre-update value.
+        dtype: The narwhals dtype of the column it replaces.
+
+    Returns:
+        True if the value fits the dtype.
+    """
+    # bool is a subclass of int and datetime is a subclass of date, so both
+    # narrow types have to be tested before the wide ones.
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return dtype == nw.Boolean
+    if isinstance(value, int):
+        return bool(dtype.is_numeric())
+    if isinstance(value, float):
+        return bool(dtype.is_float()) or dtype == nw.Decimal
+    if isinstance(value, str):
+        return dtype in (nw.String, nw.Categorical, nw.Enum)
+    if isinstance(value, datetime):
+        return dtype == nw.Datetime
+    if isinstance(value, date):
+        return dtype == nw.Date
+    # Refusing a value in a dtype family tusk cannot judge is worse than
+    # letting the backend judge it at collect time.
+    return True
+
+
 TABLE_CHECKS = {
     "non_null_primary_key": check_non_null_primary_key,
     "unique_primary_key": check_unique_primary_key,
     "datetime_row_creation_time": check_dtype_row_creation_time,
+    "datetime_row_update_times": check_dtype_row_update_times,
+    "never_updated_primary_key": check_never_updated_primary_key,
+    "never_updated_row_creation_time": check_never_updated_row_creation_time,
+    "unchained_row_update_times": check_unchained_row_update_times,
+    "singly_updated_columns": check_singly_updated_columns,
+    "matching_earlier_value_dtypes": check_matching_earlier_value_dtypes,
+    "ordered_row_times": check_ordered_row_times,
 }
+
+# Every check here answers from the declared schema, so add_table can run all
+# of them without reading a row. A check that scans belongs in TABLE_CHECKS
+# and not here.
+DEFAULT_TABLE_CHECKS = (
+    "datetime_row_creation_time",
+    "datetime_row_update_times",
+    "unchained_row_update_times",
+    "singly_updated_columns",
+    "never_updated_primary_key",
+    "never_updated_row_creation_time",
+    "matching_earlier_value_dtypes",
+)
 
 RELATIONSHIP_CHECKS = {
     "matching_key_dtypes": check_matching_key_dtypes,

@@ -74,6 +74,13 @@ target — a row that did not exist yet at the cutoff has no features to compute
 Tables with no `row_creation_time` are timeless and pass through unfiltered, so
 a cutoff on a database that declares none is silently a no-op.
 
+A cutoff also reaches inside a row. A table that declares
+[`row_update_times`](databases.md#row-update-times) gives back the earlier value
+of every column filled in after the cutoff, so a taxi fare settled at the end of
+a ride is not visible from a cutoff taken while the ride was still running. This
+happens before any join or aggregation, so aggregated and stacked features see
+those earlier values too.
+
 With `features_only=True` the cutoff is ignored entirely, since nothing is
 computed and feature definitions do not record it.
 
