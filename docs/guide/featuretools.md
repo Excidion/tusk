@@ -41,8 +41,9 @@ different answer.
   `time_index`. Narwhals has no index concept, and `row_creation_time` names
   what the column means: when the row became knowable.
 
-- **`row_update_times` asks for a pre-update value** where
-  `set_secondary_time_index` always nulls the masked columns. See [row update
+- **`row_update_times` asks what the column held before** where
+  `set_secondary_time_index` always nulls it. A tip that had not been given yet
+  is `0`, not unknown, and only you know that. See [row update
   times](databases.md#row-update-times).
 
 - **Three-argument relationships.** `add_relationship(parent=, child=,

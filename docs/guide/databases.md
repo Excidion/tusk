@@ -181,82 +181,94 @@ db.plot(columns="structural")
 ## Row update times
 
 `row_creation_time` decides whether a **row** is visible at a cutoff. It says
-nothing about a **column**. A table that keeps only each row's current state
-plus a timestamp of the last edit
+nothing about the columns inside it. Take a table of taxi rides, where the row
+appears when the ride is booked and several columns are filled in later, as the
+ride happens:
 
-| id | placed_at | status | updated_at |
-| -- | --------- | ------ | ---------- |
-| 1 | 2024-01-05 | delivered | 2024-09-01 |
+| id | booked_at | picked_up_at | dropped_off_at | fare | tip |
+| -- | --------- | ------------ | -------------- | ---- | --- |
+| 1 | 11:58 | 12:03 | 12:25 | 24.50 | 3.00 |
 
-is fully visible at `cutoff_time=2024-06-01`, and `status` comes back holding a
-value written three months after it. `row_update_times` closes that:
+Ask for features at a `cutoff_time` of 12:00 and the ride is visible, because it
+was booked two minutes earlier. So is its fare — a number nobody knew until
+12:25. Train on that and you are training on the answer.
+
+`row_update_times` names the columns that were filled in later, and says what
+each held before:
 
 ```python
 db.add_table(
-    "orders",
-    orders,
+    "rides",
+    rides,
     primary_key="id",
-    row_creation_time="placed_at",
+    row_creation_time="booked_at",
     row_update_times={
-        "updated_at": {"status": "pending", "updated_at": None},
+        "picked_up_at": {"picked_up_at": None},
+        "dropped_off_at": {"fare": None, "tip": 0.0, "dropped_off_at": None},
     },
 )
 ```
 
-The outer key names the column recording when the row was last edited. The
-inner mapping names the columns that edit rewrote, each mapped to **the value
-it held before**. Under a cutoff, a row whose `updated_at` falls after it
-serves those earlier values instead of its current ones.
+The outer key is a column recording when something happened to the ride. The
+inner mapping lists the columns that moment filled in, each with the value it
+held beforehand. At a cutoff of 12:00 the row now comes back with
+`picked_up_at`, `dropped_off_at` and `fare` all null, and `tip` as `0.0`.
 
-A column given its pre-update value this way is said to be **masked**, and
-that value is its **fallback** — the vocabulary the `singly_masked_columns`
-and `matching_fallback_dtypes` checks take their names from.
+A null in an update time column means that moment never came — the ride was
+never picked up — so the row keeps what it holds, at every cutoff.
 
-tusk cannot work the earlier value out for you. The table kept only the current
-one; `"pending"` above is your knowledge about your own data, not something
-tusk can recover. `None` is a legitimate answer — it says the column's earlier
-value is unknown — but it is an answer you choose, not a default you fall into.
+### You choose the earlier value, not tusk
 
-A null `updated_at` means the row was never edited, so its stored value is its
-original one and is visible at every cutoff.
+The table kept only the current value, so tusk cannot work out the earlier one.
+`None` says the value was unknown, which is right for a fare nobody had
+calculated yet. `0.0` is right for the tip, because no tip had been given — and
+writing `None` there would quietly change every `SUM` and `MEAN` over tips.
+Both are your knowledge of your own data, so choose each one deliberately.
 
-### The update time updates itself
+### The update time describes itself too
 
-`MAX(orders.updated_at)` on a customer answers "when will this customer's order
-next be touched" unless `updated_at` gets an earlier value of its own. tusk
-therefore adds `"updated_at": None` to the mapping when you leave it out, and
-warns with
+`picked_up_at` is a column like any other, so `MAX(rides.picked_up_at)` would
+report a pickup that has not happened yet. tusk therefore adds
+`"picked_up_at": None` to the mapping when you leave it out, and warns with
 [`ImplicitRowUpdateTimeMaskWarning`][tusk.exceptions.ImplicitRowUpdateTimeMaskWarning]
-so you can pick a different value. Listing it yourself silences the warning.
+so you can choose a different value. Writing it yourself silences the warning.
 
-### What cannot be updated
+### What cannot be filled in later
 
 The primary key and the `row_creation_time` may not appear in a mapping. The
-primary key names the feature matrix's rows, and every visible row was created
-at or before the cutoff already, so neither has an earlier value that means
-anything. Both are refused by checks that run by default.
+primary key is how a row is identified, and every visible row was created at or
+before the cutoff already, so neither has an earlier value that means anything.
 
-Foreign keys **may** be updated, and doing so is one of the more useful cases:
-an order moved to another customer after the cutoff, with its foreign key given
-an earlier value of `None`, correctly stops contributing to either customer's
-aggregations at that cutoff.
+Foreign keys **may** be, and it is one of the more useful cases: a ride
+reassigned to another driver after the cutoff, with its `driver_id` given an
+earlier value of `None`, correctly stops counting towards either driver's
+totals at that cutoff.
 
-An update time may not be updated by another update time either. Chaining them
+One update time may not be listed under another:
 
 ```python
 row_update_times={
-    "updated_at": {"shipped_at": None},   # refused
-    "shipped_at": {"status": "pending"},
+    "dropped_off_at": {"picked_up_at": None},   # refused
+    "picked_up_at": {"fare": None},
 }
 ```
 
-is refused by the `unchained_row_update_times` check, which also runs by
-default. Every column is rewound in one pass, against the timestamps the table
-actually holds, so `status` would be decided by `shipped_at`'s stored value —
-the one already known to be from after the cutoff. The result contradicts
-itself: `shipped_at` comes back unknown, while the column it vouched for keeps
-a value from the future. Give each updated column an update time that is
-trustworthy on its own.
+This says the dropoff filled in the pickup time, and the pickup filled in the
+fare. tusk works out every column in one pass, reading the times the table
+actually holds, so at a cutoff of 12:10 the row would claim the pickup time is
+unknown while still showing the 24.50 fare — a fare it only showed because that
+same pickup time, read at face value, said the ride had already started. Each
+column needs an update time that is known in its own right.
+
+All three rules are checks that run by default, so a declaration like the one
+above is refused when you add the table.
+
+### The words the checks use
+
+The checks are named in older vocabulary than this page: a column given an
+earlier value is *masked*, and the value is its *fallback*. That is where
+`singly_masked_columns`, `unmasked_primary_key` and `matching_fallback_dtypes`
+get their names. See [validation](#validation) for running them by name.
 
 ### What tusk cannot see
 
@@ -264,3 +276,10 @@ A column that is overwritten in place and named in no `row_update_times` is
 indistinguishable, to tusk, from one that is never touched. It will be read at
 face value and it will leak. Nothing in a schema reveals which columns are
 rewritten; only you know that.
+
+This is also why a column that changes many times — a status that goes from
+booked to accepted to completed — is a poor fit. `row_update_times` gives it
+one earlier value for all time, and a column with a history has more than one.
+Where you can, record each step in its own column, as `picked_up_at` and
+`dropped_off_at` do above, or keep the history in a child table and let a
+cutoff filter its rows.
