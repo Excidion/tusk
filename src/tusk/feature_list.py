@@ -72,13 +72,10 @@ class FeatureList(Sequence[Feature]):
                 this value are visible, on the target table as well as its
                 relatives, so the matrix may have fewer rows than the target.
                 Its tz awareness must match the database's Datetime columns'.
-                None disables filtering. Columns declared in a table's
-                ``row_update_times`` also serve the value they held before,
-                wherever the update happened after the cutoff. Like the
-                cutoff itself, ``row_update_times`` is read from ``database``
-                at call time and is not recorded on the feature definitions,
-                so applying them to a second database is governed by that
-                database's own declaration.
+                None disables filtering. A column listed in a table's
+                ``row_update_times`` holds the value it had before the update,
+                wherever that update happened after the cutoff, as declared by
+                ``database``.
 
         Returns:
             feature_matrix: An uncomputed query plan in the caller's native

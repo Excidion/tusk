@@ -122,15 +122,16 @@ class Database:
                 Required for order-dependent primitives on this table.
             row_update_times: Maps each column recording when a row was
                 updated to the columns that update rewrote, each mapped to the
-                value it held before. Under a ``cutoff_time``, a row updated
-                after the cutoff serves those earlier values instead. An update
-                time column that no update time lists is added to its own
-                mapping with a null value.
+                value it held before. Computing a feature matrix under a
+                ``cutoff_time`` gives those columns their earlier value on
+                every row updated after the cutoff. An update time column that
+                does not list itself is added to its own mapping with a null
+                value.
             validate: Pick a string or list of strings from
                 [here](validation/#tusk.validation.TABLE_CHECKS)
                 to enable specific checks.
                 `True` runs every check, `False` runs none. The default runs
-                every check that reads no rows.
+                every check that needs no query.
 
         Returns:
             This database, to allow chaining.
@@ -141,8 +142,8 @@ class Database:
 
         Warns:
             MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
-            ImplicitRowUpdateTimeMaskWarning: If a ``row_update_times`` key is
-                absent from every mapping, so tusk gave it a null value.
+            ImplicitRowUpdateTimeMaskWarning: If a ``row_update_times`` key
+                does not list itself, so tusk gave it a null value.
         """
         if name in self._schemas:
             raise SchemaError(f"table {name!r} is already in this database")
@@ -191,7 +192,11 @@ class Database:
             )
 
         schema = TableSchema(
-            name, primary_key, row_creation_time, dtypes, row_update_times
+            name=name,
+            primary_key=primary_key,
+            row_creation_time=row_creation_time,
+            dtypes=dtypes,
+            row_update_times=row_update_times,
         )
         validate_table(lazy, schema, validate)
 

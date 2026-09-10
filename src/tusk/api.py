@@ -53,14 +53,12 @@ def deep_feature_synthesis(
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives.
             Its tz awareness must match the database's Datetime columns'.
-            A table with no ``row_creation_time`` is timeless and passes
-            through unfiltered, so a cutoff on a database that declares none is
-            silently a no-op. None disables filtering. Columns declared in a
-            table's ``row_update_times`` also serve the value they held
-            before, wherever the update happened after the cutoff. Ignored
-            entirely when ``features_only`` is true, since nothing is
-            computed: the cutoff belongs to compilation, and feature
-            definitions do not record it.
+            A table with no ``row_creation_time`` is timeless and keeps every
+            row, so a cutoff changes nothing on a database that declares none.
+            None disables filtering. A column listed in a table's
+            ``row_update_times`` holds the value it had before the update,
+            wherever that update happened after the cutoff. Ignored entirely
+            when ``features_only`` is true, since nothing is computed.
         features_only: Return the feature definitions without computing them.
 
     Returns:
@@ -118,11 +116,11 @@ def apply_features(
             value are visible, on the target table as well as its relatives, so
             the matrix may have fewer rows than the target. Its tz awareness
             must match the database's Datetime columns'. A table with no
-            ``row_creation_time`` is timeless and passes through unfiltered,
-            so a cutoff on a database that declares none is silently a no-op.
-            None disables filtering. Columns declared in a table's
-            ``row_update_times`` also serve the value they held before,
-            wherever the update happened after the cutoff.
+            ``row_creation_time`` is timeless and keeps every row, so a cutoff
+            changes nothing on a database that declares none. None disables
+            filtering. A column listed in a table's ``row_update_times`` holds
+            the value it had before the update, wherever that update happened
+            after the cutoff.
 
     Returns:
         feature_matrix: An uncomputed query plan in the caller's native frame

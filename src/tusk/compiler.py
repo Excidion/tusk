@@ -156,15 +156,12 @@ def base_frame(
     """Return a table's frame as it stood at the cutoff.
 
     Rows created after the cutoff are dropped and columns updated after it
-    hold the value they held before. Tables without a ``row_creation_time``
-    are timeless and keep every row -- documented rather than warned, per spec
-    section 8 -- and a table declaring no ``row_update_times`` keeps every
-    value, so a cutoff on a database that declares neither is a silent no-op.
+    hold the value they held before. A table without a ``row_creation_time``
+    keeps every row, and a table declaring no ``row_update_times`` keeps every
+    value.
 
     The target table is filtered like any other, so a cutoff can leave the
-    feature matrix with fewer rows than the target table has. That matches
-    featuretools: a row that did not exist yet at the cutoff has no features to
-    compute.
+    feature matrix with fewer rows than the target table has.
 
     Args:
         database: The database holding the frames.
@@ -199,19 +196,16 @@ def _restore_updated_columns(
     Returns:
         The frame, with one replaced column per declared update.
     """
-    # One with_columns for all of them: every expression in a single call
-    # reads the frame as it was, so an update time that replaces itself
-    # cannot corrupt the conditions of the columns it also replaces.
-    replacements = [
+    if not schema.column_updates:
+        return frame
+
+    return frame.with_columns(
         nw.when(_was_updated_by(update_time, cutoff_time))
         .then(nw.col(column))
         .otherwise(nw.lit(value, dtype=schema.dtypes[column]))
         .alias(column)
         for update_time, column, value in schema.column_updates
-    ]
-    if not replacements:
-        return frame
-    return frame.with_columns(*replacements)
+    )
 
 
 def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
