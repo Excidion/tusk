@@ -432,7 +432,7 @@ def test_markdown_repr_is_a_mermaid_block(one_table_diagram):
     # Jupyter, GitHub and the docs site all render a fenced mermaid block.
     rendered = one_table_diagram._repr_markdown_()
     assert rendered.startswith("```mermaid\n")
-    assert rendered.endswith("```")
+    assert rendered.endswith("```\n")
     assert one_table_diagram.source in rendered
 
 
@@ -444,7 +444,19 @@ def test_saving_source_needs_no_renderer(
     monkeypatch.setitem(sys.modules, "mermaidx", None)
     path = tmp_path / f"schema{suffix}"
     one_table_diagram.save(path)
+    assert one_table_diagram.source in path.read_text(encoding="utf-8")
+
+
+def test_saving_mermaid_writes_the_bare_source(tmp_path, one_table_diagram):
+    path = tmp_path / "schema.mmd"
+    one_table_diagram.save(path)
     assert path.read_text(encoding="utf-8") == one_table_diagram.source
+
+
+def test_saving_markdown_writes_a_mermaid_block(tmp_path, one_table_diagram):
+    path = tmp_path / "schema.md"
+    one_table_diagram.save(path)
+    assert path.read_text(encoding="utf-8") == one_table_diagram.markdown
 
 
 @pytest.mark.parametrize("suffix", [".svg", ".png", ".pdf"])
@@ -456,7 +468,7 @@ def test_saving_an_image_writes_a_file(tmp_path, suffix, one_table_diagram):
 
 
 def test_an_unsupported_suffix_is_rejected(tmp_path, one_table_diagram):
-    with pytest.raises(ValueError, match=".mmd"):
+    with pytest.raises(ValueError, match="cannot save"):
         one_table_diagram.save(tmp_path / "schema.gif")
 
 

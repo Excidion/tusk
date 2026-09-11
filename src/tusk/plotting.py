@@ -97,22 +97,30 @@ class SchemaDiagram:
         """
         return self.source
 
+    @property
+    def markdown(self) -> str:
+        """The source in a ``mermaid`` code fence, newline-terminated.
+
+        Jupyter, GitHub and the documentation site all render this as a
+        picture.
+        """
+        return f"```mermaid\n{self.source}```\n"
+
     def _repr_markdown_(self) -> str:
-        """Return the source as a fenced block, for notebooks and docs.
+        """Return the fenced block, for notebooks and docs.
 
         Returns:
-            The source in a ``mermaid`` code fence, which Jupyter, GitHub and
-            the documentation site all render as a picture.
+            The diagram as :attr:`markdown`.
         """
-        return f"```mermaid\n{self.source}```"
+        return self.markdown
 
     def save(self, path: str | Path) -> None:
         """Write the diagram to a file.
 
-        The suffix selects the format. ``.mmd`` and ``.md`` write the source
-        and need nothing installed; ``.svg``, ``.png`` and ``.pdf`` render the
-        diagram and need ``tusk-ml[plot]``, raising ``ImportError`` if it is
-        not installed.
+        The suffix selects the format. ``.mmd`` writes the bare source and
+        ``.md`` writes it in a ``mermaid`` code fence; both need nothing
+        installed. ``.svg``, ``.png`` and ``.pdf`` render the diagram and need
+        ``tusk-ml[plot]``, raising ``ImportError`` if it is not installed.
 
         Args:
             path: Where to write, including the suffix.
@@ -120,18 +128,20 @@ class SchemaDiagram:
         Raises:
             ValueError: If the suffix names no supported format.
         """
-        source_suffixes = (".mmd", ".md")
-        image_suffixes = (".svg", ".png", ".pdf")
         path = Path(path)
-        if path.suffix in source_suffixes:
-            path.write_text(self.source, encoding="utf-8")
-        elif path.suffix in image_suffixes:
-            self._render_image(path)
-        else:
-            supported = ", ".join(source_suffixes + image_suffixes)
-            raise ValueError(
-                f"cannot save {path.suffix!r}; supported suffixes are {supported}",
-            )
+
+        def write_text(text):
+            return path.write_text(text, encoding="utf-8")
+
+        match path.suffix:
+            case ".md":  # markdown doc, fence included
+                write_text(self.markdown)
+            case ".mmd":  # mermaid diagram, no fence
+                write_text(self.source)
+            case ".svg" | ".png" | ".pdf":
+                self._render_image(path)
+            case _:
+                raise ValueError(f"cannot save {path.suffix!r}; unsupported suffix.")
 
     def _render_image(self, path: Path) -> None:
         """Render the diagram to an image file.
