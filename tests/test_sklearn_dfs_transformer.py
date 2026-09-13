@@ -85,7 +85,7 @@ def test_it_routes_the_database_through_a_pipeline(db):
         pipe = Pipeline(
             [
                 ("dfs", _transformer()),
-                ("impute", SimpleImputer()),
+                ("impute", SimpleImputer(keep_empty_features=True)),
                 ("clf", LogisticRegression()),
             ],
         )
