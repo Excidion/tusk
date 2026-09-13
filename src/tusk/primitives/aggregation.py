@@ -426,7 +426,7 @@ class NTrue(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # duckdb's SUM returns a Decimal whatever it sums
+        # duckdb's SUM widens the integer type
         return expr.fill_null(False).cast(nw.Int64).sum().cast(nw.Int64)
 
 
@@ -689,7 +689,7 @@ class NUniqueMonths(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # month comes back as Int8, which year * 12 would overflow
+        # year * 12 + month must not overflow the narrow ints year()/month() return
         year = expr.dt.year().cast(nw.Int32)
         month = expr.dt.month().cast(nw.Int32)
         return _n_distinct_known(year * 12 + month)
