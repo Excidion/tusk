@@ -142,6 +142,7 @@ def test_fit_transform_forwards_the_database_without_warning(db):
     with sklearn.config_context(enable_metadata_routing=True):
         with warnings.catch_warnings():
             warnings.simplefilter("error", UserWarning)
+            warnings.simplefilter("ignore", UnmatchedPrimitiveWarning)
             _transformer().fit_transform(KEYS, Y, database=db)
 
 

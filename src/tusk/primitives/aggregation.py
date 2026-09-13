@@ -26,6 +26,8 @@ AGG_DEFAULTS: tuple[str, ...] = (
     "max",
     "std",
     "n_unique",
+    "skew",
+    "percent_true",
 )
 
 

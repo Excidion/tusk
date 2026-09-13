@@ -9,6 +9,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import SelectKBest, SelectorMixin, f_classif
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, TargetEncoder
@@ -123,7 +124,13 @@ def _encoder():
 
 
 def _inner(k=2):
-    return Pipeline([("enc", _encoder()), ("sel", SelectKBest(f_classif, k=k))])
+    return Pipeline(
+        [
+            ("enc", _encoder()),
+            ("imp", SimpleImputer()),
+            ("sel", SelectKBest(f_classif, k=k)),
+        ]
+    )
 
 
 def _transformer(k=2, **kwargs):

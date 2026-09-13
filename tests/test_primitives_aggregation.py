@@ -121,7 +121,17 @@ def test_quantiles_defaults_to_the_quartiles():
 
 
 def test_defaults_are_the_documented_set():
-    assert AGG_DEFAULTS == ("count", "sum", "mean", "min", "max", "std", "n_unique")
+    assert AGG_DEFAULTS == (
+        "count",
+        "sum",
+        "mean",
+        "min",
+        "max",
+        "std",
+        "n_unique",
+        "skew",
+        "percent_true",
+    )
 
 
 @pytest.fixture

@@ -16,7 +16,7 @@ from tusk.dtypes import DtypeFamily as F
 from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
 from tusk.primitives.registry import register
 
-TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "weekday")
+TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "day", "weekday")
 
 _COMPARABLE_PAIRS = (
     (F.NUMERIC, F.NUMERIC),
