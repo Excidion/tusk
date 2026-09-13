@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 import narwhals as nw
 import polars as pl
 import pytest
+from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
 
+import tusk
 from tusk.primitives.aggregation import (
     AGG_DEFAULTS,
     Count,
@@ -198,3 +200,24 @@ def test_time_since_aggregations_return_a_duration(timed_lf):
         TimeSinceLast().outputs(nw.col("t"), cutoff_time=CUTOFF)[0].alias("d"),
     )
     assert got.collect_schema()["d"] == nw.Duration
+
+
+@pytest.mark.parametrize("primitive_name", sorted(EXPECTED))
+def test_standalone_aggregations_on_every_kind_of_group(primitive_name):
+    column, dtype, expected = EXPECTED[primitive_name]
+    database = (
+        tusk.Database("cases")
+        .add_table("parents", pl.from_pandas(PARENTS).lazy(), primary_key="id")
+        .add_table("children", pl.from_pandas(CHILDREN).lazy(), primary_key="id")
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="parents",
+        agg_primitives=[primitive_name],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    assert nw.from_native(matrix).collect_schema()[column] == dtype
+    got = matrix.collect().sort("id").to_pandas()[column].tolist()
+    assert_values_match(got, expected)

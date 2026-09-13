@@ -374,6 +374,72 @@ class TimeSinceLastFalse(NeedsCutoffTime, AggregationPrimitive):
         return _time_since_last_selected(timestamps, ~flags, cutoff_time)
 
 
+@register
+@dataclass(frozen=True)
+class All(AggregationPrimitive):
+    """Whether every known value of a boolean column is true."""
+
+    name = "all"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the every-value-true expression, ignoring nulls.
+
+        Args:
+            expr: The boolean column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.all()
+
+
+@register
+@dataclass(frozen=True)
+class Any(AggregationPrimitive):
+    """Whether any known value of a boolean column is true."""
+
+    name = "any"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Boolean
+    default_value = False
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the some-value-true expression, ignoring nulls.
+
+        Args:
+            expr: The boolean column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.any()
+
+
+@register
+@dataclass(frozen=True)
+class NTrue(AggregationPrimitive):
+    """Number of rows where a boolean column is true."""
+
+    name = "n_true"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the true-count expression; a null is not true.
+
+        Args:
+            expr: The boolean column.
+
+        Returns:
+            A narwhals expression.
+        """
+        # duckdb's SUM returns a Decimal whatever it sums
+        return expr.fill_null(False).cast(nw.Int64).sum().cast(nw.Int64)
+
+
 def _time_since_last_selected(
     timestamps: nw.Expr,
     selected: nw.Expr,
