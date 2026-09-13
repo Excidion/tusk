@@ -7,8 +7,12 @@ everything pushed down to the backend.
 ## What ships with tusk
 
 **Aggregation** — `count`, `sum`, `mean`, `min`, `max`, `std`, `median`,
-`n_unique`, `percent_true`, `quantiles`, `time_since_first`, `time_since_last`,
-`time_since_last_true`, `time_since_last_false`.
+`variance`, `skew`, `kurtosis`, `max_min_delta`, `n_unique`, `is_unique`,
+`has_no_duplicates`, `percent_unique`, `all`, `any`, `n_true`, `percent_true`,
+`quantiles`, `first_last_time_delta`, `n_unique_days`,
+`n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months`,
+`time_since_first`, `time_since_last`, `time_since_last_true`,
+`time_since_last_false`.
 
 **Transform** — `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
 `time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
@@ -31,9 +35,10 @@ Year, CumSum` — and takes the same form as a user-defined one, so `Year` and
 
 ## Defaults
 
-Passing `agg_primitives=None` or `trans_primitives=None` selects a sensible
-default subset: `count`, `sum`, `mean`, `min`, `max`, `std`, `n_unique` for
-aggregation, and `year`, `month`, `weekday` for transforms.
+Passing `agg_primitives=None` or `trans_primitives=None` selects the
+primitives featuretools uses by default, where tusk has them: `count`, `sum`,
+`mean`, `min`, `max`, `std`, `n_unique`, `skew`, `percent_true` for
+aggregation, and `year`, `month`, `day`, `weekday` for transforms.
 
 Arithmetic primitives are excluded from the defaults because they generate
 hundreds of features on wide tables.
@@ -58,6 +63,12 @@ with no orders gets:
 | `SUM` | `0` | The additive identity. |
 | `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
 | `PERCENT_TRUE` | `null` | Undefined over an empty set, same as `MEAN`. Within a non-empty group a null counts as false, so an all-null group computes to `0.0` rather than falling through to this default. |
+| `N_TRUE`, `N_UNIQUE_DAYS`, `N_UNIQUE_DAYS_OF_CALENDAR_YEAR`, `N_UNIQUE_DAYS_OF_MONTH`, `N_UNIQUE_MONTHS` | `0` | Zero rows hold nothing to count. Nulls are not values, so a group of only nulls is also `0`. |
+| `ANY` | `false` | No row is true. |
+| `HAS_NO_DUPLICATES` | `true` | No value repeats. Two nulls do repeat, so a group of several nulls is `false`. |
+| `ALL` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but a group with no rows is left unknown. |
+| `IS_UNIQUE` | `null` | Nothing to compare. Nulls are not values, so a group of only nulls is `null` too. |
+| `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE` | `null` | Undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
 
 The split is not arbitrary. Reporting `COUNT = 0` asserts we *know* there were
 no rows; a null `SUM` beside it would claim the total is unknown, which
