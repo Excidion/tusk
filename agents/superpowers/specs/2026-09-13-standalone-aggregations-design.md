@@ -91,15 +91,18 @@ The two tests pinning today's tuples (`tests/test_primitives_aggregation.py:121`
   values. This is what pins decision 3 and the three casts above.
 - `tests/differential/test_aggregations.py`: every primitive against
   featuretools 1.31.0. Agreement is asserted where values agree, and each
-  divergence is asserted on both sides. `kurtosis` needs its own fixture:
-  featuretools generated no feature from the shared one.
+  divergence is asserted on both sides. The child's numeric column is declared
+  `Double` to featuretools: woodwork infers whole numbers as `IntegerNullable`,
+  which `kurtosis` rejects and whose empty-group fill raises for
+  `has_no_duplicates`. `first_last_time_delta` needs the datetime column as
+  featuretools' time index, so it runs on a child without null datetimes.
 
 Expected coverage, to be confirmed by the differential tests:
 
 | Status | Rows |
 | --- | --- |
 | ✅ | `all`, `n_true`, `variance`, `n_unique_days`, `n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months` |
-| ⚠️ | `any` (empty group), `skew` (bias), `kurtosis` (empty and constant group), `max_min_delta` (empty group), `first_last_time_delta` (`Duration`, any datetime), `is_unique` (nulls), `has_no_duplicates` (nulls; featuretools raises on an empty group), `percent_unique` (empty group) |
+| ⚠️ | `any` (empty group), `skew` (bias), `kurtosis` (featuretools answers 0 for a group holding a null, a constant group or an empty group), `max_min_delta` (empty group), `first_last_time_delta` (`Duration`, any datetime), `is_unique` (nulls), `has_no_duplicates` (featuretools ignores nulls), `percent_unique` (empty group) |
 
 ## Documentation
 
