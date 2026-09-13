@@ -231,30 +231,29 @@ held beforehand. At a cutoff of 12:00 the row now comes back with
 A null in an update time column means that moment never came. The ride was
 never picked up, so the row keeps what it holds, at every cutoff.
 
-### You havve to choose the earlier value
+### You have to choose the earlier value
 
 The table keeps only the current value, so tusk cannot work out the earlier one.
 `None` says the value was unknown, which is right for a fare nobody had
 calculated yet. `0.0` might be right for the tip, because no tip had been given.
-Writing `None` there would quietly change every `SUM` and `MEAN` over tips.
-Both are your knowledge of your own data, so choose each one deliberately.
+The choice depends your knowledge of your own data.
 
 ### The update time describes itself too
 
-`picked_up_at` is a column like any other, so `MAX(rides.picked_up_at)` would
+If `picked_up_at` would be column like any other, `MAX(rides.picked_up_at)` would
 report a pickup that has not happened yet. tusk therefore adds
-`"picked_up_at": None` to the mapping when you leave it out, and warns with
+`"picked_up_at": None` to the mapping by default, and warns with
 [`ImplicitEarlierValueWarning`][tusk.exceptions.ImplicitEarlierValueWarning]
 so you can choose a different value. Writing it yourself silences the warning.
 
 ### What cannot be filled in later
 
-The primary key and the `row_creation_time` are not allowd to appear in a mapping.
+The primary key and the `row_creation_time` are not allowd to be updated.
 The primary key is how a row is identified, and every visible row was created at or
 before the cutoff already, so neither has an earlier value that means anything.
 
-A foreign can be filled in. The case it is for is a driver assigned after the ride is
-booked. Give `driver_id` an earlier value of `None` and the ride counts towards
+A foreign key can be filled in. Imagine a driver that is assigned only after the ride
+was booked. Give `driver_id` an earlier value of `None` and the ride counts towards
 nobody's totals at a cutoff taken before a driver accepted it.
 
 One update time may not be listed under another:

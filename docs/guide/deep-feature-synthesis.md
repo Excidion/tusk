@@ -84,28 +84,6 @@ those earlier values too.
 With `features_only=True` the cutoff is ignored entirely, since nothing is
 computed and feature definitions do not record it.
 
-## Feature names are SQL identifiers
-
-Featuretools writes `MEAN(orders.quantity)`; tusk writes
-`MEAN__orders__quantity`. On a backend that generates SQL, dots and
-parentheses parse as table qualifiers and function calls rather than as part of
-a name, so the conventional form is unusable there. Every construct joins with
-`__`:
-
-| meaning | column name |
-| --- | --- |
-| a parent's column | `customers__city` |
-| an aggregation | `MEAN__orders__quantity` |
-| a zero-arity aggregation | `COUNT__orders` |
-| stacked to depth 2 | `MEAN__orders__products__price` |
-| a grouped transform | `CUM_SUM__quantity__by__product_id` |
-| one output of a multi-output primitive | `QUANTILES__orders__quantity__0` |
-
-The conventional form is kept on
-[`Feature.display_name`][tusk.features.Feature.display_name] for logs, docs and
-error messages. If a source column name collides with a generated one,
-`apply_features` raises rather than silently dropping a column.
-
 ## Warnings
 
 DFS reports what it quietly skipped rather than failing:
