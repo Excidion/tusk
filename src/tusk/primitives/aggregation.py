@@ -576,6 +576,123 @@ class PercentUnique(AggregationPrimitive):
         return _n_distinct_known(expr) / nw.len()
 
 
+@register
+@dataclass(frozen=True)
+class FirstLastTimeDelta(AggregationPrimitive):
+    """Time between a group's earliest and latest datetime."""
+
+    name = "first_last_time_delta"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Duration
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the latest-minus-earliest expression.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        # duckdb subtracts two Dates into a day count instead of an interval
+        timestamps = expr.cast(nw.Datetime)
+        return timestamps.max() - timestamps.min()
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueDays(AggregationPrimitive):
+    """Number of distinct calendar dates in a datetime column."""
+
+    name = "n_unique_days"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct-date count; nulls are not values.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _n_distinct_known(expr.dt.date())
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueDaysOfCalendarYear(AggregationPrimitive):
+    """Number of distinct month-and-day pairs in a datetime column."""
+
+    name = "n_unique_days_of_calendar_year"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct month-and-day count; nulls are not values.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        # month and day come back as Int8, which month * 100 overflows
+        month = expr.dt.month().cast(nw.Int32)
+        day = expr.dt.day().cast(nw.Int32)
+        return _n_distinct_known(month * 100 + day)
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueDaysOfMonth(AggregationPrimitive):
+    """Number of distinct days of the month in a datetime column."""
+
+    name = "n_unique_days_of_month"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct day-of-month count; nulls are not values.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _n_distinct_known(expr.dt.day())
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueMonths(AggregationPrimitive):
+    """Number of distinct calendar months, year included, in a datetime column."""
+
+    name = "n_unique_months"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct year-and-month count; nulls are not values.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        # month comes back as Int8, which year * 12 would overflow
+        year = expr.dt.year().cast(nw.Int32)
+        month = expr.dt.month().cast(nw.Int32)
+        return _n_distinct_known(year * 12 + month)
+
+
 def _time_since_last_selected(
     timestamps: nw.Expr,
     selected: nw.Expr,

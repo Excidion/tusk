@@ -83,6 +83,33 @@ EXPECTED = {
         [0.5951700641394972, None, None, 0.3651483716701108, None],
     ),
     "variance": ("VARIANCE__children__value", nw.Float64, [7.0, 0.0, None, 10.0, None]),
+    "first_last_time_delta": (
+        "FIRST_LAST_TIME_DELTA__children__seen_at",
+        nw.Duration,
+        [
+            dt.timedelta(days=60, hours=19),
+            dt.timedelta(days=366),
+            None,
+            dt.timedelta(days=367),
+            None,
+        ],
+    ),
+    "n_unique_days": ("N_UNIQUE_DAYS__children__seen_at", nw.Int64, [2, 2, 0, 4, 0]),
+    "n_unique_days_of_calendar_year": (
+        "N_UNIQUE_DAYS_OF_CALENDAR_YEAR__children__seen_at",
+        nw.Int64,
+        [2, 1, 0, 3, 0],
+    ),
+    "n_unique_days_of_month": (
+        "N_UNIQUE_DAYS_OF_MONTH__children__seen_at",
+        nw.Int64,
+        [2, 1, 0, 3, 0],
+    ),
+    "n_unique_months": (
+        "N_UNIQUE_MONTHS__children__seen_at",
+        nw.Int64,
+        [2, 2, 0, 3, 0],
+    ),
 }
 
 

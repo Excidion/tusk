@@ -1,3 +1,4 @@
+import datetime as dt
 from datetime import datetime, timedelta
 
 import narwhals as nw
@@ -235,3 +236,11 @@ def test_max_min_delta_preserves_input_dtype_on_integer_column():
     got = _agg(lf, prim, "n")
     values = got["o0"].to_list()
     assert values == [7]
+
+
+def test_first_last_time_delta_of_dates_is_a_duration():
+    lf = nw.from_native(
+        pl.LazyFrame({"g": [1, 1], "d": [dt.date(2024, 1, 1), dt.date(2024, 3, 2)]}),
+    )
+    got = _agg(lf, resolve("first_last_time_delta"), "d")
+    assert got["o0"][0] == dt.timedelta(days=61)
