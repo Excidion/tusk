@@ -440,6 +440,90 @@ class NTrue(AggregationPrimitive):
         return expr.fill_null(False).cast(nw.Int64).sum().cast(nw.Int64)
 
 
+@register
+@dataclass(frozen=True)
+class Skew(AggregationPrimitive):
+    """Skewness of a numeric column, without bias correction."""
+
+    name = "skew"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the skewness expression; a constant group is null.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _where_the_column_varies(expr, expr.skew())
+
+
+@register
+@dataclass(frozen=True)
+class Kurtosis(AggregationPrimitive):
+    """Excess kurtosis of a numeric column, without bias correction."""
+
+    name = "kurtosis"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the excess-kurtosis expression; a constant group is null.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _where_the_column_varies(expr, expr.kurtosis())
+
+
+@register
+@dataclass(frozen=True)
+class Variance(AggregationPrimitive):
+    """Sample variance of a numeric column."""
+
+    name = "variance"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the variance expression.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.var()
+
+
+@register
+@dataclass(frozen=True)
+class MaxMinDelta(AggregationPrimitive):
+    """Difference between the largest and smallest value of a numeric column."""
+
+    name = "max_min_delta"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the largest-minus-smallest expression.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.max() - expr.min()
+
+
 def _time_since_last_selected(
     timestamps: nw.Expr,
     selected: nw.Expr,
@@ -461,3 +545,19 @@ def _time_since_last_selected(
         A narwhals expression.
     """
     return nw.lit(cutoff_time) - nw.when(selected).then(timestamps).max()
+
+
+def _where_the_column_varies(expr: nw.Expr, moment: nw.Expr) -> nw.Expr:
+    """Keep a standardized moment only for a group whose values vary.
+
+    Args:
+        expr: The column the moment was computed from.
+        moment: The moment's expression.
+
+    Returns:
+        The moment, or null where the column's standard deviation is zero or
+        unknown.
+    """
+    # A constant group divides zero by zero, which polars answers with NaN
+    # and duckdb with 0.0 or null.
+    return nw.when(expr.std() > 0).then(moment)

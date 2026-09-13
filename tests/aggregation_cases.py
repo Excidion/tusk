@@ -51,7 +51,23 @@ CHILDREN = pd.DataFrame(
 EXPECTED = {
     "all": ("ALL__children__flag", nw.Boolean, [False, True, True, False, None]),
     "any": ("ANY__children__flag", nw.Boolean, [True, True, False, True, False]),
+    "kurtosis": (
+        "KURTOSIS__children__value",
+        nw.Float64,
+        [-1.5, None, None, -1.4266666666666667, None],
+    ),
+    "max_min_delta": (
+        "MAX_MIN_DELTA__children__value",
+        nw.Float64,
+        [5.0, 0.0, None, 7.0, None],
+    ),
     "n_true": ("N_TRUE__children__flag", nw.Int64, [2, 2, 0, 1, 0]),
+    "skew": (
+        "SKEW__children__value",
+        nw.Float64,
+        [0.5951700641394972, None, None, 0.3651483716701108, None],
+    ),
+    "variance": ("VARIANCE__children__value", nw.Float64, [7.0, 0.0, None, 10.0, None]),
 }
 
 
