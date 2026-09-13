@@ -221,3 +221,17 @@ def test_standalone_aggregations_on_every_kind_of_group(primitive_name):
     assert nw.from_native(matrix).collect_schema()[column] == dtype
     got = matrix.collect().sort("id").to_pandas()[column].tolist()
     assert_values_match(got, expected)
+
+
+def test_max_min_delta_preserves_input_dtype_on_integer_column():
+    """Verify max_min_delta output dtype matches the input's, not hardcoded."""
+    lf = nw.from_native(pl.LazyFrame({"g": [1, 1], "n": [3, 10]}))
+
+    # Check that the primitive reports Int64 as its output dtype
+    prim = resolve("max_min_delta")
+    assert prim.return_dtype((nw.Int64,)) == nw.Int64
+
+    # Check that the computed value is correct (10 - 3 = 7)
+    got = _agg(lf, prim, "n")
+    values = got["o0"].to_list()
+    assert values == [7]

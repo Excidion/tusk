@@ -510,7 +510,6 @@ class MaxMinDelta(AggregationPrimitive):
 
     name = "max_min_delta"
     input_dtypes = (F.NUMERIC,)
-    output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the largest-minus-smallest expression.
