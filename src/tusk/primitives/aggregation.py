@@ -195,25 +195,13 @@ class NUnique(AggregationPrimitive):
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the distinct-count expression, excluding null.
 
-        Polars counts null as one more distinct value, which contradicts this
-        primitive's own ``default_value``: a customer whose only session had no
-        transactions would report 0 rows and 1 distinct value at once.
-        featuretools' ``NUM_UNIQUE`` excludes nulls, so counting them would
-        also diverge silently on any data containing them.
-
-        Subtracting a null indicator is deliberate rather than
-        ``expr.drop_nulls().n_unique()``: ``drop_nulls`` is a length-changing
-        (filtration) expression, and narwhals rejects those inside a lazy
-        ``group_by().agg()`` on backends that cannot express them. Both
-        operands here are plain reductions.
-
         Args:
             expr: The column to count distinct values of.
 
         Returns:
             A narwhals expression.
         """
-        return (expr.n_unique() - expr.is_null().any().cast(nw.Int64)).cast(nw.Int64)
+        return _n_distinct_known(expr)
 
 
 @register
@@ -523,6 +511,71 @@ class MaxMinDelta(AggregationPrimitive):
         return expr.max() - expr.min()
 
 
+@register
+@dataclass(frozen=True)
+class IsUnique(AggregationPrimitive):
+    """Whether no known value of a column repeats; nulls are not values."""
+
+    name = "is_unique"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the no-known-value-repeats expression.
+
+        Args:
+            expr: The column to test.
+
+        Returns:
+            A narwhals expression, null for a group without a known value.
+        """
+        known = expr.count()
+        return nw.when(known > 0).then(_n_distinct_known(expr) == known)
+
+
+@register
+@dataclass(frozen=True)
+class HasNoDuplicates(AggregationPrimitive):
+    """Whether no value of a column repeats; two nulls are a repeat."""
+
+    name = "has_no_duplicates"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Boolean
+    default_value = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the no-value-repeats expression.
+
+        Args:
+            expr: The column to test.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.n_unique() == nw.len()
+
+
+@register
+@dataclass(frozen=True)
+class PercentUnique(AggregationPrimitive):
+    """Distinct known values of a column as a fraction of its rows."""
+
+    name = "percent_unique"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct-fraction expression; a null counts as a row.
+
+        Args:
+            expr: The column to count distinct values of.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _n_distinct_known(expr) / nw.len()
+
+
 def _time_since_last_selected(
     timestamps: nw.Expr,
     selected: nw.Expr,
@@ -560,3 +613,18 @@ def _where_the_column_varies(expr: nw.Expr, moment: nw.Expr) -> nw.Expr:
     # A constant group divides zero by zero, which polars answers with NaN
     # and duckdb with 0.0 or null.
     return nw.when(expr.std() > 0).then(moment)
+
+
+def _n_distinct_known(expr: nw.Expr) -> nw.Expr:
+    """Build the number of distinct known values in a group.
+
+    Args:
+        expr: The column to count distinct values of.
+
+    Returns:
+        A narwhals Int64 expression that counts no null as a value.
+    """
+    # n_unique counts null as one more value on every backend. drop_nulls()
+    # cannot remove it first: it changes length, which a lazy group_by().agg()
+    # rejects.
+    return (expr.n_unique() - expr.is_null().any().cast(nw.Int64)).cast(nw.Int64)
