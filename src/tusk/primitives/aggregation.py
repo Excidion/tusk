@@ -184,18 +184,18 @@ class Median(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class NUnique(AggregationPrimitive):
-    """Number of distinct *known* values in a column; nulls are not a value."""
+    """Number of distinct values in a column; a null counts as one value."""
 
     name = "n_unique"
     input_dtypes = (F.ANY,)
     output_dtype = nw.Int64
-    # No rows means 0 distinct values -- and, by the same logic, so does a
-    # group whose only rows are null.
+    # Zero rows means zero distinct values. A group whose only rows are null
+    # is 1, not 0, since null now counts as a value.
     default_value = 0
     stack_on_self = False
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-count expression, excluding null.
+        """Build the distinct-count expression, counting null as a value.
 
         Args:
             expr: The column to count distinct values of.
@@ -203,7 +203,9 @@ class NUnique(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return _n_distinct_known(expr)
+        # polars' n_unique returns UInt32, not the declared Int64; duckdb's
+        # is already Int64.
+        return expr.n_unique().cast(nw.Int64)
 
 
 @register
@@ -560,14 +562,14 @@ class HasNoDuplicates(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class PercentUnique(AggregationPrimitive):
-    """Distinct known values of a column as a fraction of its rows."""
+    """Distinct values of a column as a fraction of its rows."""
 
     name = "percent_unique"
     input_dtypes = (F.ANY,)
     output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-fraction expression; a null counts as a row.
+        """Build the distinct-fraction expression; a null counts as a value and a row.
 
         Args:
             expr: The column to count distinct values of.
@@ -575,7 +577,7 @@ class PercentUnique(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return _n_distinct_known(expr) / nw.len()
+        return expr.n_unique() / nw.len()
 
 
 @register
@@ -612,7 +614,7 @@ class NUniqueDays(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-date count; nulls are not values.
+        """Build the distinct-date count; a null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -620,7 +622,8 @@ class NUniqueDays(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return _n_distinct_known(expr.dt.date())
+        # polars' n_unique returns UInt32, not the declared Int64.
+        return expr.dt.date().n_unique().cast(nw.Int64)
 
 
 @register
@@ -634,7 +637,7 @@ class NUniqueDaysOfCalendarYear(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct month-and-day count; nulls are not values.
+        """Build the distinct month-and-day count; a null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -645,7 +648,8 @@ class NUniqueDaysOfCalendarYear(AggregationPrimitive):
         # month and day come back as Int8, which month * 100 overflows
         month = expr.dt.month().cast(nw.Int32)
         day = expr.dt.day().cast(nw.Int32)
-        return _n_distinct_known(month * 100 + day)
+        # polars' n_unique returns UInt32, not the declared Int64.
+        return (month * 100 + day).n_unique().cast(nw.Int64)
 
 
 @register
@@ -659,7 +663,7 @@ class NUniqueDaysOfMonth(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct day-of-month count; nulls are not values.
+        """Build the distinct day-of-month count; a null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -667,7 +671,8 @@ class NUniqueDaysOfMonth(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return _n_distinct_known(expr.dt.day())
+        # polars' n_unique returns UInt32, not the declared Int64.
+        return expr.dt.day().n_unique().cast(nw.Int64)
 
 
 @register
@@ -681,7 +686,7 @@ class NUniqueMonths(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct year-and-month count; nulls are not values.
+        """Build the distinct year-and-month count; a null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -692,7 +697,8 @@ class NUniqueMonths(AggregationPrimitive):
         # year * 12 + month must not overflow the narrow ints year()/month() return
         year = expr.dt.year().cast(nw.Int32)
         month = expr.dt.month().cast(nw.Int32)
-        return _n_distinct_known(year * 12 + month)
+        # polars' n_unique returns UInt32, not the declared Int64.
+        return (year * 12 + month).n_unique().cast(nw.Int64)
 
 
 def _time_since_last_selected(

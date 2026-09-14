@@ -54,10 +54,12 @@ than being disagreements about values:
   or ``sum`` on ``count``; tusk allows it (``stack_on_self`` defaults to True).
   Those columns exist only in tusk, so they are likewise not compared.
 
-One live *value* disagreement is recorded rather than papered over:
-``N_UNIQUE`` of an empty group is 0 in tusk and NaN in featuretools. See
-``test_n_unique_of_an_empty_group_diverges_from_featuretools`` for the
-argument; tusk is not changed to match.
+Two live *value* disagreements are recorded rather than papered over:
+``N_UNIQUE`` of an empty group is 0 in tusk and NaN in featuretools (see
+``test_n_unique_of_an_empty_group_diverges_from_featuretools``), and
+``N_UNIQUE`` counts a null as one distinct value in tusk while featuretools
+drops it (see ``test_n_unique_counts_a_null_where_num_unique_ignores_it``).
+Tusk is not changed to match either.
 """
 
 import numpy as np
@@ -332,29 +334,60 @@ def test_stacked_values_match_featuretools(deep_matrices, name):
     )
 
 
-def test_n_unique_matches_num_unique_over_a_column_with_nulls(deep_matrices, deep):
-    """tusk's N_UNIQUE and featuretools' NUM_UNIQUE both ignore nulls.
+def _customers_by_null_kind(customers, sessions):
+    """Split customers with sessions by whether any session's kind is null.
 
-    ``kind`` contains nulls, and polars counts null as a distinct value while
-    pandas' ``nunique`` does not. This is the cross-check behind ``NUnique``
-    subtracting a null indicator.
+    Args:
+        customers: The customer table.
+        sessions: The session table, whose ``kind`` column holds nulls.
 
-    Customers with no sessions at all are excluded here and asserted on
-    separately below: that row is a live disagreement about the empty-group
-    default, not about null handling.
+    Returns:
+        A tuple of (customers whose sessions hold no null kind, customers
+        with at least one null-kind session), both restricted to customers
+        who have at least one session.
     """
+    with_sessions = sorted(set(customers["id"]) & set(sessions["customer_id"]))
+    holds_a_null = sessions.groupby("customer_id")["kind"].apply(
+        lambda kind: kind.isna().any(),
+    )
+    no_null = [c for c in with_sessions if not holds_a_null.get(c, False)]
+    has_null = [c for c in with_sessions if holds_a_null.get(c, False)]
+    return no_null, has_null
+
+
+def test_n_unique_matches_num_unique_over_a_column_without_nulls(deep_matrices, deep):
+    """tusk's N_UNIQUE and featuretools' NUM_UNIQUE agree where kind has no null."""
     customers, sessions, _ = deep
     ours, theirs = deep_matrices
-    with_sessions = sorted(set(customers["id"]) & set(sessions["customer_id"]))
+    no_null, _ = _customers_by_null_kind(customers, sessions)
+    assert no_null
     pd.testing.assert_series_equal(
-        ours.loc[with_sessions, _as_tusk("N_UNIQUE(sessions.kind)")]
+        ours.loc[no_null, _as_tusk("N_UNIQUE(sessions.kind)")]
         .reset_index(drop=True)
         .astype(float),
-        theirs.loc[with_sessions, "NUM_UNIQUE(sessions.kind)"]
+        theirs.loc[no_null, "NUM_UNIQUE(sessions.kind)"]
         .reset_index(drop=True)
         .astype(float),
         check_names=False,
     )
+
+
+def test_n_unique_counts_a_null_where_num_unique_ignores_it(deep_matrices, deep):
+    """Wherever a customer's sessions hold a null kind, tusk counts it as a value.
+
+    tusk's N_UNIQUE runs exactly one higher than featuretools' NUM_UNIQUE for
+    every customer whose session group has a null ``kind``, since narwhals'
+    ``n_unique`` counts that null as one distinct value and pandas'
+    ``nunique`` (behind NUM_UNIQUE) does not.
+    """
+    customers, sessions, _ = deep
+    ours, theirs = deep_matrices
+    _, has_null = _customers_by_null_kind(customers, sessions)
+    assert has_null
+    assert (
+        ours.loc[has_null, _as_tusk("N_UNIQUE(sessions.kind)")].to_numpy()
+        == theirs.loc[has_null, "NUM_UNIQUE(sessions.kind)"].to_numpy() + 1
+    ).all()
 
 
 def test_n_unique_of_an_empty_group_diverges_from_featuretools(deep_matrices, deep):

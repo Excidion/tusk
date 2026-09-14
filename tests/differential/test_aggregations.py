@@ -531,6 +531,21 @@ def _plain(value):
         ("all_true", "all", "ALL(children.flag)"),
         ("n_true", "num_true", "NUM_TRUE(children.flag)"),
         ("variance", "variance", "VARIANCE(children.value)"),
+    ],
+)
+def test_standalone_aggregations_match_featuretools_on_every_parent_row(
+    tusk_name,
+    featuretools_name,
+    featuretools_column,
+):
+    """tusk and featuretools agree on a mixed, constant, all-null and empty group."""
+    ours, theirs = _ours_and_theirs(tusk_name, featuretools_name, featuretools_column)
+    assert_values_match(list(ours.values()), list(theirs.values()))
+
+
+@pytest.mark.parametrize(
+    ("tusk_name", "featuretools_name", "featuretools_column"),
+    [
         ("n_unique_days", "n_unique_days", "N_UNIQUE_DAYS(children.seen_at)"),
         (
             "n_unique_days_of_calendar_year",
@@ -545,14 +560,21 @@ def _plain(value):
         ("n_unique_months", "n_unique_months", "N_UNIQUE_MONTHS(children.seen_at)"),
     ],
 )
-def test_standalone_aggregations_match_featuretools_on_every_parent_row(
+def test_distinct_date_counts_count_a_null_as_a_value(
     tusk_name,
     featuretools_name,
     featuretools_column,
 ):
-    """tusk and featuretools agree on a mixed, constant, all-null and empty group."""
+    """tusk counts a null ``seen_at`` as one distinct value; featuretools drops it.
+
+    Parents 1 and 3 each hold a null ``seen_at``, so tusk's count runs one
+    higher there. Parents 2, 4 and 5 hold no null, so the two sides agree.
+    """
     ours, theirs = _ours_and_theirs(tusk_name, featuretools_name, featuretools_column)
-    assert_values_match(list(ours.values()), list(theirs.values()))
+    for parent in (2, 4, 5):
+        assert ours[parent] == theirs[parent]
+    for parent in (1, 3):
+        assert ours[parent] == theirs[parent] + 1
 
 
 def test_any_true_of_an_empty_group_is_false_rather_than_null():
@@ -676,14 +698,20 @@ def test_has_no_duplicates_counts_repeated_nulls_as_duplicates():
 
 
 def test_percent_unique_of_an_empty_group_is_null_rather_than_zero():
-    """A fraction of no rows is undefined in tusk; featuretools reports 0."""
+    """percent_unique diverges from featuretools wherever ``label`` holds a null.
+
+    Parent 4's labels hold no null, so the two sides agree there. Parents 1-3
+    mix or consist of nulls, so tusk's fraction counts them and runs higher
+    than featuretools', which drops them. Parent 5 has no children: a
+    fraction of no rows is undefined in tusk, while featuretools reports 0.
+    """
     ours, theirs = _ours_and_theirs(
         "percent_unique",
         "percent_unique",
         "PERCENT_UNIQUE(children.label)",
     )
-    assert_values_match(
-        [ours[p] for p in (1, 2, 3, 4)], [theirs[p] for p in (1, 2, 3, 4)]
-    )
+    assert ours[4] == theirs[4]
+    assert_values_match([ours[p] for p in (1, 2, 3)], [0.75, 0.5, 0.3333333333333333])
+    assert_values_match([theirs[p] for p in (1, 2, 3)], [0.5, 0.0, 0.0])
     assert ours[5] is None
     assert theirs[5] == 0.0

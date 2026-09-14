@@ -83,7 +83,7 @@ EXPECTED = {
     "percent_unique": (
         "PERCENT_UNIQUE__children__label",
         nw.Float64,
-        [0.5, 0.0, 0.0, 1.0, None],
+        [0.75, 0.5, 0.3333333333333333, 1.0, None],
     ),
     "skew": (
         "SKEW__children__value",
@@ -102,21 +102,21 @@ EXPECTED = {
             None,
         ],
     ),
-    "n_unique_days": ("N_UNIQUE_DAYS__children__seen_at", nw.Int64, [2, 2, 0, 4, 0]),
+    "n_unique_days": ("N_UNIQUE_DAYS__children__seen_at", nw.Int64, [3, 2, 1, 4, 0]),
     "n_unique_days_of_calendar_year": (
         "N_UNIQUE_DAYS_OF_CALENDAR_YEAR__children__seen_at",
         nw.Int64,
-        [2, 1, 0, 3, 0],
+        [3, 1, 1, 3, 0],
     ),
     "n_unique_days_of_month": (
         "N_UNIQUE_DAYS_OF_MONTH__children__seen_at",
         nw.Int64,
-        [2, 1, 0, 3, 0],
+        [3, 1, 1, 3, 0],
     ),
     "n_unique_months": (
         "N_UNIQUE_MONTHS__children__seen_at",
         nw.Int64,
-        [2, 2, 0, 3, 0],
+        [3, 2, 1, 3, 0],
     ),
 }
 

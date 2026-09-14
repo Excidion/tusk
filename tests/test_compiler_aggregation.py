@@ -73,22 +73,22 @@ def test_depth_two_aggregation_values(db):
     assert got[feature.name].to_list() == [8.5, None, None]
 
 
-def test_n_unique_does_not_count_null_as_a_distinct_value(db):
-    """A group whose only values are null has 0 known distinct values, not 1.
+def test_n_unique_counts_a_null_as_one_distinct_value(db):
+    """A group whose only value is null has 1 distinct value, not 0.
 
     Customer 2's only session is 30, which has no transactions, so
-    MEAN(transactions.amount) is null there. Polars counts that null as a
-    distinct value, which would contradict NUnique's own default_value of 0
-    and diverge from featuretools' NUM_UNIQUE.
+    MEAN(transactions.amount) is null there; that single null counts as one
+    distinct value.
 
     Customer 1 has sessions 10 (mean 2.0) and 20 (mean 15.0): two distinct
     non-null values. Customer 3 has no sessions at all, so the left join
-    leaves null and default_value fills 0.
+    leaves null and default_value fills 0 -- an empty group, not an all-null
+    one.
     """
     sessions_mean = AggregationFeature(Mean(), (AMOUNT,), SESSION_TX)
     feature = AggregationFeature(NUnique(), (sessions_mean,), CUSTOMER_SESSION)
     got = collect([feature], db)
-    assert got[feature.name].to_list() == [2, 0, 0]
+    assert got[feature.name].to_list() == [2, 1, 0]
 
 
 def test_multi_output_aggregation_produces_one_column_per_output(db):
