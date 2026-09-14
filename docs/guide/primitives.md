@@ -6,24 +6,13 @@ everything pushed down to the backend.
 
 ## What ships with tusk
 
-**Aggregation** — `count`, `sum`, `mean`, `min`, `max`, `std`, `median`,
-`variance`, `skew`, `kurtosis`, `max_min_delta`, `n_unique`, `is_unique`,
-`has_no_duplicates`, `percent_unique`, `all_true`, `any_true`, `n_true`, `percent_true`,
-`quantiles`, `first_last_time_delta`, `n_unique_days`,
-`n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months`,
-`time_since_first`, `time_since_last`, `time_since_last_true`,
-`time_since_last_false`.
+See the [API reference](../api/primitives.md) for the full list of
+aggregation, transform and order-dependent primitives tusk ships.
 
-**Transform** — `year`, `month`, `day`, `hour`, `weekday`, `is_weekend`,
-`time_since`, `absolute`, `natural_log`, `add_numeric`, `subtract_numeric`,
-`multiply_numeric`, `divide_numeric`, `not`, `and`, `or`.
-
-`time_since`, and every other `time_since_*` primitive, needs more than its
-input columns: it requires a `cutoff_time` at apply time, since its value is
-measured against that moment rather than derived from the rows alone.
-
-**Order-dependent** (require a `row_creation_time` on the table) — `cum_sum`,
-`cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`.
+Every `time_since_*` primitive needs more than its input columns: it
+requires a `cutoff_time` at apply time, since its value is measured against
+that moment rather than derived from the rows alone. Order-dependent
+primitives require a `row_creation_time` on the table.
 
 See [primitive coverage](primitive-coverage.md) for how these line up against
 featuretools.
@@ -36,9 +25,10 @@ Year, CumSum` — and takes the same form as a user-defined one, so `Year` and
 ## Defaults
 
 Passing `agg_primitives=None` or `trans_primitives=None` selects the
-primitives featuretools uses by default, where tusk has them: `count`, `sum`,
-`mean`, `min`, `max`, `std`, `n_unique`, `skew`, `percent_true` for
-aggregation, and `year`, `month`, `day`, `weekday` for transforms.
+primitives featuretools uses by default, where tusk has them:
+[`AGG_DEFAULTS`][tusk.primitives.aggregation.AGG_DEFAULTS] for aggregation
+and [`TRANS_DEFAULTS`][tusk.primitives.transform.TRANS_DEFAULTS] for
+transforms.
 
 Arithmetic primitives are excluded from the defaults because they generate
 hundreds of features on wide tables.
