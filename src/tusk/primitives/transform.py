@@ -223,8 +223,8 @@ class IsNull(TransformPrimitive):
 class Negate(TransformPrimitive):
     """The value with its sign flipped, as a float.
 
-    A 64-bit input above 2**53 in magnitude loses precision in the round trip
-    through ``Float64``.
+    An integer above 2**53 in magnitude, or a high-precision decimal, loses
+    precision in the round trip through ``Float64``.
     """
 
     name = "negate"
