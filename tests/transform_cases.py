@@ -130,6 +130,26 @@ EXPECTED = {
         nw.Float64,
         [None, 5 / 14, 12 / 14, 1.0, 2 / 14, 9 / 14, 9 / 14, 5 / 14],
     ),
+    "CUM_MEAN__value": (
+        "cum_mean",
+        nw.Float64,
+        [None, 1.0, 4.0, 2.4, 1.5, 16 / 7, 7 / 3, 0.75],
+    ),
+    "SAME_AS_PREVIOUS__value": (
+        "same_as_previous",
+        nw.Boolean,
+        [None, False, None, False, None, True, False, True],
+    ),
+    "ABSOLUTE_DIFF__value": (
+        "absolute_diff",
+        nw.Float64,
+        [None, 1.0, None, 9.0, None, 0.0, 7.0, 0.0],
+    ),
+    "PERCENT_CHANGE__value": (
+        "percent_change",
+        nw.Float64,
+        [None, -1.0, None, math.inf, None, 0.0, -7 / 9, math.nan],
+    ),
 }
 
 

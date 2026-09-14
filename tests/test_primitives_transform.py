@@ -763,3 +763,13 @@ def test_percentile_ranks_within_each_group():
         feature_values(matrix, "PERCENTILE__amount__by__parent_id"),
         [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None],
     )
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["cum_mean", "same_as_previous", "absolute_diff", "percent_change"],
+)
+def test_ordered_numeric_transforms_are_flagged(name):
+    primitive = resolve(name)
+    assert isinstance(primitive, TransformPrimitive)
+    assert primitive.order_dependent is True

@@ -941,6 +941,103 @@ class TimeSincePrevious(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class CumMean(TransformPrimitive):
+    """Running mean of the known values in row-creation order. A null row is null."""
+
+    name = "cum_mean"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+    order_dependent = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cumulative-mean expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of the running mean.
+        """
+        return expr.cum_sum() / expr.cum_count()
+
+
+@register
+@dataclass(frozen=True)
+class SameAsPrevious(TransformPrimitive):
+    """Whether the value equals the previous row's in row-creation order.
+
+    The first row, and a row whose own or previous value is null, is null.
+    """
+
+    name = "same_as_previous"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Boolean
+    order_dependent = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the equal-to-previous expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        return expr == expr.shift(1)
+
+
+@register
+@dataclass(frozen=True)
+class AbsoluteDiff(TransformPrimitive):
+    """Size of the change from the previous row in row-creation order.
+
+    The first row, and a row whose own or previous value is null, is null.
+    """
+
+    name = "absolute_diff"
+    input_dtypes = (F.NUMERIC,)
+    order_dependent = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the absolute-difference expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of absolute differences.
+        """
+        return expr.diff().abs()
+
+
+@register
+@dataclass(frozen=True)
+class PercentChange(TransformPrimitive):
+    """Relative change from the previous row in row-creation order.
+
+    The first row, and a row whose own or previous value is null, is null. A
+    zero previous value gives infinity, or NaN when the value is zero too.
+    """
+
+    name = "percent_change"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+    order_dependent = True
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the relative-change expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of relative changes, where 0.5 is a 50% rise.
+        """
+        return expr / expr.shift(1) - 1
+
+
+@register
+@dataclass(frozen=True)
 class TimeSince(NeedsCutoffTime, TransformPrimitive):
     """Time elapsed from a datetime to the cutoff time."""
 
