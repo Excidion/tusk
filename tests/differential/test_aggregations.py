@@ -544,44 +544,97 @@ def test_standalone_aggregations_match_featuretools_on_every_parent_row(
 
 
 @pytest.mark.parametrize(
-    ("tusk_name", "featuretools_name", "featuretools_column"),
+    ("tusk_name", "featuretools_name", "featuretools_column", "expected_by_parent"),
     [
-        ("n_unique_days", "n_unique_days", "N_UNIQUE_DAYS(children.seen_at)"),
+        (
+            "n_unique_days",
+            "n_unique_days",
+            "N_UNIQUE_DAYS(children.seen_at)",
+            {
+                1: (3, 2),
+                2: (2, 2),
+                3: (1, 0),
+                4: (4, 4),
+                5: (0, 0),
+                6: (1, 1),
+                7: (1, 0),
+                8: (2, 1),
+            },
+        ),
         (
             "n_unique_days_of_calendar_year",
             "n_unique_days_of_calendar_year",
             "N_UNIQUE_DAYS_OF_CALENDAR_YEAR(children.seen_at)",
+            {
+                1: (3, 2),
+                2: (1, 1),
+                3: (1, 0),
+                4: (3, 3),
+                5: (0, 0),
+                6: (1, 1),
+                7: (1, 0),
+                8: (2, 1),
+            },
         ),
         (
             "n_unique_days_of_month",
             "n_unique_days_of_month",
             "N_UNIQUE_DAYS_OF_MONTH(children.seen_at)",
+            {
+                1: (3, 2),
+                2: (1, 1),
+                3: (1, 0),
+                4: (3, 3),
+                5: (0, 0),
+                6: (1, 1),
+                7: (1, 0),
+                8: (2, 1),
+            },
         ),
-        ("n_unique_months", "n_unique_months", "N_UNIQUE_MONTHS(children.seen_at)"),
+        (
+            "n_unique_months",
+            "n_unique_months",
+            "N_UNIQUE_MONTHS(children.seen_at)",
+            {
+                1: (3, 2),
+                2: (2, 2),
+                3: (1, 0),
+                4: (3, 3),
+                5: (0, 0),
+                6: (1, 1),
+                7: (1, 0),
+                8: (2, 1),
+            },
+        ),
     ],
 )
 def test_distinct_date_counts_count_a_null_as_a_value(
     tusk_name,
     featuretools_name,
     featuretools_column,
+    expected_by_parent,
 ):
     """tusk counts a null ``seen_at`` as one distinct value; featuretools drops it.
 
-    Parents 1 and 3 each hold a null ``seen_at``, so tusk's count runs one
-    higher there. Parents 2, 4 and 5 hold no null, so the two sides agree.
+    Pins both sides' literal values per parent rather than asserting only
+    their relationship (``ours == theirs + 1``), which a bug shifting both
+    sides by the same amount would still pass. Parents 1 and 3 each hold a
+    null ``seen_at``, and parent 7's single row and parent 8's second row are
+    null too, so tusk's count runs one higher on all four. Parents 2, 4, 5 and
+    6 hold no null, so the two sides agree.
     """
     ours, theirs = _ours_and_theirs(tusk_name, featuretools_name, featuretools_column)
-    for parent in (2, 4, 5):
-        assert ours[parent] == theirs[parent]
-    for parent in (1, 3):
-        assert ours[parent] == theirs[parent] + 1
+    for parent, (expected_ours, expected_theirs) in expected_by_parent.items():
+        assert ours[parent] == expected_ours
+        assert theirs[parent] == expected_theirs
 
 
 def test_any_true_of_an_empty_group_is_false_rather_than_null():
     """No row is true, so tusk says False; featuretools reports a missing value."""
     ours, theirs = _ours_and_theirs("any_true", "any", "ANY(children.flag)")
+    agreeing_parents = (1, 2, 3, 4, 6, 7, 8)
     assert_values_match(
-        [ours[p] for p in (1, 2, 3, 4)], [theirs[p] for p in (1, 2, 3, 4)]
+        [ours[p] for p in agreeing_parents], [theirs[p] for p in agreeing_parents]
     )
     assert ours[5] is False
     assert theirs[5] is None
@@ -600,7 +653,7 @@ def test_skew_differs_from_featuretools_only_by_its_bias_correction():
         correction = math.sqrt(n * (n - 1)) / (n - 2)
         assert theirs[parent] == pytest.approx(ours[parent] * correction)
         assert theirs[parent] != pytest.approx(ours[parent])
-    for parent in (2, 3, 5):
+    for parent in (2, 3, 5, 6, 7, 8):
         assert ours[parent] is None
         assert theirs[parent] is None
 
@@ -611,7 +664,7 @@ def test_kurtosis_matches_featuretools_only_on_a_fully_known_group():
     assert ours[4] == pytest.approx(theirs[4])
     assert ours[1] == pytest.approx(-1.5)
     assert theirs[1] == 0.0
-    for parent in (2, 3, 5):
+    for parent in (2, 3, 5, 6, 7, 8):
         assert ours[parent] is None
         assert theirs[parent] == 0.0
 
@@ -638,7 +691,7 @@ def test_a_delta_without_a_known_value_is_null_rather_than_zero(
 
     featuretools only reads ``first_last_time_delta`` from its time index,
     which may not hold nulls, so that case drops the null datetimes; parent 3
-    then has no children at all.
+    and parent 7 then have no children at all, and parent 8 has just one.
     """
     ours, theirs = _ours_and_theirs(
         tusk_name,
@@ -647,8 +700,11 @@ def test_a_delta_without_a_known_value_is_null_rather_than_zero(
         children=children,
         featuretools_time_index=featuretools_time_index,
     )
-    assert_values_match([ours[p] for p in (1, 2, 4)], [theirs[p] for p in (1, 2, 4)])
-    for parent in (3, 5):
+    agreeing_parents = (1, 2, 4, 6, 8)
+    assert_values_match(
+        [ours[p] for p in agreeing_parents], [theirs[p] for p in agreeing_parents]
+    )
+    for parent in (3, 5, 7):
         assert ours[parent] is None
         assert theirs[parent] == 0.0
 
@@ -658,8 +714,9 @@ def test_is_unique_of_an_empty_group_is_null_rather_than_false():
     ours, theirs = _ours_and_theirs(
         "is_unique", "is_unique", "IS_UNIQUE(children.label)"
     )
+    agreeing_parents = (1, 2, 3, 4, 6, 7, 8)
     assert_values_match(
-        [ours[p] for p in (1, 2, 3, 4)], [theirs[p] for p in (1, 2, 3, 4)]
+        [ours[p] for p in agreeing_parents], [theirs[p] for p in agreeing_parents]
     )
     assert ours[5] is None
     assert theirs[5] is False
@@ -671,7 +728,8 @@ def test_is_unique_counts_repeated_nulls_where_has_no_duplicates_drops_them():
     tusk's IS_UNIQUE counts a repeated null as a repeat, agreeing with
     featuretools' HAS_NO_DUPLICATES only where a group holds no null.
     featuretools drops nulls before comparing, so a null-only or repeated-null
-    group looks unique to it but not to tusk.
+    group looks unique to it but not to tusk. Parents 6-8 hold at most one
+    null each, so neither side sees a repeat and the two agree there too.
     """
     ours = _plain_by_parent(
         _tusk_matrix(PARENTS, CHILDREN, "is_unique")["IS_UNIQUE__children__label"],
@@ -684,7 +742,10 @@ def test_is_unique_counts_repeated_nulls_where_has_no_duplicates_drops_them():
             logical_types=FEATURETOOLS_LOGICAL_TYPES,
         )["HAS_NO_DUPLICATES(children.label)"],
     )
-    assert_values_match([ours[p] for p in (1, 4)], [theirs[p] for p in (1, 4)])
+    agreeing_parents = (1, 4, 6, 7, 8)
+    assert_values_match(
+        [ours[p] for p in agreeing_parents], [theirs[p] for p in agreeing_parents]
+    )
     for parent in (2, 3):
         assert ours[parent] is False
         assert theirs[parent] is True
@@ -695,10 +756,14 @@ def test_is_unique_counts_repeated_nulls_where_has_no_duplicates_drops_them():
 def test_percent_unique_of_an_empty_group_is_null_rather_than_zero():
     """percent_unique diverges from featuretools wherever ``label`` holds a null.
 
-    Parent 4's labels hold no null, so the two sides agree there. Parents 1-3
+    Parents 4 and 6 hold no null, so the two sides agree there. Parents 1-3
     mix or consist of nulls, so tusk's fraction counts them and runs higher
     than featuretools', which drops them. Parent 5 has no children: a
     fraction of no rows is undefined in tusk, while featuretools reports 0.
+    Parent 7 is a single null row: tusk counts it as one distinct value out of
+    one row, while featuretools has no known value to count, so it reports 0
+    just as it does for an empty group. Parent 8 pairs one known label with a
+    null, so featuretools' fraction is diluted by the row it can't count.
     """
     ours, theirs = _ours_and_theirs(
         "percent_unique",
@@ -706,7 +771,10 @@ def test_percent_unique_of_an_empty_group_is_null_rather_than_zero():
         "PERCENT_UNIQUE(children.label)",
     )
     assert ours[4] == theirs[4]
+    assert ours[6] == theirs[6]
     assert_values_match([ours[p] for p in (1, 2, 3)], [0.75, 0.5, 0.3333333333333333])
     assert_values_match([theirs[p] for p in (1, 2, 3)], [0.5, 0.0, 0.0])
     assert ours[5] is None
     assert theirs[5] == 0.0
+    assert_values_match([ours[p] for p in (7, 8)], [1.0, 1.0])
+    assert_values_match([theirs[p] for p in (7, 8)], [0.0, 0.5])
