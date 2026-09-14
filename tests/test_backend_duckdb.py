@@ -15,6 +15,7 @@ import datetime as dt
 
 import narwhals as nw
 import pytest
+from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
 
 import tusk
 
@@ -457,3 +458,98 @@ def test_date_and_datetime_pair_compares_cleanly_on_duckdb(duck_db):
     assert row[1]["EQUAL__d__ts"] is True
     assert row[2]["EQUAL__d__ts"] is False
     assert row[3]["EQUAL__d__ts"] is True
+
+
+def test_date_aggregations_hold_the_elapsed_time_and_count_on_duckdb(duck_db):
+    """FIRST_LAST_TIME_DELTA and N_UNIQUE_DAYS survive a native duckdb DATE column.
+
+    Every other duckdb test's temporal columns are TIMESTAMP, so none of them
+    exercises the ``cast(nw.Datetime)`` in ``FirstLastTimeDelta.build``, which
+    exists because duckdb subtracts two DATEs into a day count rather than an
+    interval. Customer 1 has two visits 61 days apart on 2 distinct days,
+    customer 2 has a single visit (0 days apart, 1 distinct day), and
+    customer 3 has none (both null).
+
+    Args:
+        duck_db: The duckdb-backed database.
+    """
+    _, con = duck_db
+    con.execute(
+        "CREATE TABLE date_customers AS SELECT * FROM (VALUES (1), (2), (3)) t(id)",
+    )
+    con.execute(
+        "CREATE TABLE visits AS SELECT * FROM (VALUES "
+        "(1, 1, DATE '2024-01-01'), (2, 1, DATE '2024-03-02'), "
+        "(3, 2, DATE '2024-06-01')) "
+        "t(id, customer_id, visited_on)",
+    )
+    database = (
+        tusk.Database("clinic")
+        .add_table("date_customers", con.table("date_customers"), primary_key="id")
+        .add_table("visits", con.table("visits"), primary_key="id")
+        .add_relationship(
+            parent="date_customers",
+            child="visits",
+            foreign_key="customer_id",
+        )
+    )
+    features = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="date_customers",
+        max_depth=1,
+        agg_primitives=["first_last_time_delta", "n_unique_days"],
+        trans_primitives=[],
+        features_only=True,
+    )
+    matrix = tusk.apply_features(features, database).df()
+    rows_by_id = matrix.set_index("id")
+    delta = "FIRST_LAST_TIME_DELTA__visits__visited_on"
+    unique_days = "N_UNIQUE_DAYS__visits__visited_on"
+    assert rows_by_id.loc[1, delta] == dt.timedelta(days=61)
+    assert rows_by_id.loc[2, delta] == dt.timedelta(days=0)
+    assert rows_by_id.loc[3, delta] is pd.NaT
+    assert rows_by_id.loc[1, unique_days] == 2
+    assert rows_by_id.loc[2, unique_days] == 1
+    assert rows_by_id.loc[3, unique_days] == 0
+
+
+@pytest.mark.parametrize("primitive_name", sorted(EXPECTED))
+def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name):
+    """Every standalone aggregation survives translation to SQL, group by group.
+
+    The constant group pins the skew and kurtosis guard, which duckdb would
+    otherwise answer with 0.0 or null where polars answers NaN. ``n_true``
+    pins the cast after SUM, and ``first_last_time_delta`` the interval
+    subtraction. Materialized with ``.df()``; see
+    ``test_time_since_holds_the_elapsed_time_on_duckdb`` for why.
+
+    Args:
+        primitive_name: The aggregation under test.
+    """
+    column, _, expected = EXPECTED[primitive_name]
+    con = duckdb.connect()
+    con.register("parents_frame", PARENTS)
+    con.register("children_frame", CHILDREN)
+    database = (
+        tusk.Database("cases")
+        .add_table(
+            "parents",
+            nw.from_native(con.sql("SELECT * FROM parents_frame")),
+            primary_key="id",
+        )
+        .add_table(
+            "children",
+            nw.from_native(con.sql("SELECT * FROM children_frame")),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="parents",
+        agg_primitives=[primitive_name],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    got = matrix.df().sort_values("id")[column].tolist()
+    assert_values_match(got, expected)

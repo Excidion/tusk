@@ -46,6 +46,7 @@ def _frames():
             "id": [100, 101, 102, 103],
             "session_id": [10, 10, 20, 20],
             "amount": [1.0, 3.0, 10.0, 20.0],
+            "verified": [True, False, True, False],
             "occurred_at": [
                 dt.datetime(2024, 3, 4, 1),
                 dt.datetime(2024, 3, 4, 2),

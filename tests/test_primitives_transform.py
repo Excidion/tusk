@@ -120,7 +120,7 @@ def test_arithmetic_commutativity_flags():
 
 
 def test_defaults_exclude_arithmetic():
-    assert TRANS_DEFAULTS == ("year", "month", "weekday")
+    assert TRANS_DEFAULTS == ("year", "month", "day", "weekday")
 
 
 def test_time_since_measures_from_the_cutoff_time():

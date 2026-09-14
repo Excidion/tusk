@@ -20,32 +20,32 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Aggregation | [`mean`][tusk.primitives.Mean] | [`mean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Mean.html) | ✅ | [`test_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
 | Aggregation | [`median`][tusk.primitives.Median] | [`median`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Median.html) | ✅ | [`test_median_matches_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) |  |
 | Aggregation | [`min`][tusk.primitives.Min] | [`min`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Min.html) | ✅ | [`test_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
-| Aggregation | [`n_unique`][tusk.primitives.NUnique] | [`num_unique`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumUnique.html) | ⚠️ | [`test_n_unique_of_an_empty_group_diverges_from_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) | An empty group is `0` in tusk and `NaN` in featuretools; null handling agrees. |
+| Aggregation | [`n_unique`][tusk.primitives.NUnique] | [`num_unique`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumUnique.html) | ⚠️ | [`test_n_unique_of_an_empty_group_diverges_from_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) / [`test_n_unique_counts_a_null_where_num_unique_ignores_it`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) | An empty group is `0` in tusk and `NaN` in featuretools. A null counts as a value in tusk; featuretools ignores it. |
 | Aggregation | [`percent_true`][tusk.primitives.PercentTrue] | [`percent_true`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PercentTrue.html) | ✅ | [`test_percent_true_matches_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) |  |
 | Aggregation | [`quantiles`][tusk.primitives.Quantiles] | — | ➕ | [`test_quantiles_defaults_to_the_quartiles`](https://github.com/Excidion/tusk/blob/main/tests/test_primitives_aggregation.py) | featuretools has no `quantiles` counterpart. |
 | Aggregation | [`std`][tusk.primitives.Std] | [`std`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Std.html) | ✅ | [`test_stacked_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
 | Aggregation | [`sum`][tusk.primitives.Sum] | [`sum`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Sum.html) | ✅ | [`test_values_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_vs_featuretools.py) |  |
-| Aggregation | — | [`all`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.All.html) | ❌ |  |  |
-| Aggregation | — | [`any`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Any.html) | ❌ |  |  |
+| Aggregation | [`all_true`][tusk.primitives.AllTrue] | [`all`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.All.html) | ✅ | [`test_standalone_aggregations_match_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Named `all_true` so the class does not shadow `typing.Any`. |
+| Aggregation | [`any_true`][tusk.primitives.AnyTrue] | [`any`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Any.html) | ⚠️ | [`test_any_true_of_an_empty_group_is_false_rather_than_null`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | An empty group is `False` in tusk and null in featuretools. Nulls are skipped on both sides. Named `any_true` so the class does not shadow `typing.Any`. |
 | Aggregation | — | `average_count_per_unique` | ❌ |  |  |
 | Aggregation | — | [`avg_time_between`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.AvgTimeBetween.html) | ❌ |  |  |
 | Aggregation | — | [`count_above_mean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountAboveMean.html) | ❌ |  |  |
 | Aggregation | — | [`count_below_mean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountBelowMean.html) | ❌ |  |  |
-| Aggregation | — | [`count_greater_than`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountGreaterThan.html) | ❌ |  |  |
+| Aggregation | — | [`count_greater_than`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountGreaterThan.html) | ⛔ |  | Threshold argument; a useful threshold depends on the data. |
 | Aggregation | — | [`count_inside_nth_std`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountInsideNthSTD.html) | ❌ |  |  |
-| Aggregation | — | [`count_inside_range`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountInsideRange.html) | ❌ |  |  |
-| Aggregation | — | [`count_less_than`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountLessThan.html) | ❌ |  |  |
+| Aggregation | — | [`count_inside_range`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountInsideRange.html) | ⛔ |  | Threshold argument; a useful threshold depends on the data. |
+| Aggregation | — | [`count_less_than`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountLessThan.html) | ⛔ |  | Threshold argument; a useful threshold depends on the data. |
 | Aggregation | — | [`count_outside_nth_std`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountOutsideNthSTD.html) | ❌ |  |  |
-| Aggregation | — | [`count_outside_range`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountOutsideRange.html) | ❌ |  |  |
+| Aggregation | — | [`count_outside_range`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CountOutsideRange.html) | ⛔ |  | Threshold argument; a useful threshold depends on the data. |
 | Aggregation | — | `date_first_event` | ❌ |  |  |
 | Aggregation | — | [`entropy`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Entropy.html) | ❌ |  | Needs per-group value counts. |
 | Aggregation | — | [`first`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.First.html) | ❌ |  |  |
-| Aggregation | — | `first_last_time_delta` | ❌ |  |  |
-| Aggregation | — | `has_no_duplicates` | ❌ |  |  |
+| Aggregation | [`first_last_time_delta`][tusk.primitives.FirstLastTimeDelta] | `first_last_time_delta` | ⚠️ | [`test_a_delta_without_a_known_value_is_null_rather_than_zero`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Takes any datetime column and returns a `Duration`; featuretools takes only the time index and returns float seconds. A group without a known datetime is null, not zero. |
+| Aggregation | — | `has_no_duplicates` | ⚠️ | [`test_is_unique_counts_repeated_nulls_where_has_no_duplicates_drops_them`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Not a separate tusk primitive; `is_unique` answers it, counting nulls as values where featuretools drops them. |
 | Aggregation | — | `is_monotonically_decreasing` | ❌ |  | Needs an ordered pairwise scan. |
 | Aggregation | — | `is_monotonically_increasing` | ❌ |  | Needs an ordered pairwise scan. |
-| Aggregation | — | `is_unique` | ❌ |  |  |
-| Aggregation | — | `kurtosis` | ❌ |  |  |
+| Aggregation | [`is_unique`][tusk.primitives.IsUnique] | `is_unique` | ⚠️ | [`test_is_unique_of_an_empty_group_is_null_rather_than_false`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Nulls are values on both sides; an empty group is null in tusk and `False` in featuretools. |
+| Aggregation | [`kurtosis`][tusk.primitives.Kurtosis] | `kurtosis` | ⚠️ | [`test_kurtosis_matches_featuretools_only_on_a_fully_known_group`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | tusk skips nulls; featuretools answers `0` for a group holding a null. A constant or empty group is null in tusk and `0` in featuretools. |
 | Aggregation | — | [`last`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Last.html) | ❌ |  |  |
 | Aggregation | — | [`max_consecutive_false`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MaxConsecutiveFalse.html) | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | [`max_consecutive_negatives`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MaxConsecutiveNegatives.html) | ❌ |  | Needs a run-length scan. |
@@ -53,26 +53,26 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Aggregation | — | [`max_consecutive_true`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MaxConsecutiveTrue.html) | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | [`max_consecutive_zeros`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.MaxConsecutiveZeros.html) | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | `max_count` | ❌ |  | Needs per-group value counts. |
-| Aggregation | — | `max_min_delta` | ❌ |  |  |
+| Aggregation | [`max_min_delta`][tusk.primitives.MaxMinDelta] | `max_min_delta` | ⚠️ | [`test_a_delta_without_a_known_value_is_null_rather_than_zero`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A group without a known value is null in tusk and `0` in featuretools. |
 | Aggregation | — | `median_count` | ❌ |  | Needs per-group value counts. |
 | Aggregation | — | `min_count` | ❌ |  | Needs per-group value counts. |
-| Aggregation | — | [`mode`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Mode.html) | ❌ |  | Length-changing inside a lazy `group_by().agg()`. |
-| Aggregation | — | [`n_most_common`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NMostCommon.html) | ❌ |  | Length-changing inside a lazy `group_by().agg()`. |
-| Aggregation | — | `n_most_common_frequency` | ❌ |  | Length-changing inside a lazy `group_by().agg()`. |
-| Aggregation | — | `n_unique_days` | ❌ |  |  |
-| Aggregation | — | `n_unique_days_of_calendar_year` | ❌ |  |  |
-| Aggregation | — | `n_unique_days_of_month` | ❌ |  |  |
-| Aggregation | — | `n_unique_months` | ❌ |  |  |
+| Aggregation | — | [`mode`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Mode.html) | ⛔ |  | Length-changing inside a lazy `group_by().agg()`. |
+| Aggregation | — | [`n_most_common`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NMostCommon.html) | ⛔ |  | Length-changing inside a lazy `group_by().agg()`. |
+| Aggregation | — | `n_most_common_frequency` | ⛔ |  | Length-changing inside a lazy `group_by().agg()`. |
+| Aggregation | [`n_unique_days`][tusk.primitives.NUniqueDays] | `n_unique_days` | ⚠️ | [`test_distinct_date_counts_count_a_null_as_a_value`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A null date counts as one value in tusk; featuretools ignores it. |
+| Aggregation | [`n_unique_days_of_calendar_year`][tusk.primitives.NUniqueDaysOfCalendarYear] | `n_unique_days_of_calendar_year` | ⚠️ | [`test_distinct_date_counts_count_a_null_as_a_value`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A null date counts as one value in tusk; featuretools ignores it. |
+| Aggregation | [`n_unique_days_of_month`][tusk.primitives.NUniqueDaysOfMonth] | `n_unique_days_of_month` | ⚠️ | [`test_distinct_date_counts_count_a_null_as_a_value`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A null date counts as one value in tusk; featuretools ignores it. |
+| Aggregation | [`n_unique_months`][tusk.primitives.NUniqueMonths] | `n_unique_months` | ⚠️ | [`test_distinct_date_counts_count_a_null_as_a_value`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A null date counts as one value in tusk; featuretools ignores it. |
 | Aggregation | — | `n_unique_weeks` | ❌ |  |  |
 | Aggregation | — | [`num_consecutive_greater_mean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumConsecutiveGreaterMean.html) | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | [`num_consecutive_less_mean`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumConsecutiveLessMean.html) | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | `num_false_since_last_true` | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | `num_peaks` | ❌ |  | Needs a windowed scan. |
-| Aggregation | — | [`num_true`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumTrue.html) | ❌ |  |  |
+| Aggregation | [`n_true`][tusk.primitives.NTrue] | [`num_true`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NumTrue.html) | ✅ | [`test_standalone_aggregations_match_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) |  |
 | Aggregation | — | `num_true_since_last_false` | ❌ |  | Needs a run-length scan. |
 | Aggregation | — | `num_zero_crossings` | ❌ |  | Needs a windowed scan. |
-| Aggregation | — | `percent_unique` | ❌ |  |  |
-| Aggregation | — | [`skew`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Skew.html) | ❌ |  |  |
+| Aggregation | [`percent_unique`][tusk.primitives.PercentUnique] | `percent_unique` | ⚠️ | [`test_percent_unique_of_an_empty_group_is_null_rather_than_zero`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A null counts as a distinct value in tusk and is ignored by featuretools. An empty group is null in tusk and `0` in featuretools. |
+| Aggregation | [`skew`][tusk.primitives.Skew] | [`skew`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Skew.html) | ⚠️ | [`test_skew_differs_from_featuretools_only_by_its_bias_correction`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Without bias correction, as narwhals computes it; featuretools applies pandas' sample correction. A constant group is null on both sides. |
 | Aggregation | [`time_since_first`][tusk.primitives.TimeSinceFirst] | [`time_since_first`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSinceFirst.html) | ⚠️ | [`test_time_since_first_and_last_match_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Returns a `Duration`; featuretools returns float seconds. |
 | Aggregation | [`time_since_last`][tusk.primitives.TimeSinceLast] | [`time_since_last`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSinceLast.html) | ⚠️ | [`test_time_since_first_and_last_match_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Returns a `Duration`; featuretools returns float seconds. |
 | Aggregation | [`time_since_last_false`][tusk.primitives.TimeSinceLastFalse] | [`time_since_last_false`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSinceLastFalse.html) | ⚠️ | [`test_time_since_last_flag_matches_featuretools_where_a_flagged_row_exists`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Returns a `Duration`; featuretools returns float seconds. A group with no such row is null, not zero. |
@@ -80,6 +80,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Aggregation | — | [`time_since_last_min`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSinceLastMin.html) | ❌ |  | Needs an argmax; SQL backends reject an aggregate nested in an aggregate. |
 | Aggregation | [`time_since_last_true`][tusk.primitives.TimeSinceLastTrue] | [`time_since_last_true`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.TimeSinceLastTrue.html) | ⚠️ | [`test_time_since_last_flag_matches_featuretools_where_a_flagged_row_exists`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Returns a `Duration`; featuretools returns float seconds. A group with no such row is null, not zero. |
 | Aggregation | — | [`trend`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Trend.html) | ❌ |  | Needs a least-squares fit. |
+| Aggregation | [`variance`][tusk.primitives.Variance] | [`variance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Variance.html) | ✅ | [`test_standalone_aggregations_match_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) |  |
 | Binary transform | [`add_numeric`][tusk.primitives.AddNumeric] | [`add_numeric`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.AddNumeric.html) | ✅ | [`test_arithmetic_transforms_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_binary_transforms.py) |  |
 | Binary transform | [`divide_numeric`][tusk.primitives.DivideNumeric] | `divide_numeric` | ✅ | [`test_arithmetic_transforms_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_binary_transforms.py) |  |
 | Binary transform | [`multiply_numeric`][tusk.primitives.MultiplyNumeric] | `multiply_numeric` | ✅ | [`test_arithmetic_transforms_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_binary_transforms.py) |  |
@@ -132,7 +133,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | [`year`][tusk.primitives.Year] | [`year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Year.html) | ❓ |  |  |
 | Datetime transform | — | [`age`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Age.html) | ⛔ |  | Covered by `time_since`; without semantic tags a birth date is just a datetime. |
 | Datetime transform | — | [`date_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToHoliday.html) | ❌ |  | Only with user supplied holidays. |
-| Datetime transform | — | [`date_to_time_zone`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToTimeZone.html) | ❌ |  |  |
+| Datetime transform | — | [`date_to_time_zone`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DateToTimeZone.html) | ⛔ |  | duckdb keeps the time zone on the connection, not on the column. |
 | Datetime transform | — | [`day_of_year`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DayOfYear.html) | ❌ |  |  |
 | Datetime transform | — | [`days_in_month`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DaysInMonth.html) | ❌ |  |  |
 | Datetime transform | — | [`distance_to_holiday`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.DistanceToHoliday.html) | ❌ |  | Only with user supplied holidays. |
@@ -159,9 +160,9 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Email and URL transform | — | [`url_to_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.URLToDomain.html) | ❌ |  | Needs URL parsing. |
 | Email and URL transform | — | [`url_to_protocol`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.URLToProtocol.html) | ❌ |  | Needs URL parsing. |
 | Email and URL transform | — | [`url_to_tld`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.URLToTLD.html) | ❌ |  | Needs URL parsing. |
-| Exponential transform | — | [`exponential_weighted_average`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ExponentialWeightedAverage.html) | ❌ |  |  |
-| Exponential transform | — | [`exponential_weighted_std`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ExponentialWeightedSTD.html) | ❌ |  | narwhals exposes only `ewm_mean`. |
-| Exponential transform | — | [`exponential_weighted_variance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ExponentialWeightedVariance.html) | ❌ |  | narwhals exposes only `ewm_mean`. |
+| Exponential transform | — | [`exponential_weighted_average`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ExponentialWeightedAverage.html) | ⛔ |  | duckdb has no exponentially weighted window. |
+| Exponential transform | — | [`exponential_weighted_std`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ExponentialWeightedSTD.html) | ⛔ |  | duckdb has no exponentially weighted window. |
+| Exponential transform | — | [`exponential_weighted_variance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.ExponentialWeightedVariance.html) | ⛔ |  | duckdb has no exponentially weighted window. |
 | General transform | [`absolute`][tusk.primitives.Absolute] | [`absolute`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Absolute.html) | ❓ |  |  |
 | General transform | [`natural_log`][tusk.primitives.NaturalLog] | [`natural_logarithm`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NaturalLogarithm.html) | ❓ |  |  |
 | General transform | — | [`absolute_diff`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.AbsoluteDiff.html) | ❌ |  |  |
@@ -176,7 +177,6 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | General transform | — | [`sine`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Sine.html) | ❌ |  |  |
 | General transform | — | [`square_root`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.SquareRoot.html) | ❌ |  |  |
 | General transform | — | [`tangent`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Tangent.html) | ⛔ |  | narwhals exposes no `tan`. |
-| General transform | — | [`variance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Variance.html) | ❌ |  |  |
 | Location transform | — | [`cityblock_distance`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.CityblockDistance.html) | ⛔ |  |   |
 | Location transform | — | [`geomidpoint`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.GeoMidpoint.html) | ⛔ |  |   |
 | Location transform | — | [`haversine`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Haversine.html) | ⛔ |  |   |

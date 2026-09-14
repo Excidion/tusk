@@ -26,6 +26,8 @@ AGG_DEFAULTS: tuple[str, ...] = (
     "max",
     "std",
     "n_unique",
+    "skew",
+    "percent_true",
 )
 
 
@@ -46,7 +48,7 @@ class Count(AggregationPrimitive):
         Returns:
             A narwhals expression counting rows.
         """
-        return nw.len().cast(nw.Int64)
+        return nw.len()
 
 
 @register
@@ -182,30 +184,18 @@ class Median(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class NUnique(AggregationPrimitive):
-    """Number of distinct *known* values in a column; nulls are not a value."""
+    """Number of distinct values in a column; a null counts as one value."""
 
     name = "n_unique"
     input_dtypes = (F.ANY,)
     output_dtype = nw.Int64
-    # No rows means 0 distinct values -- and, by the same logic, so does a
-    # group whose only rows are null.
+    # Zero rows means zero distinct values. A group whose only rows are null
+    # is 1, not 0, since null now counts as a value.
     default_value = 0
     stack_on_self = False
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-count expression, excluding null.
-
-        Polars counts null as one more distinct value, which contradicts this
-        primitive's own ``default_value``: a customer whose only session had no
-        transactions would report 0 rows and 1 distinct value at once.
-        featuretools' ``NUM_UNIQUE`` excludes nulls, so counting them would
-        also diverge silently on any data containing them.
-
-        Subtracting a null indicator is deliberate rather than
-        ``expr.drop_nulls().n_unique()``: ``drop_nulls`` is a length-changing
-        (filtration) expression, and narwhals rejects those inside a lazy
-        ``group_by().agg()`` on backends that cannot express them. Both
-        operands here are plain reductions.
+        """Build the distinct-count expression, counting null as a value.
 
         Args:
             expr: The column to count distinct values of.
@@ -213,7 +203,7 @@ class NUnique(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return (expr.n_unique() - expr.is_null().any().cast(nw.Int64)).cast(nw.Int64)
+        return expr.n_unique()
 
 
 @register
@@ -374,6 +364,313 @@ class TimeSinceLastFalse(NeedsCutoffTime, AggregationPrimitive):
         return _time_since_last_selected(timestamps, ~flags, cutoff_time)
 
 
+@register
+@dataclass(frozen=True)
+class AllTrue(AggregationPrimitive):
+    """Whether every known value of a boolean column is true."""
+
+    name = "all_true"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the every-value-true expression, ignoring nulls.
+
+        Args:
+            expr: The boolean column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.all()
+
+
+@register
+@dataclass(frozen=True)
+class AnyTrue(AggregationPrimitive):
+    """Whether any known value of a boolean column is true."""
+
+    name = "any_true"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Boolean
+    default_value = False
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the some-value-true expression, ignoring nulls.
+
+        Args:
+            expr: The boolean column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.any()
+
+
+@register
+@dataclass(frozen=True)
+class NTrue(AggregationPrimitive):
+    """Number of rows where a boolean column is true."""
+
+    name = "n_true"
+    input_dtypes = (F.BOOLEAN,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the true-count expression; a null is not true.
+
+        Args:
+            expr: The boolean column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.fill_null(False).cast(nw.Int64).sum()
+
+
+@register
+@dataclass(frozen=True)
+class Skew(AggregationPrimitive):
+    """Skewness of a numeric column, without bias correction."""
+
+    name = "skew"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the skewness expression; a constant group is null.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _where_the_column_varies(expr, expr.skew())
+
+
+@register
+@dataclass(frozen=True)
+class Kurtosis(AggregationPrimitive):
+    """Excess kurtosis of a numeric column, without bias correction."""
+
+    name = "kurtosis"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the excess-kurtosis expression; a constant group is null.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _where_the_column_varies(expr, expr.kurtosis())
+
+
+@register
+@dataclass(frozen=True)
+class Variance(AggregationPrimitive):
+    """Sample variance of a numeric column."""
+
+    name = "variance"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the variance expression.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.var()
+
+
+@register
+@dataclass(frozen=True)
+class MaxMinDelta(AggregationPrimitive):
+    """Difference between the largest and smallest value of a numeric column."""
+
+    name = "max_min_delta"
+    input_dtypes = (F.NUMERIC,)
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the largest-minus-smallest expression.
+
+        Args:
+            expr: The column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.max() - expr.min()
+
+
+@register
+@dataclass(frozen=True)
+class IsUnique(AggregationPrimitive):
+    """Whether no value of a column repeats; a null counts as a value."""
+
+    name = "is_unique"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the no-value-repeats expression.
+
+        Args:
+            expr: The column to test.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.n_unique() == nw.len()
+
+
+@register
+@dataclass(frozen=True)
+class PercentUnique(AggregationPrimitive):
+    """Distinct values of a column as a fraction of its rows."""
+
+    name = "percent_unique"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct-fraction expression; a null counts as a value and a row.
+
+        Args:
+            expr: The column to count distinct values of.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.n_unique() / nw.len()
+
+
+@register
+@dataclass(frozen=True)
+class FirstLastTimeDelta(AggregationPrimitive):
+    """Time between a group's earliest and latest datetime."""
+
+    name = "first_last_time_delta"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Duration
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the latest-minus-earliest expression.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        # duckdb subtracts two Dates into a day count instead of an interval
+        timestamps = expr.cast(nw.Datetime)
+        return timestamps.max() - timestamps.min()
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueDays(AggregationPrimitive):
+    """Number of distinct calendar dates in a datetime column."""
+
+    name = "n_unique_days"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct-date count; a null counts as one value.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.dt.date().n_unique()
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueDaysOfCalendarYear(AggregationPrimitive):
+    """Number of distinct month-and-day pairs in a datetime column."""
+
+    name = "n_unique_days_of_calendar_year"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct month-and-day count; a null counts as one value.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        # month and day come back as Int8, which month * 100 overflows
+        month = expr.dt.month().cast(nw.Int32)
+        day = expr.dt.day().cast(nw.Int32)
+        return (month * 100 + day).n_unique()
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueDaysOfMonth(AggregationPrimitive):
+    """Number of distinct days of the month in a datetime column."""
+
+    name = "n_unique_days_of_month"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct day-of-month count; a null counts as one value.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.dt.day().n_unique()
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueMonths(AggregationPrimitive):
+    """Number of distinct calendar months, year included, in a datetime column."""
+
+    name = "n_unique_months"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int64
+    default_value = 0
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct year-and-month count; a null counts as one value.
+
+        Args:
+            expr: The datetime column to reduce.
+
+        Returns:
+            A narwhals expression.
+        """
+        # year * 12 + month must not overflow the narrow ints year()/month() return
+        year = expr.dt.year().cast(nw.Int32)
+        month = expr.dt.month().cast(nw.Int32)
+        return (year * 12 + month).n_unique()
+
+
 def _time_since_last_selected(
     timestamps: nw.Expr,
     selected: nw.Expr,
@@ -395,3 +692,19 @@ def _time_since_last_selected(
         A narwhals expression.
     """
     return nw.lit(cutoff_time) - nw.when(selected).then(timestamps).max()
+
+
+def _where_the_column_varies(expr: nw.Expr, moment: nw.Expr) -> nw.Expr:
+    """Keep a standardized moment only for a group whose values vary.
+
+    Args:
+        expr: The column the moment was computed from.
+        moment: The moment's expression.
+
+    Returns:
+        The moment, or null where the column's standard deviation is zero or
+        unknown.
+    """
+    # A constant group divides zero by zero, which polars answers with NaN
+    # and duckdb with 0.0 or null.
+    return nw.when(expr.std() > 0).then(moment)

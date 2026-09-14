@@ -54,6 +54,34 @@
 
 ::: tusk.primitives.TimeSinceLastFalse
 
+::: tusk.primitives.AllTrue
+
+::: tusk.primitives.AnyTrue
+
+::: tusk.primitives.NTrue
+
+::: tusk.primitives.Skew
+
+::: tusk.primitives.Kurtosis
+
+::: tusk.primitives.Variance
+
+::: tusk.primitives.MaxMinDelta
+
+::: tusk.primitives.FirstLastTimeDelta
+
+::: tusk.primitives.IsUnique
+
+::: tusk.primitives.PercentUnique
+
+::: tusk.primitives.NUniqueDays
+
+::: tusk.primitives.NUniqueDaysOfCalendarYear
+
+::: tusk.primitives.NUniqueDaysOfMonth
+
+::: tusk.primitives.NUniqueMonths
+
 ## Transform primitives
 
 ::: tusk.primitives.transform.TRANS_DEFAULTS

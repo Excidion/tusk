@@ -1,9 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import narwhals as nw
 import polars as pl
 import pytest
+from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
 
+import tusk
 from tusk.primitives.aggregation import (
     AGG_DEFAULTS,
     Count,
@@ -118,7 +120,17 @@ def test_quantiles_defaults_to_the_quartiles():
 
 
 def test_defaults_are_the_documented_set():
-    assert AGG_DEFAULTS == ("count", "sum", "mean", "min", "max", "std", "n_unique")
+    assert AGG_DEFAULTS == (
+        "count",
+        "sum",
+        "mean",
+        "min",
+        "max",
+        "std",
+        "n_unique",
+        "skew",
+        "percent_true",
+    )
 
 
 @pytest.fixture
@@ -198,3 +210,43 @@ def test_time_since_aggregations_return_a_duration(timed_lf):
         TimeSinceLast().outputs(nw.col("t"), cutoff_time=CUTOFF)[0].alias("d"),
     )
     assert got.collect_schema()["d"] == nw.Duration
+
+
+@pytest.mark.parametrize("primitive_name", sorted(EXPECTED))
+def test_standalone_aggregations_on_every_kind_of_group(primitive_name):
+    column, dtype, expected = EXPECTED[primitive_name]
+    database = (
+        tusk.Database("cases")
+        .add_table("parents", pl.from_pandas(PARENTS).lazy(), primary_key="id")
+        .add_table("children", pl.from_pandas(CHILDREN).lazy(), primary_key="id")
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="parents",
+        agg_primitives=[primitive_name],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    assert nw.from_native(matrix).collect_schema()[column] == dtype
+    got = matrix.collect().sort("id").to_pandas()[column].tolist()
+    assert_values_match(got, expected)
+
+
+def test_max_min_delta_preserves_input_dtype_on_integer_column():
+    lf = nw.from_native(pl.LazyFrame({"g": [1, 1], "n": [3, 10]}))
+
+    prim = resolve("max_min_delta")
+    assert prim.return_dtype((nw.Int64,)) == nw.Int64
+
+    got = _agg(lf, prim, "n")
+    values = got["o0"].to_list()
+    assert values == [7]
+
+
+def test_first_last_time_delta_of_dates_is_a_duration():
+    lf = nw.from_native(
+        pl.LazyFrame({"g": [1, 1], "d": [date(2024, 1, 1), date(2024, 3, 2)]}),
+    )
+    got = _agg(lf, resolve("first_last_time_delta"), "d")
+    assert got["o0"][0] == timedelta(days=61)
