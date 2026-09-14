@@ -113,6 +113,18 @@ EXPECTED = {
             1.0,
         ],
     ),
+    "MINUTE__due_at": ("minute", nw.Int8, [45, None, 59, 0, 8, 30, 0, 0]),
+    "SECOND__due_at": ("second", nw.Int8, [30, None, 59, 0, 9, 0, 1, 0]),
+    "DAY_OF_YEAR__due_at": (
+        "day_of_year",
+        nw.Int16,
+        [60, None, 60, 366, 166, 1, 366, 1],
+    ),
+    "IS_LEAP_YEAR__due_at": (
+        "is_leap_year",
+        nw.Boolean,
+        [True, None, False, True, False, False, True, False],
+    ),
 }
 
 

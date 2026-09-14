@@ -29,7 +29,7 @@ from transform_cases import (
 )
 
 import tusk
-from tusk.primitives import Negate
+from tusk.primitives import Negate, resolve
 
 duckdb = pytest.importorskip("duckdb")
 pd = pytest.importorskip("pandas")
@@ -607,3 +607,17 @@ def test_negate_does_not_overflow_an_integer_dtype_on_duckdb():
     ).collect()
     assert got["small"].to_list() == [128.0]
     assert got["unsigned"].to_list() == [-4294967295.0]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
+)
+def test_minute_and_second_read_a_time_column_on_duckdb(name, expected):
+    con = duckdb.connect()
+    frame = nw.from_native(
+        # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
+        con.sql("SELECT * FROM (VALUES (1, TIME '01:02:03'), (2, NULL)) t(id, \"at\")"),
+    )
+    primitive = resolve(name)
+    got = frame.select("id", primitive.outputs(nw.col("at"))[0].alias("o"))
+    assert got.collect().sort("id")["o"].to_list() == expected

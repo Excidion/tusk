@@ -157,6 +157,91 @@ class IsWeekend(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class Minute(TransformPrimitive):
+    """Minute of the hour, 0-59."""
+
+    name = "minute"
+    input_dtypes = (F.HAS_TIME,)
+    output_dtype = nw.Int8
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the minute-of-hour expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the minute of the hour.
+        """
+        return expr.dt.minute()
+
+
+@register
+@dataclass(frozen=True)
+class Second(TransformPrimitive):
+    """Second of the minute, 0-59."""
+
+    name = "second"
+    input_dtypes = (F.HAS_TIME,)
+    output_dtype = nw.Int8
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the second-of-minute expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the second of the minute.
+        """
+        return expr.dt.second()
+
+
+@register
+@dataclass(frozen=True)
+class DayOfYear(TransformPrimitive):
+    """Day of the year, 1-366."""
+
+    name = "day_of_year"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int16
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the day-of-year expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the day of the year.
+        """
+        return expr.dt.ordinal_day()
+
+
+@register
+@dataclass(frozen=True)
+class IsLeapYear(TransformPrimitive):
+    """Whether the date falls in a leap year. A null date gives null."""
+
+    name = "is_leap_year"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the leap-year expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        year = expr.dt.year().cast(nw.Int32)
+        return ((year % 4 == 0) & (year % 100 != 0)) | (year % 400 == 0)
+
+
+@register
+@dataclass(frozen=True)
 class Absolute(TransformPrimitive):
     """Absolute value."""
 

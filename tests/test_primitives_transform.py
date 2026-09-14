@@ -723,3 +723,11 @@ def test_transforms_give_the_expected_value_on_every_row(column):
 def test_negate_does_not_wrap_around_an_integer_dtype(dtype, values, expected):
     frame = nw.from_native(pl.LazyFrame({"v": values}, schema={"v": dtype}))
     assert _apply(frame, "negate", "v") == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
+)
+def test_minute_and_second_read_a_time_column(name, expected):
+    frame = nw.from_native(pl.LazyFrame({"at": [dt.time(1, 2, 3), None]}))
+    assert _apply(frame, name, "at") == expected
