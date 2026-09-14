@@ -28,13 +28,7 @@ pipeline = Pipeline(
         (
             "encode",
             ColumnTransformer(
-                [
-                    (
-                        "numbers",
-                        SimpleImputer(keep_empty_features=True),
-                        dtype_selector("numeric"),
-                    ),
-                ],
+                [("numbers", SimpleImputer(), dtype_selector("numeric"))],
             ),
         ),
         ("model", ExtraTreesClassifier()),
@@ -53,10 +47,8 @@ reach the transformer through the pipeline. Set it once per process.
 
 The matrix holds whatever dtypes synthesis produced, and aggregates over an
 empty group are null, so a step between tusk and the model is the normal
-shape: most estimators take neither strings nor nulls. Some numeric columns
-can end up entirely null, so `SimpleImputer` needs `keep_empty_features=True`
-to keep them rather than drop them silently. The encoding is yours to
-choose — tusk never encodes anything itself.
+shape: most estimators take neither strings nor nulls. The encoding is yours
+to choose — tusk never encodes anything itself.
 
 Pass `database=` to `predict` to score a different set of keys, from either
 the same database or another one built to the same schema.
