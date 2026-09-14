@@ -375,19 +375,30 @@ def test_n_unique_matches_num_unique_over_a_column_without_nulls(deep_matrices, 
 def test_n_unique_counts_a_null_where_num_unique_ignores_it(deep_matrices, deep):
     """Wherever a customer's sessions hold a null kind, tusk counts it as a value.
 
-    tusk's N_UNIQUE runs exactly one higher than featuretools' NUM_UNIQUE for
-    every customer whose session group has a null ``kind``, since narwhals'
-    ``n_unique`` counts that null as one distinct value and pandas'
-    ``nunique`` (behind NUM_UNIQUE) does not.
+    Pins both sides' literal values rather than asserting only their
+    relationship (``ours == theirs + 1``), which a bug shifting both sides by
+    the same amount would still pass. tusk's N_UNIQUE runs exactly one higher
+    than featuretools' NUM_UNIQUE for every customer whose session group has
+    a null ``kind``, since narwhals' ``n_unique`` counts that null as one
+    distinct value and pandas' ``nunique`` (behind NUM_UNIQUE) does not.
     """
     customers, sessions, _ = deep
     ours, theirs = deep_matrices
     _, has_null = _customers_by_null_kind(customers, sessions)
     assert has_null
-    assert (
-        ours.loc[has_null, _as_tusk("N_UNIQUE(sessions.kind)")].to_numpy()
-        == theirs.loc[has_null, "NUM_UNIQUE(sessions.kind)"].to_numpy() + 1
-    ).all()
+    expected = {
+        2: (2, 1),
+        6: (3, 2),
+        7: (3, 2),
+        8: (2, 1),
+        9: (2, 1),
+        10: (4, 3),
+        11: (3, 2),
+    }
+    assert set(expected) == set(has_null)
+    for customer, (expected_ours, expected_theirs) in expected.items():
+        assert ours.loc[customer, _as_tusk("N_UNIQUE(sessions.kind)")] == expected_ours
+        assert theirs.loc[customer, "NUM_UNIQUE(sessions.kind)"] == expected_theirs
 
 
 def test_n_unique_of_an_empty_group_diverges_from_featuretools(deep_matrices, deep):
