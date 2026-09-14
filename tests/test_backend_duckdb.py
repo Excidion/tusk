@@ -16,8 +16,20 @@ import datetime as dt
 import narwhals as nw
 import pytest
 from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
+from transform_cases import (
+    EXPECTED as TRANSFORM_EXPECTED,
+)
+from transform_cases import (
+    ROWS,
+    feature_values,
+    rows_database,
+)
+from transform_cases import (
+    assert_values_match as assert_transform_values_match,
+)
 
 import tusk
+from tusk.primitives import Negate
 
 duckdb = pytest.importorskip("duckdb")
 pd = pytest.importorskip("pandas")
@@ -553,3 +565,45 @@ def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name
     )
     got = matrix.df().sort_values("id")[column].tolist()
     assert_values_match(got, expected)
+
+
+@pytest.mark.parametrize("column", sorted(TRANSFORM_EXPECTED))
+def test_transforms_give_the_polars_values_on_duckdb(column):
+    """Every standalone and ordered transform survives translation to SQL, row by row.
+
+    ``square_root`` and ``natural_log`` pin the negative-input guard, which
+    polars would otherwise answer with NaN, and the ordered primitives pin
+    the ordering by ``occurred_at``.
+
+    Args:
+        column: The feature column under test.
+    """
+    primitive_name, _, expected = TRANSFORM_EXPECTED[column]
+    con = duckdb.connect()
+    con.register("rows_frame", ROWS)
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=rows_database(con.sql("SELECT * FROM rows_frame")),
+        target_table="rows",
+        agg_primitives=[],
+        trans_primitives=[primitive_name],
+        max_depth=1,
+    )
+    assert_transform_values_match(feature_values(matrix, column), expected)
+
+
+def test_negate_does_not_overflow_an_integer_dtype_on_duckdb():
+    """duckdb raises on negating TINYINT's minimum and wraps an unsigned value."""
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES (CAST(-128 AS TINYINT), 4294967295::UINTEGER)) "
+            "t(small, unsigned)",
+        ),
+    )
+    negate = Negate()
+    got = frame.select(
+        negate.outputs(nw.col("small"))[0].alias("small"),
+        negate.outputs(nw.col("unsigned"))[0].alias("unsigned"),
+    ).collect()
+    assert got["small"].to_list() == [128.0]
+    assert got["unsigned"].to_list() == [-4294967295.0]

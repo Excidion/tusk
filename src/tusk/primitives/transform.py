@@ -178,7 +178,7 @@ class Absolute(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class NaturalLog(TransformPrimitive):
-    """Natural logarithm. Non-positive inputs yield null or negative infinity."""
+    """Natural logarithm. A negative input gives null; zero gives negative infinity."""
 
     name = "natural_log"
     input_dtypes = (F.NUMERIC,)
@@ -193,7 +193,115 @@ class NaturalLog(TransformPrimitive):
         Returns:
             A narwhals expression of natural logarithms.
         """
-        return expr.log()
+        # polars answers NaN for a negative input, duckdb null
+        return nw.when(expr >= 0).then(expr.log())
+
+
+@register
+@dataclass(frozen=True)
+class IsNull(TransformPrimitive):
+    """Whether the value is null."""
+
+    name = "is_null"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the null-indicator expression.
+
+        Args:
+            expr: An expression of any dtype.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        return expr.is_null()
+
+
+@register
+@dataclass(frozen=True)
+class Negate(TransformPrimitive):
+    """The value with its sign flipped, as a float."""
+
+    name = "negate"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the negation expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of the negated values.
+        """
+        # an integer dtype's minimum has no negation inside the same dtype
+        return expr.cast(nw.Float64) * -1
+
+
+@register
+@dataclass(frozen=True)
+class SquareRoot(TransformPrimitive):
+    """Square root. A negative input gives null."""
+
+    name = "square_root"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the square-root expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of square roots.
+        """
+        # polars answers NaN for a negative input, duckdb null
+        return nw.when(expr >= 0).then(expr.sqrt())
+
+
+@register
+@dataclass(frozen=True)
+class Sine(TransformPrimitive):
+    """Sine of a value in radians."""
+
+    name = "sine"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the sine expression.
+
+        Args:
+            expr: A numeric expression in radians.
+
+        Returns:
+            A narwhals expression of sines.
+        """
+        return expr.sin()
+
+
+@register
+@dataclass(frozen=True)
+class Cosine(TransformPrimitive):
+    """Cosine of a value in radians."""
+
+    name = "cosine"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cosine expression.
+
+        Args:
+            expr: A numeric expression in radians.
+
+        Returns:
+            A narwhals expression of cosines.
+        """
+        return expr.cos()
 
 
 @register

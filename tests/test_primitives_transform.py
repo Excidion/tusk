@@ -5,6 +5,13 @@ from zoneinfo import ZoneInfo
 import narwhals as nw
 import polars as pl
 import pytest
+from transform_cases import (
+    EXPECTED,
+    ROWS,
+    assert_values_match,
+    feature_values,
+    rows_database,
+)
 
 import tusk
 from tusk.dtypes import DtypeFamily
@@ -690,3 +697,29 @@ def test_deep_feature_synthesis_builds_the_categorical_equality_transform():
     assert "EQUAL_CATEGORICAL__tier__status" not in got.columns
     assert got["status"].to_list() == ["open", "closed", "open"]
     assert got["tier"].to_list() == ["open", "open", "closed"]
+
+
+@pytest.mark.parametrize("column", sorted(EXPECTED))
+def test_transforms_give_the_expected_value_on_every_row(column):
+    primitive_name, dtype, expected = EXPECTED[column]
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=rows_database(pl.from_pandas(ROWS).lazy()),
+        target_table="rows",
+        agg_primitives=[],
+        trans_primitives=[primitive_name],
+        max_depth=1,
+    )
+    assert nw.from_native(matrix).collect_schema()[column] == dtype
+    assert_values_match(feature_values(matrix, column), expected)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "values", "expected"),
+    [
+        (pl.Int8, [-128, 1], [128.0, -1.0]),
+        (pl.UInt32, [0, 4294967295], [-0.0, -4294967295.0]),
+    ],
+)
+def test_negate_does_not_wrap_around_an_integer_dtype(dtype, values, expected):
+    frame = nw.from_native(pl.LazyFrame({"v": values}, schema={"v": dtype}))
+    assert _apply(frame, "negate", "v") == expected

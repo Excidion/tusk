@@ -1,0 +1,184 @@
+"""One table and the value every standalone and ordered transform gives on it.
+
+Shared by the polars suite, the duckdb suite and the differential suite, so
+all three check the same rows. ``occurred_at`` is the row creation time and
+orders the rows 3, 1, 5, 2, 8, 4, 7, 6, which differs from id order.
+"""
+
+import datetime as dt
+import math
+
+import narwhals as nw
+import pandas as pd
+import pyarrow as pa
+import pytest
+
+import tusk
+
+ROWS = pd.DataFrame(
+    {
+        "id": range(1, 9),
+        "occurred_at": pd.to_datetime(
+            [
+                dt.datetime(2024, 2, 29, 13, 45, 30),
+                dt.datetime(2024, 3, 2, 8, 0, 5),
+                dt.datetime(2023, 12, 31, 23, 59, 59),
+                dt.datetime(2024, 3, 10),
+                dt.datetime(2024, 3, 1, 6, 30),
+                dt.datetime(2024, 3, 20, 18, 15, 45),
+                dt.datetime(2024, 3, 15, 12),
+                dt.datetime(2024, 3, 5, 9, 9, 9),
+            ],
+        ),
+        "value": [None, 0.0, 4.0, 9.0, -1.0, 2.0, 2.0, 0.0],
+        "flag": [True, False, False, False, False, True, False, True],
+        "maybe_flag": pd.array(
+            [None, True, True, False, False, True, False, None],
+            dtype="boolean",
+        ),
+        "due_at": pd.to_datetime(
+            [
+                dt.datetime(2024, 2, 29, 13, 45, 30),
+                None,
+                dt.datetime(1900, 3, 1, 23, 59, 59),
+                dt.datetime(2000, 12, 31),
+                dt.datetime(2023, 6, 15, 7, 8, 9),
+                dt.datetime(2100, 1, 1, 12, 30),
+                dt.datetime(2024, 12, 31, 23, 0, 1),
+                dt.datetime(2019, 1, 1),
+            ],
+        ),
+        "label": pd.array(
+            ["a", None, "b", "a", "b", "a", None, "b"],
+            dtype="string",
+        ),
+    },
+)
+
+EXPECTED = {
+    "IS_NULL__value": (
+        "is_null",
+        nw.Boolean,
+        [True, False, False, False, False, False, False, False],
+    ),
+    "NEGATE__value": (
+        "negate",
+        nw.Float64,
+        [None, -0.0, -4.0, -9.0, 1.0, -2.0, -2.0, -0.0],
+    ),
+    "SQUARE_ROOT__value": (
+        "square_root",
+        nw.Float64,
+        [None, 0.0, 2.0, 3.0, None, math.sqrt(2), math.sqrt(2), 0.0],
+    ),
+    "NATURAL_LOG__value": (
+        "natural_log",
+        nw.Float64,
+        [
+            None,
+            -math.inf,
+            math.log(4),
+            math.log(9),
+            None,
+            math.log(2),
+            math.log(2),
+            -math.inf,
+        ],
+    ),
+    "SINE__value": (
+        "sine",
+        nw.Float64,
+        [
+            None,
+            0.0,
+            math.sin(4),
+            math.sin(9),
+            math.sin(-1),
+            math.sin(2),
+            math.sin(2),
+            0.0,
+        ],
+    ),
+    "COSINE__value": (
+        "cosine",
+        nw.Float64,
+        [
+            None,
+            1.0,
+            math.cos(4),
+            math.cos(9),
+            math.cos(-1),
+            math.cos(2),
+            math.cos(2),
+            1.0,
+        ],
+    ),
+}
+
+
+def rows_database(table):
+    """Wrap the shared table in a one-table database.
+
+    Args:
+        table: ``ROWS`` as a native lazy frame of any backend.
+
+    Returns:
+        A database whose ``rows`` table is ordered by ``occurred_at``.
+    """
+    return tusk.Database("rows").add_table(
+        "rows",
+        table,
+        primary_key="id",
+        row_creation_time="occurred_at",
+    )
+
+
+def feature_values(matrix, column):
+    """Materialize one feature column in id order.
+
+    Args:
+        matrix: A native feature matrix from ``deep_feature_synthesis``.
+        column: The feature column to read.
+
+    Returns:
+        The column's values as plain Python objects, null as None.
+    """
+    return nw.from_native(matrix).collect().sort("id")[column].to_list()
+
+
+def assert_values_match(got, expected):
+    """Compare one feature column against its expected values, row by row.
+
+    A null and a NaN are different values here: ``square_root`` of a negative
+    number must be null, not NaN.
+
+    Args:
+        got: The column as a list, in id order.
+        expected: The expected values; a float is compared approximately.
+    """
+    assert len(got) == len(expected)
+    for actual, wanted in zip(got, expected, strict=True):
+        actual = _as_timedelta(actual)
+        if wanted is None:
+            assert actual is None
+        elif isinstance(wanted, float) and math.isnan(wanted):
+            assert isinstance(actual, float) and math.isnan(actual)
+        elif isinstance(wanted, float):
+            assert actual == pytest.approx(wanted)
+        else:
+            assert actual == wanted
+
+
+def _as_timedelta(value):
+    """Convert duckdb's interval value into a timedelta.
+
+    Args:
+        value: One materialized value.
+
+    Returns:
+        A timedelta for an interval, else the value unchanged.
+    """
+    if not isinstance(value, pa.MonthDayNano):
+        return value
+    assert value.months == 0
+    return dt.timedelta(days=value.days, microseconds=value.nanoseconds // 1000)
