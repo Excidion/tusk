@@ -59,15 +59,10 @@ EXPECTED = {
         nw.Boolean,
         [True, True, False, True, False],
     ),
-    "has_no_duplicates": (
-        "HAS_NO_DUPLICATES__children__label",
-        nw.Boolean,
-        [False, False, False, True, True],
-    ),
     "is_unique": (
         "IS_UNIQUE__children__label",
         nw.Boolean,
-        [False, None, None, True, None],
+        [False, False, False, True, None],
     ),
     "kurtosis": (
         "KURTOSIS__children__value",

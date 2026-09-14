@@ -653,48 +653,43 @@ def test_a_delta_without_a_known_value_is_null_rather_than_zero(
         assert theirs[parent] == 0.0
 
 
-def test_is_unique_is_null_rather_than_false_without_a_known_value():
-    """No known value means nothing to compare; featuretools answers False."""
+def test_is_unique_of_an_empty_group_is_null_rather_than_false():
+    """No rows to compare, so tusk answers null; featuretools answers False."""
     ours, theirs = _ours_and_theirs(
         "is_unique", "is_unique", "IS_UNIQUE(children.label)"
     )
+    assert_values_match(
+        [ours[p] for p in (1, 2, 3, 4)], [theirs[p] for p in (1, 2, 3, 4)]
+    )
+    assert ours[5] is None
+    assert theirs[5] is False
+
+
+def test_is_unique_counts_repeated_nulls_where_has_no_duplicates_drops_them():
+    """tusk ships no separate ``has_no_duplicates``: ``is_unique`` answers it too.
+
+    tusk's IS_UNIQUE counts a repeated null as a repeat, agreeing with
+    featuretools' HAS_NO_DUPLICATES only where a group holds no null.
+    featuretools drops nulls before comparing, so a null-only or repeated-null
+    group looks unique to it but not to tusk.
+    """
+    ours = _plain_by_parent(
+        _tusk_matrix(PARENTS, CHILDREN, "is_unique")["IS_UNIQUE__children__label"],
+    )
+    theirs = _plain_by_parent(
+        _featuretools_matrix(
+            PARENTS,
+            CHILDREN,
+            "has_no_duplicates",
+            logical_types=FEATURETOOLS_LOGICAL_TYPES,
+        )["HAS_NO_DUPLICATES(children.label)"],
+    )
     assert_values_match([ours[p] for p in (1, 4)], [theirs[p] for p in (1, 4)])
-    for parent in (2, 3, 5):
-        assert ours[parent] is None
-        assert theirs[parent] is False
-
-
-def test_is_unique_ignores_nulls_beside_a_known_value():
-    """tusk skips the repeated null; featuretools counts it as a repeat."""
-    children = pd.DataFrame(
-        {
-            "id": [1, 2, 3],
-            "parent_id": [1, 1, 1],
-            "label": pd.array(["d", None, None], dtype="string"),
-        },
-    )
-    ours, theirs = _ours_and_theirs(
-        "is_unique",
-        "is_unique",
-        "IS_UNIQUE(children.label)",
-        children=children,
-        logical_types={"label": "Categorical"},
-    )
-    assert ours[1] is True
-    assert theirs[1] is False
-
-
-def test_has_no_duplicates_counts_repeated_nulls_as_duplicates():
-    """Two nulls repeat in tusk; featuretools drops nulls before looking."""
-    ours, theirs = _ours_and_theirs(
-        "has_no_duplicates",
-        "has_no_duplicates",
-        "HAS_NO_DUPLICATES(children.label)",
-    )
-    assert_values_match([ours[p] for p in (1, 4, 5)], [theirs[p] for p in (1, 4, 5)])
     for parent in (2, 3):
         assert ours[parent] is False
         assert theirs[parent] is True
+    assert ours[5] is None
+    assert theirs[5] is True
 
 
 def test_percent_unique_of_an_empty_group_is_null_rather_than_zero():

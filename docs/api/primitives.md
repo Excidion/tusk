@@ -72,8 +72,6 @@
 
 ::: tusk.primitives.IsUnique
 
-::: tusk.primitives.HasNoDuplicates
-
 ::: tusk.primitives.PercentUnique
 
 ::: tusk.primitives.NUniqueDays
