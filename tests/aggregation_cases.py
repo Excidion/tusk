@@ -49,8 +49,16 @@ CHILDREN = pd.DataFrame(
 )
 
 EXPECTED = {
-    "all": ("ALL__children__flag", nw.Boolean, [False, True, True, False, None]),
-    "any": ("ANY__children__flag", nw.Boolean, [True, True, False, True, False]),
+    "all_true": (
+        "ALL_TRUE__children__flag",
+        nw.Boolean,
+        [False, True, True, False, None],
+    ),
+    "any_true": (
+        "ANY_TRUE__children__flag",
+        nw.Boolean,
+        [True, True, False, True, False],
+    ),
     "has_no_duplicates": (
         "HAS_NO_DUPLICATES__children__label",
         nw.Boolean,

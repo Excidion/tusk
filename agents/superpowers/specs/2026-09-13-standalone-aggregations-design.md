@@ -32,8 +32,8 @@ non-empty group whose every input value is null.
 
 | Name | Input | Output | Expression | Empty | All null | Nulls in a mixed group |
 | --- | --- | --- | --- | --- | --- | --- |
-| `all` | `BOOLEAN` | `Boolean` | `expr.all()` | null | `True` | ignored |
-| `any` | `BOOLEAN` | `Boolean` | `expr.any()` | `False` | `False` | ignored |
+| `all_true` | `BOOLEAN` | `Boolean` | `expr.all()` | null | `True` | ignored |
+| `any_true` | `BOOLEAN` | `Boolean` | `expr.any()` | `False` | `False` | ignored |
 | `n_true` | `BOOLEAN` | `Int64` | `expr.fill_null(False).cast(Int64).sum().cast(Int64)` | `0` | `0` | not true |
 | `skew` | `NUMERIC` | `Float64` | `when(expr.std() > 0).then(expr.skew())` | null | null | ignored |
 | `kurtosis` | `NUMERIC` | `Float64` | `when(expr.std() > 0).then(expr.kurtosis())` | null | null | ignored |
@@ -101,8 +101,8 @@ Expected coverage, to be confirmed by the differential tests:
 
 | Status | Rows |
 | --- | --- |
-| ✅ | `all`, `n_true`, `variance`, `n_unique_days`, `n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months` |
-| ⚠️ | `any` (empty group), `skew` (bias), `kurtosis` (featuretools answers 0 for a group holding a null, a constant group or an empty group), `max_min_delta` (empty group), `first_last_time_delta` (`Duration`, any datetime), `is_unique` (nulls), `has_no_duplicates` (featuretools ignores nulls), `percent_unique` (empty group) |
+| ✅ | `all_true`, `n_true`, `variance`, `n_unique_days`, `n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months` |
+| ⚠️ | `any_true` (empty group), `skew` (bias), `kurtosis` (featuretools answers 0 for a group holding a null, a constant group or an empty group), `max_min_delta` (empty group), `first_last_time_delta` (`Duration`, any datetime), `is_unique` (nulls), `has_no_duplicates` (featuretools ignores nulls), `percent_unique` (empty group) |
 
 ## Documentation
 

@@ -54,9 +54,9 @@
 
 ::: tusk.primitives.TimeSinceLastFalse
 
-::: tusk.primitives.All
+::: tusk.primitives.AllTrue
 
-::: tusk.primitives.Any
+::: tusk.primitives.AnyTrue
 
 ::: tusk.primitives.NTrue
 

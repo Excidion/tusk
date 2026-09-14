@@ -528,7 +528,7 @@ def _plain(value):
 @pytest.mark.parametrize(
     ("tusk_name", "featuretools_name", "featuretools_column"),
     [
-        ("all", "all", "ALL(children.flag)"),
+        ("all_true", "all", "ALL(children.flag)"),
         ("n_true", "num_true", "NUM_TRUE(children.flag)"),
         ("variance", "variance", "VARIANCE(children.value)"),
         ("n_unique_days", "n_unique_days", "N_UNIQUE_DAYS(children.seen_at)"),
@@ -555,9 +555,9 @@ def test_standalone_aggregations_match_featuretools_on_every_parent_row(
     assert_values_match(list(ours.values()), list(theirs.values()))
 
 
-def test_any_of_an_empty_group_is_false_rather_than_null():
+def test_any_true_of_an_empty_group_is_false_rather_than_null():
     """No row is true, so tusk says False; featuretools reports a missing value."""
-    ours, theirs = _ours_and_theirs("any", "any", "ANY(children.flag)")
+    ours, theirs = _ours_and_theirs("any_true", "any", "ANY(children.flag)")
     assert_values_match(
         [ours[p] for p in (1, 2, 3, 4)], [theirs[p] for p in (1, 2, 3, 4)]
     )

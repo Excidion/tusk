@@ -366,10 +366,10 @@ class TimeSinceLastFalse(NeedsCutoffTime, AggregationPrimitive):
 
 @register
 @dataclass(frozen=True)
-class All(AggregationPrimitive):
+class AllTrue(AggregationPrimitive):
     """Whether every known value of a boolean column is true."""
 
-    name = "all"
+    name = "all_true"
     input_dtypes = (F.BOOLEAN,)
     output_dtype = nw.Boolean
 
@@ -387,10 +387,10 @@ class All(AggregationPrimitive):
 
 @register
 @dataclass(frozen=True)
-class Any(AggregationPrimitive):
+class AnyTrue(AggregationPrimitive):
     """Whether any known value of a boolean column is true."""
 
-    name = "any"
+    name = "any_true"
     input_dtypes = (F.BOOLEAN,)
     output_dtype = nw.Boolean
     default_value = False

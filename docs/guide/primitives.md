@@ -8,7 +8,7 @@ everything pushed down to the backend.
 
 **Aggregation** — `count`, `sum`, `mean`, `min`, `max`, `std`, `median`,
 `variance`, `skew`, `kurtosis`, `max_min_delta`, `n_unique`, `is_unique`,
-`has_no_duplicates`, `percent_unique`, `all`, `any`, `n_true`, `percent_true`,
+`has_no_duplicates`, `percent_unique`, `all_true`, `any_true`, `n_true`, `percent_true`,
 `quantiles`, `first_last_time_delta`, `n_unique_days`,
 `n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months`,
 `time_since_first`, `time_since_last`, `time_since_last_true`,
@@ -64,9 +64,9 @@ with no orders gets:
 | `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
 | `PERCENT_TRUE` | `null` | Undefined over an empty set, same as `MEAN`. Within a non-empty group a null counts as false, so an all-null group computes to `0.0` rather than falling through to this default. |
 | `N_TRUE`, `N_UNIQUE_DAYS`, `N_UNIQUE_DAYS_OF_CALENDAR_YEAR`, `N_UNIQUE_DAYS_OF_MONTH`, `N_UNIQUE_MONTHS` | `0` | Zero rows hold nothing to count. Nulls are not values, so a group of only nulls is also `0`. |
-| `ANY` | `false` | No row is true. |
+| `ANY_TRUE` | `false` | No row is true. |
 | `HAS_NO_DUPLICATES` | `true` | No value repeats. Two nulls do repeat, so a group of several nulls is `false`. |
-| `ALL` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but a group with no rows is left unknown. |
+| `ALL_TRUE` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but a group with no rows is left unknown. |
 | `IS_UNIQUE` | `null` | Nothing to compare. Nulls are not values, so a group of only nulls is `null` too. |
 | `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE` | `null` | Undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
 

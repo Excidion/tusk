@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from tusk.primitives.aggregation import (
     AGG_DEFAULTS,
-    All,
-    Any,
+    AllTrue,
+    AnyTrue,
     Count,
     FirstLastTimeDelta,
     HasNoDuplicates,
@@ -82,9 +82,9 @@ __all__ = [
     "Absolute",
     "AddNumeric",
     "AggregationPrimitive",
-    "All",
+    "AllTrue",
     "And",
-    "Any",
+    "AnyTrue",
     "Count",
     "CumCount",
     "CumMax",
