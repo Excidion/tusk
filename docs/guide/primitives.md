@@ -49,15 +49,15 @@ with no orders gets:
 | Primitive | Value | Why |
 |---|---|---|
 | `COUNT` | `0` | We know there were zero rows. |
-| `N_UNIQUE` | `0` | Zero rows hold zero distinct values. Nulls are not values either, so a group of only nulls is also `0`. |
+| `N_UNIQUE` | `0` | Zero rows hold zero distinct values. A null counts as one value, so a group of only nulls is `1`. |
 | `SUM` | `0` | The additive identity. |
 | `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
 | `PERCENT_TRUE` | `null` | Undefined over an empty set, same as `MEAN`. Within a non-empty group a null counts as false, so an all-null group computes to `0.0` rather than falling through to this default. |
-| `N_TRUE`, `N_UNIQUE_DAYS`, `N_UNIQUE_DAYS_OF_CALENDAR_YEAR`, `N_UNIQUE_DAYS_OF_MONTH`, `N_UNIQUE_MONTHS` | `0` | Zero rows hold nothing to count. Nulls are not values, so a group of only nulls is also `0`. |
+| `N_TRUE` | `0` | Zero rows hold nothing to count. |
+| `N_UNIQUE_DAYS`, `N_UNIQUE_DAYS_OF_CALENDAR_YEAR`, `N_UNIQUE_DAYS_OF_MONTH`, `N_UNIQUE_MONTHS` | `0` | Zero rows hold zero distinct values. A null date counts as one value, so a group of only nulls is `1`. |
 | `ANY_TRUE` | `false` | No row is true. |
-| `HAS_NO_DUPLICATES` | `true` | No value repeats. Two nulls do repeat, so a group of several nulls is `false`. |
 | `ALL_TRUE` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but a group with no rows is left unknown. |
-| `IS_UNIQUE` | `null` | Nothing to compare. Nulls are not values, so a group of only nulls is `null` too. |
+| `IS_UNIQUE` | `null` | No rows to compare. Nulls are values, so a group of several nulls is `false`. |
 | `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE` | `null` | Undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
 
 The split is not arbitrary. Reporting `COUNT = 0` asserts we *know* there were
@@ -67,8 +67,9 @@ that is the average of nothing — so it stays null. Each value lives on the
 primitive as `default_value` rather than as a special case in the compiler.
 
 featuretools agrees on `COUNT` and `SUM`, and also leaves `MEAN`/`MIN`/`MAX`
-null. It differs on `N_UNIQUE`, which it leaves as `NaN`; tusk reports `0` for
-the reason above.
+null. It differs on `N_UNIQUE`: it leaves an empty group as `NaN`, where tusk
+reports `0` for the reason above, and it ignores a null value entirely, where
+tusk counts it as one distinct value.
 
 ## Nulls in `and` and `or`
 
