@@ -18,7 +18,7 @@ class Range(AggregationPrimitive):
 
     name = "range"  # identifier and also the stem of generated column names
     input_dtypes = (F.NUMERIC,)  # one per input; empty means zero-arity, like count
-    output_dtype = nw.Float64
+    output_dtype = nw.Float64  # build()'s result is cast to this
     default_value = None  # empty group has no range
 
     def build(self, expr: nw.Expr) -> nw.Expr:

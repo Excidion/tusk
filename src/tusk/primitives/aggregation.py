@@ -48,7 +48,7 @@ class Count(AggregationPrimitive):
         Returns:
             A narwhals expression counting rows.
         """
-        return nw.len().cast(nw.Int64)
+        return nw.len()
 
 
 @register
@@ -203,9 +203,7 @@ class NUnique(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # polars' n_unique returns UInt32, not the declared Int64; duckdb's
-        # is already Int64.
-        return expr.n_unique().cast(nw.Int64)
+        return expr.n_unique()
 
 
 @register
@@ -428,8 +426,7 @@ class NTrue(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # duckdb's SUM widens the integer type
-        return expr.fill_null(False).cast(nw.Int64).sum().cast(nw.Int64)
+        return expr.fill_null(False).cast(nw.Int64).sum()
 
 
 @register
@@ -599,8 +596,7 @@ class NUniqueDays(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # polars' n_unique returns UInt32, not the declared Int64.
-        return expr.dt.date().n_unique().cast(nw.Int64)
+        return expr.dt.date().n_unique()
 
 
 @register
@@ -625,8 +621,7 @@ class NUniqueDaysOfCalendarYear(AggregationPrimitive):
         # month and day come back as Int8, which month * 100 overflows
         month = expr.dt.month().cast(nw.Int32)
         day = expr.dt.day().cast(nw.Int32)
-        # polars' n_unique returns UInt32, not the declared Int64.
-        return (month * 100 + day).n_unique().cast(nw.Int64)
+        return (month * 100 + day).n_unique()
 
 
 @register
@@ -648,8 +643,7 @@ class NUniqueDaysOfMonth(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        # polars' n_unique returns UInt32, not the declared Int64.
-        return expr.dt.day().n_unique().cast(nw.Int64)
+        return expr.dt.day().n_unique()
 
 
 @register
@@ -674,8 +668,7 @@ class NUniqueMonths(AggregationPrimitive):
         # year * 12 + month must not overflow the narrow ints year()/month() return
         year = expr.dt.year().cast(nw.Int32)
         month = expr.dt.month().cast(nw.Int32)
-        # polars' n_unique returns UInt32, not the declared Int64.
-        return (year * 12 + month).n_unique().cast(nw.Int64)
+        return (year * 12 + month).n_unique()
 
 
 def _time_since_last_selected(

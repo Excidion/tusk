@@ -1,3 +1,4 @@
+import datetime as dt
 import pickle
 from dataclasses import FrozenInstanceError, dataclass, is_dataclass
 
@@ -63,6 +64,59 @@ def test_multi_output_names_are_indexed():
 def test_outputs_is_always_a_tuple():
     assert len(Spread().outputs(nw.col("a"))) == 1
     assert len(Pair().outputs(nw.col("a"))) == 2
+
+
+@dataclass(frozen=True)
+class DistinctCount(AggregationPrimitive):
+    name = "distinct_count"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Int64
+
+    def build(self, expr):
+        return expr.n_unique()
+
+
+@dataclass(frozen=True)
+class Elapsed(AggregationPrimitive):
+    name = "elapsed"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Duration
+
+    def build(self, expr):
+        return expr.max() - expr.min()
+
+
+def _aggregate_schema(primitive, column):
+    frame = nw.from_native(pl.LazyFrame({"key": [1, 1], "value": column}))
+    built = primitive.outputs(nw.col("value"))
+    aliased = [e.alias(f"output_{i}") for i, e in enumerate(built)]
+    return frame.group_by("key").agg(*aliased).collect_schema()
+
+
+def test_outputs_are_cast_to_the_declared_output_dtype():
+    schema = _aggregate_schema(DistinctCount(), [1, 2])
+    assert schema["output_0"] == nw.Int64
+
+
+def test_every_output_column_is_cast():
+    schema = _aggregate_schema(Pair(), pl.Series([1, 2], dtype=pl.Int32))
+    assert schema["output_0"] == nw.Float64
+    assert schema["output_1"] == nw.Float64
+
+
+def test_outputs_keep_the_input_dtype_when_output_dtype_is_none():
+    frame = nw.from_native(pl.LazyFrame({"value": pl.Series([1], dtype=pl.Int16)}))
+    (doubled,) = Doubled().outputs(nw.col("value"))
+    assert frame.select(doubled).collect_schema()["value"] == nw.Int16
+
+
+def test_a_bare_parametric_output_dtype_keeps_the_backend_parameters():
+    timestamps = pl.Series(
+        [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)],
+        dtype=pl.Datetime("ms"),
+    )
+    schema = _aggregate_schema(Elapsed(), timestamps)
+    assert schema["output_0"] == nw.Duration("ms")
 
 
 def test_return_dtype_preserves_input_by_default():

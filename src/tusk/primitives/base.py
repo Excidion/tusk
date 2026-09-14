@@ -28,8 +28,8 @@ class Primitive(ABC):
             the primitive accepts alternative input shapes. Empty means the
             primitive takes no column input, e.g. ``count``. Read it through
             :attr:`signatures`.
-        output_dtype: Fixed output dtype, or None to preserve the first
-            input's.
+        output_dtype: Fixed output dtype that every output column is cast
+            to, or None to preserve the first input's.
         commutative: Whether argument order is irrelevant, so that only one
             of ``f(a, b)`` and ``f(b, a)`` is generated.
         stack_on_self: Whether this primitive may be applied to its own
@@ -150,15 +150,15 @@ class Primitive(ABC):
         return tuple(f"{base_name}[{i}]" for i in range(self.number_of_outputs))
 
     def outputs(self, *inputs: nw.Expr) -> tuple[nw.Expr, ...]:
-        """Normalize :meth:`build` to a tuple of expressions.
+        """Normalize :meth:`build` to a tuple of expressions of the output dtype.
 
         Args:
             *inputs: One expression per declared input.
 
         Returns:
-            One expression per output column.
+            One expression per output column, cast to :attr:`output_dtype`.
         """
-        return _as_tuple(self.build(*inputs))
+        return _cast_to_output_dtype(self.output_dtype, self.build(*inputs))
 
     @abstractmethod
     def build(self, *inputs: nw.Expr) -> nw.Expr | Sequence[nw.Expr]:
@@ -198,16 +198,19 @@ class NeedsCutoffTime(Primitive):
     """
 
     def outputs(self, *inputs: nw.Expr, cutoff_time: datetime) -> tuple[nw.Expr, ...]:
-        """Normalize :meth:`build` to a tuple of expressions.
+        """Normalize :meth:`build` to a tuple of expressions of the output dtype.
 
         Args:
             *inputs: One expression per declared input.
             cutoff_time: The moment the values are measured against.
 
         Returns:
-            One expression per output column.
+            One expression per output column, cast to :attr:`output_dtype`.
         """
-        return _as_tuple(self.build(*inputs, cutoff_time=cutoff_time))
+        return _cast_to_output_dtype(
+            self.output_dtype,
+            self.build(*inputs, cutoff_time=cutoff_time),
+        )
 
     @abstractmethod
     def build(
@@ -255,6 +258,51 @@ def _validated_alternatives(
                 f"members, e.g. (F.NUMERIC, F.NUMERIC).",
             )
     return cast("tuple[tuple[DtypeFamily, ...], ...]", declared)
+
+
+def _cast_to_output_dtype(
+    output_dtype: Any,
+    built: nw.Expr | Sequence[nw.Expr],
+) -> tuple[nw.Expr, ...]:
+    """Cast what a primitive built to its declared output dtype.
+
+    Args:
+        output_dtype: The primitive's ``output_dtype``.
+        built: What :meth:`Primitive.build` returned.
+
+    Returns:
+        One expression per output column; uncast when ``output_dtype`` is
+        None or a parametric dtype class without its parameters.
+    """
+    expressions = _as_tuple(built)
+    if output_dtype is None or _leaves_parameters_to_backend(output_dtype):
+        return expressions
+    return tuple(expression.cast(output_dtype) for expression in expressions)
+
+
+def _leaves_parameters_to_backend(dtype: Any) -> bool:
+    """Report whether a dtype is a parametric dtype class, not an instance.
+
+    Args:
+        dtype: A narwhals dtype class or instance.
+
+    Returns:
+        True for e.g. ``nw.Duration``, False for ``nw.Duration("ms")``.
+    """
+    # Casting to the bare class would impose narwhals' default parameters,
+    # e.g. turn a backend's millisecond Duration into microseconds.
+    return isinstance(dtype, type) and issubclass(dtype, _PARAMETRIC_DTYPES)
+
+
+_PARAMETRIC_DTYPES = (
+    nw.Array,
+    nw.Datetime,
+    nw.Decimal,
+    nw.Duration,
+    nw.Enum,
+    nw.List,
+    nw.Struct,
+)
 
 
 def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:

@@ -629,7 +629,7 @@ class CumCount(TransformPrimitive):
         Returns:
             A narwhals expression of cumulative count.
         """
-        return expr.cum_count().cast(nw.Int64)
+        return expr.cum_count()
 
 
 @register
