@@ -291,18 +291,16 @@ def _leaves_parameters_to_backend(dtype: Any) -> bool:
     """
     # Casting to the bare class would impose narwhals' default parameters,
     # e.g. turn a backend's millisecond Duration into microseconds.
-    return isinstance(dtype, type) and issubclass(dtype, _PARAMETRIC_DTYPES)
-
-
-_PARAMETRIC_DTYPES = (
-    nw.Array,
-    nw.Datetime,
-    nw.Decimal,
-    nw.Duration,
-    nw.Enum,
-    nw.List,
-    nw.Struct,
-)
+    parametric_dtypes = (
+        nw.Array,
+        nw.Datetime,
+        nw.Decimal,
+        nw.Duration,
+        nw.Enum,
+        nw.List,
+        nw.Struct,
+    )
+    return isinstance(dtype, type) and issubclass(dtype, parametric_dtypes)
 
 
 def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:
