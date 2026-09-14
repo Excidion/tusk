@@ -8,9 +8,12 @@ need no new machinery.
 
 Settled with the maintainer, on top of the roadmap's shared rules.
 
-1. **`is_unique` and `has_no_duplicates` both ship, with opposite null
-   rules.** `is_unique` treats a null as no value, as `n_unique` does.
-   `has_no_duplicates` treats a null as a value, so two nulls are a duplicate.
+1. **`is_unique` ships; `has_no_duplicates` does not.** `is_unique` is
+   `n_unique == len`: a null counts as a value, so two nulls are a repeat,
+   and it declares no `default_value`, leaving an empty group null rather
+   than false. `has_no_duplicates` would have answered the same question
+   with the opposite null rule; once nulls count as values everywhere, that
+   rule collapses into `is_unique` and the separate primitive is redundant.
 2. **`skew` is narwhals' biased estimator**, not pandas' bias-corrected one,
    and is marked ⚠️.
 3. **A constant group gives null `skew` and `kurtosis`.** Unguarded, polars
@@ -40,25 +43,26 @@ non-empty group whose every input value is null.
 | `variance` | `NUMERIC` | `Float64` | `expr.var()` | null | null | ignored |
 | `max_min_delta` | `NUMERIC` | input's | `expr.max() - expr.min()` | null | null | ignored |
 | `first_last_time_delta` | `HAS_DATE` | `Duration` | `latest - earliest`, both cast to `Datetime` | null | null | ignored |
-| `is_unique` | `ANY` | `Boolean` | `when(count > 0).then(distinct_known == count)` | null | null | not values |
-| `has_no_duplicates` | `ANY` | `Boolean` | `expr.n_unique() == nw.len()` | `True` | `True` for one row, `False` for more | values |
-| `percent_unique` | `ANY` | `Float64` | `distinct_known / nw.len()` | null | `0.0` | not values in the numerator, rows in the denominator |
-| `n_unique_days` | `HAS_DATE` | `Int64` | distinct known `expr.dt.date()` | `0` | `0` | not values |
-| `n_unique_days_of_calendar_year` | `HAS_DATE` | `Int64` | distinct known `month * 100 + day` | `0` | `0` | not values |
-| `n_unique_days_of_month` | `HAS_DATE` | `Int64` | distinct known `expr.dt.day()` | `0` | `0` | not values |
-| `n_unique_months` | `HAS_DATE` | `Int64` | distinct known `year * 12 + month` | `0` | `0` | not values |
+| `is_unique` | `ANY` | `Boolean` | `expr.n_unique() == nw.len()` | null (no default) | `True` for one row, `False` for more | values |
+| `percent_unique` | `ANY` | `Float64` | `expr.n_unique() / nw.len()` | null | `1 / n` | values in the numerator, rows in the denominator |
+| `n_unique_days` | `HAS_DATE` | `Int64` | `expr.dt.date().n_unique()` | `0` | `1` | values |
+| `n_unique_days_of_calendar_year` | `HAS_DATE` | `Int64` | `(month * 100 + day).n_unique()` | `0` | `1` | values |
+| `n_unique_days_of_month` | `HAS_DATE` | `Int64` | `expr.dt.day().n_unique()` | `0` | `1` | values |
+| `n_unique_months` | `HAS_DATE` | `Int64` | `(year * 12 + month).n_unique()` | `0` | `1` | values |
 
-`count` is `expr.count()`, the number of non-null values. `distinct_known` is
-the distinct count with nulls excluded.
+`count` is `expr.count()`, the number of non-null values.
 
-### Distinct known values
+### A null counts as a value
 
-narwhals' `n_unique` counts null as one more distinct value on both backends,
-so an all-null group reports 1. `NUnique.build` already corrects this by
-subtracting a null indicator. That expression moves into a module-level helper,
-`_n_distinct_known(expr)`, used by `n_unique`, `is_unique`, `percent_unique` and
-all four `n_unique_*` date primitives. `drop_nulls()` is not an option: it is
-length-changing and rejected inside a lazy `group_by().agg()`.
+narwhals' `n_unique` already counts null as one more distinct value on both
+backends, so an all-null group reports 1 and a group mixing a null with known
+values counts the null as one of them. `NUnique.build` used to correct this
+by subtracting a null indicator, through a module-level helper,
+`_n_distinct_known(expr)`, also used by `is_unique`, `percent_unique` and all
+four `n_unique_*` date primitives. The helper is gone: every one of those
+primitives now calls `n_unique()` directly, and `n_unique` itself changed to
+match -- an all-null group is `1`, not `0`, and a group mixing a null with
+known values counts one more distinct value than before.
 
 ### Backend details verified by probe
 
@@ -93,16 +97,17 @@ The two tests pinning today's tuples (`tests/test_primitives_aggregation.py:121`
   featuretools 1.31.0. Agreement is asserted where values agree, and each
   divergence is asserted on both sides. The child's numeric column is declared
   `Double` to featuretools: woodwork infers whole numbers as `IntegerNullable`,
-  which `kurtosis` rejects and whose empty-group fill raises for
-  `has_no_duplicates`. `first_last_time_delta` needs the datetime column as
-  featuretools' time index, so it runs on a child without null datetimes.
+  which `kurtosis` rejects. `first_last_time_delta` needs the datetime column
+  as featuretools' time index, so it runs on a child without null datetimes.
+  `is_unique` is also checked against featuretools' `has_no_duplicates`,
+  since tusk ships no separate primitive for it.
 
 Expected coverage, to be confirmed by the differential tests:
 
 | Status | Rows |
 | --- | --- |
-| ✅ | `all_true`, `n_true`, `variance`, `n_unique_days`, `n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months` |
-| ⚠️ | `any_true` (empty group), `skew` (bias), `kurtosis` (featuretools answers 0 for a group holding a null, a constant group or an empty group), `max_min_delta` (empty group), `first_last_time_delta` (`Duration`, any datetime), `is_unique` (nulls), `has_no_duplicates` (featuretools ignores nulls), `percent_unique` (empty group) |
+| ✅ | `all_true`, `n_true`, `variance` |
+| ⚠️ | `any_true` (empty group), `skew` (bias), `kurtosis` (featuretools answers 0 for a group holding a null, a constant group or an empty group), `max_min_delta` (empty group), `first_last_time_delta` (`Duration`, any datetime), `is_unique` (nulls, and doubles as featuretools' `has_no_duplicates`), `percent_unique` (nulls, empty group), `n_unique_days`, `n_unique_days_of_calendar_year`, `n_unique_days_of_month`, `n_unique_months` (nulls) |
 
 ## Documentation
 
@@ -116,4 +121,3 @@ Expected coverage, to be confirmed by the differential tests:
 ## Out of scope
 
 - Every primitive in roadmap phases 2 to 6.
-- Changing `n_unique` beyond extracting its helper.
