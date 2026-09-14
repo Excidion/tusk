@@ -275,12 +275,12 @@ def _cast_to_output_dtype(
         None or a parametric dtype class without its parameters.
     """
     expressions = _as_tuple(built)
-    if output_dtype is None or _leaves_parameters_to_backend(output_dtype):
+    if output_dtype is None or _is_bare_parametric_dtype(output_dtype):
         return expressions
     return tuple(expression.cast(output_dtype) for expression in expressions)
 
 
-def _leaves_parameters_to_backend(dtype: Any) -> bool:
+def _is_bare_parametric_dtype(dtype: Any) -> bool:
     """Report whether a dtype is a parametric dtype class, not an instance.
 
     Args:
