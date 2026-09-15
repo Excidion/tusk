@@ -146,6 +146,6 @@ rather than after a long query. The failure surfaces synchronously out of
 `features_only=True` synthesis happily emits the definition and the error waits
 until you call `apply_features()` on it.
 
-No built-in sits on the grouped, non-order-dependent path; a primitive of
-that kind needs a user-defined primitive — that's [the intended extension
+No built-in sits on the grouped, non-order-dependent path; that kind of
+primitive must be user-defined — that's [the intended extension
 point](custom-primitives.md#group-aware-primitives).
