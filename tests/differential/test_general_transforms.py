@@ -8,6 +8,7 @@ Run with: uv run --group validation pytest -m differential
 Verified against featuretools 1.31.0.
 """
 
+import datetime as dt
 import math
 
 import pytest
@@ -67,3 +68,22 @@ def test_square_root_and_natural_log_give_null_where_featuretools_gives_nan(
     del ours_values[negative_row]
     del theirs_values[negative_row]
     assert_agree(ours_values, theirs_values)
+
+
+def test_percentile_ranks_the_same_rows_on_both_sides_under_a_cutoff():
+    """A cutoff still bounds featuretools' ``uses_full_dataframe`` primitive.
+
+    At cutoff 2024-03-06, ids 1, 2, 3, 5, 8 are the rows visible (occurred_at
+    on or before it); their known values are 0, 4, -1 and 0. featuretools'
+    ``Percentile`` sets ``uses_full_dataframe = True``, which could be read as
+    "ranks over every row, cutoff or not." It does not: featuretools still
+    bounds the full-dataframe query by the cutoff before ranking (see
+    ``feature_set_calculator.py``'s ``need_full_dataframe`` branch, which
+    still passes ``time_last``), so both sides rank among the same four known
+    values and agree, sorted by id ascending on both sides.
+    """
+    cutoff = dt.datetime(2024, 3, 6)
+    ours = tusk_values("percentile", "PERCENTILE__value", cutoff_time=cutoff)
+    theirs = featuretools_values("percentile", "PERCENTILE(value)", cutoff_time=cutoff)
+    assert len(ours) == len(theirs) == 5
+    assert_agree(ours, theirs)
