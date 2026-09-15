@@ -12,6 +12,7 @@ Verified against featuretools 1.31.0.
 
 import math
 
+import pandas as pd
 import pytest
 from transform_cases import ROWS
 
@@ -29,10 +30,12 @@ pytestmark = pytest.mark.differential
 @pytest.mark.parametrize("name", ["cum_sum", "cum_min", "cum_max", "diff"])
 def test_cumulative_transforms_match_featuretools(name):
     """Both sides skip a null in the running value; diff is null next to a null."""
-    assert_agree(
-        tusk_values(name, f"{name.upper()}__value"),
-        featuretools_values(name, f"{name.upper()}(value)"),
+    ours = tusk_values(name, f"{name.upper()}__value")
+    theirs = featuretools_values(name, f"{name.upper()}(value)")
+    assert all(
+        our is None for our, their in zip(ours, theirs, strict=True) if pd.isna(their)
     )
+    assert_agree(ours, theirs)
 
 
 @pytest.mark.parametrize(
@@ -84,8 +87,7 @@ def test_percent_change_does_not_forward_fill():
     """
     ours = tusk_values("percent_change", "PERCENT_CHANGE__value")
     theirs = featuretools_values("percent_change", "PERCENT_CHANGE(value)")
-    assert ours[0] is None
-    assert ours[4] is None
+    assert [ours[0], ours[2], ours[4]] == [None, None, None]
     assert theirs[0] == 0.0
     assert theirs[4] == -1.25
     assert math.isnan(ours[7])
