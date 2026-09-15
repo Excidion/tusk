@@ -15,9 +15,10 @@ Settled with the maintainer, on top of the roadmap's shared rules.
    statements`), and a primitive builds one expression. A null input or a null
    previous value gives null, as it does for `diff`.
 2. **`absolute_diff` ships as its own primitive.** tusk never applies a
-   transform to another transform's output on the same table, so `absolute`
-   stacked on `diff` is not a feature a user can get. `diff_datetime` becomes
-   ⚠️ pointing at `time_since_previous`, which computes the same thing.
+   `trans_primitives` entry to another `trans_primitives` output on the same
+   table, so `absolute` stacked on `diff` is not a feature a user gets from
+   `trans_primitives`. `diff_datetime` becomes ⚠️ pointing at
+   `time_since_previous`, which computes the same thing.
 3. **A negative input gives null for `square_root` and `natural_log`.**
    Unguarded, polars answers NaN and duckdb null. `when(expr >= 0)` makes both
    backends null; zero stays `0.0` and `-inf` respectively. featuretools
@@ -96,14 +97,19 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
 
 ## Testing
 
-- `tests/test_primitives_transform.py`: per new primitive, resolution by name,
-  input dtypes, output dtype, and values on polars. The shuffled `lf` fixture
-  gains a null, a zero, a negative, a boolean flag and a `Time` column, so the
-  cases cover negative `square_root` and `natural_log` inputs, `negate` of an
-  unsigned integer and of `Int8`'s minimum, ties in `percentile`, nulls in
-  every ordered primitive and a null date in `is_leap_year`.
-- `tests/test_backend_duckdb.py`: the same values on duckdb. This is what pins
-  decisions 3 and 4 and the `Date` cast.
+- `tests/transform_cases.py`: a shared eight-row table, `ROWS`, and `EXPECTED`,
+  a value per column per new primitive. It covers a null, a zero, a negative,
+  a boolean flag with its own nulls and a tied `value` column, so the cases
+  reach negative `square_root` and `natural_log` inputs, ties in `percentile`,
+  nulls in every ordered primitive and a null date in `is_leap_year`.
+- `tests/test_primitives_transform.py`: `EXPECTED` checked on polars, plus
+  `negate` and `absolute_diff` on `Int8` and an unsigned integer dtype (where
+  `ROWS`'s `value` column, already a float, cannot reach the wraparound), and
+  `percentile` and `cumulative_time_since_last_true` each grouped by foreign
+  key, so a group's rank or match does not leak into its neighbour's.
+- `tests/test_backend_duckdb.py`: the same `EXPECTED`, integer-dtype and
+  grouped checks on duckdb. This is what pins decisions 3 and 4 and the
+  `Date` cast.
 - Differential tests against featuretools 1.31.0. Agreement is asserted where
   values agree, and each divergence is asserted on both sides.
   - `tests/differential/test_datetime_transforms.py`: `minute`, `second`,
