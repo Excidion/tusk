@@ -52,27 +52,33 @@ of inputs.
 Subclass [`AggregationPrimitive`][tusk.primitives.AggregationPrimitive] for
 something that reduces a child table to one row per parent, and
 [`TransformPrimitive`][tusk.primitives.TransformPrimitive] for something that
-maps a row to a row.
+maps a row to a row. A transform that reads the other rows of its foreign-key
+group subclasses
+[`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive], or
+[`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive] when
+it reads them in `row_creation_time` order; see [group-aware
+primitives](#group-aware-primitives).
 
 [`@register`][tusk.primitives.register] puts the class in the registry so its
 `name` resolves as a string; without it you can still pass an instance.
 
 ## Group-aware primitives
 
-A primitive like "share of group total" is group-aware without being
-order-dependent, which no built-in covers:
+A primitive like "share of group total" reads the other rows of its group
+without needing them in order, as the built-in `percentile` does. Subclass
+`GroupTransformPrimitive` for it:
 
 ```python
 from dataclasses import dataclass
 
 import narwhals as nw
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives import TransformPrimitive, register
+from tusk.primitives import GroupTransformPrimitive, register
 
 
 @register
 @dataclass(frozen=True)
-class ShareOfGroupTotal(TransformPrimitive):
+class ShareOfGroupTotal(GroupTransformPrimitive):
     """Each value's fraction of its group's total."""
 
     name = "share_of_group_total"
@@ -85,10 +91,17 @@ class ShareOfGroupTotal(TransformPrimitive):
 
 Pass `"share_of_group_total"` in `groupby_trans_primitives` and it computes
 each transaction's share of its session's total, each session's share of its
-customer's total, and so on — a genuinely useful feature type that has no other
-path into tusk. See [what can go in
+customer's total, and so on. Passing it in `trans_primitives` raises
+`PrimitiveError`, since its total would then span every row of the table.
+
+A primitive that also needs its group's rows in order, like a running total,
+subclasses `OrderedTransformPrimitive` instead. The compiler orders each group
+by the table's `row_creation_time`, then its primary key, so the table needs a
+`row_creation_time`.
+
+See [what can go in
 `groupby_trans_primitives`](primitives.md#what-can-go-in-groupby_trans_primitives)
-for why the built-in elementwise transforms cannot.
+for the rule, and for why the built-in elementwise transforms cannot go there.
 
 ## Primitives that measure against the cutoff time
 

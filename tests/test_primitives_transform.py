@@ -5,11 +5,25 @@ from zoneinfo import ZoneInfo
 import narwhals as nw
 import polars as pl
 import pytest
+from transform_cases import (
+    EXPECTED,
+    GROUPS,
+    ROWS,
+    assert_values_match,
+    feature_values,
+    rows_database,
+    transform_arguments,
+)
 
 import tusk
 from tusk.dtypes import DtypeFamily
 from tusk.exceptions import ValidationError
-from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
+from tusk.primitives.base import (
+    GroupTransformPrimitive,
+    NeedsCutoffTime,
+    OrderedTransformPrimitive,
+    TransformPrimitive,
+)
 from tusk.primitives.registry import resolve
 from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
 from tusk.synthesis import synthesize
@@ -39,7 +53,7 @@ def lf():
 def _apply(lf, name, *columns):
     primitive = resolve(name)
     expr = primitive.outputs(*[nw.col(c) for c in columns])[0]
-    if isinstance(primitive, TransformPrimitive) and primitive.order_dependent:
+    if isinstance(primitive, OrderedTransformPrimitive):
         expr = expr.over(order_by="t")
     return lf.with_columns(expr.alias("o")).collect().to_native()["o"].to_list()
 
@@ -78,17 +92,41 @@ def test_row_wise_transforms(lf, name, columns, expected):
         ("diff", [5.0, None, 1.0]),
     ],
 )
-def test_order_dependent_transforms(lf, name, expected):
+def test_ordered_transforms(lf, name, expected):
     assert _apply(lf, name, "v") == expected
 
 
-def test_order_dependent_primitives_are_flagged():
-    cum_sum = resolve("cum_sum")
-    assert isinstance(cum_sum, TransformPrimitive)
-    assert cum_sum.order_dependent is True
+@pytest.mark.parametrize(
+    "name",
+    [
+        "cum_sum",
+        "cum_count",
+        "cum_min",
+        "cum_max",
+        "diff",
+        "time_since_previous",
+        "cum_mean",
+        "same_as_previous",
+        "absolute_diff",
+        "percent_change",
+        "cumulative_time_since_last_true",
+        "cumulative_time_since_last_false",
+    ],
+)
+def test_ordered_primitives_are_ordered_transform_primitives(name):
+    assert isinstance(resolve(name), OrderedTransformPrimitive)
+
+
+def test_percentile_is_a_group_transform_primitive_without_an_order():
+    percentile = resolve("percentile")
+    assert isinstance(percentile, GroupTransformPrimitive)
+    assert not isinstance(percentile, OrderedTransformPrimitive)
+
+
+def test_row_wise_primitives_are_not_group_transform_primitives():
     month = resolve("month")
     assert isinstance(month, TransformPrimitive)
-    assert month.order_dependent is False
+    assert not isinstance(month, GroupTransformPrimitive)
 
 
 def test_time_since_previous_is_a_timedelta(lf):
@@ -690,3 +728,142 @@ def test_deep_feature_synthesis_builds_the_categorical_equality_transform():
     assert "EQUAL_CATEGORICAL__tier__status" not in got.columns
     assert got["status"].to_list() == ["open", "closed", "open"]
     assert got["tier"].to_list() == ["open", "open", "closed"]
+
+
+@pytest.mark.parametrize("column", sorted(EXPECTED))
+def test_transforms_give_the_expected_value_on_every_row(column):
+    primitive_name, dtype, expected = EXPECTED[column]
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=rows_database(
+            pl.from_pandas(ROWS).lazy(),
+            pl.from_pandas(GROUPS).lazy(),
+        ),
+        target_table="rows",
+        agg_primitives=[],
+        max_depth=1,
+        **transform_arguments(primitive_name),
+    )
+    assert nw.from_native(matrix).collect_schema()[column] == dtype
+    assert_values_match(feature_values(matrix, column), expected)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "values", "expected"),
+    [
+        (pl.Int8, [-128, 1], [128.0, -1.0]),
+        (pl.UInt32, [0, 4294967295], [-0.0, -4294967295.0]),
+    ],
+)
+def test_negate_does_not_wrap_around_an_integer_dtype(dtype, values, expected):
+    frame = nw.from_native(pl.LazyFrame({"v": values}, schema={"v": dtype}))
+    assert _apply(frame, "negate", "v") == expected
+
+
+@pytest.mark.parametrize(
+    ("dtype", "values", "expected"),
+    [
+        (pl.Int8, [-128, 127], [None, 255.0]),
+        (pl.UInt8, [200, 1], [None, 199.0]),
+    ],
+)
+def test_absolute_diff_does_not_wrap_around_an_integer_dtype(dtype, values, expected):
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"v": values, "t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)]},
+            schema={"v": dtype, "t": pl.Datetime},
+        ),
+    )
+    assert _apply(frame, "absolute_diff", "v") == expected
+
+
+def test_percent_change_gives_negative_infinity_over_a_zero_previous_value():
+    """A negative value after a zero previous one, the sign EXPECTED never covers."""
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"v": [0.0, -1.0], "t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)]},
+        ),
+    )
+    got = _apply(frame, "percent_change", "v")
+    assert got[0] is None
+    assert got[1] == -math.inf
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
+)
+def test_minute_and_second_read_a_time_column(name, expected):
+    frame = nw.from_native(pl.LazyFrame({"at": [dt.time(1, 2, 3), None]}))
+    assert _apply(frame, name, "at") == expected
+
+
+def test_percentile_ranks_within_each_group():
+    """Inside groupby_trans_primitives the rank is taken per foreign key."""
+    database = (
+        tusk.Database("groups")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3, 4, 5],
+                    "parent_id": [1, 1, 1, 2, 2],
+                    "amount": [1.0, 3.0, 3.0, 5.0, None],
+                },
+            ),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=["percentile"],
+        max_depth=1,
+    )
+    assert_values_match(
+        feature_values(matrix, "PERCENTILE__amount__by__parent_id"),
+        [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None],
+    )
+
+
+def test_cumulative_time_since_stays_within_each_group():
+    """Parent 2's first row must not see parent 1's match."""
+    database = (
+        tusk.Database("groups")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3, 4],
+                    "parent_id": [1, 1, 2, 2],
+                    "at": [
+                        dt.datetime(2024, 1, 1),
+                        dt.datetime(2024, 1, 2),
+                        dt.datetime(2024, 1, 3),
+                        dt.datetime(2024, 1, 4),
+                    ],
+                    "flag": [True, False, False, True],
+                },
+            ),
+            primary_key="id",
+            row_creation_time="at",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=["cumulative_time_since_last_true"],
+        max_depth=1,
+    )
+    assert_values_match(
+        feature_values(
+            matrix, "CUMULATIVE_TIME_SINCE_LAST_TRUE__at__flag__by__parent_id"
+        ),
+        [dt.timedelta(0), dt.timedelta(days=1), None, dt.timedelta(0)],
+    )

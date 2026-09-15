@@ -13,7 +13,12 @@ from typing import Any
 
 from tusk.database import Relationship
 from tusk.exceptions import PrimitiveError
-from tusk.primitives.base import AggregationPrimitive, Primitive, TransformPrimitive
+from tusk.primitives.base import (
+    AggregationPrimitive,
+    GroupTransformPrimitive,
+    Primitive,
+    TransformPrimitive,
+)
 
 
 @dataclass(frozen=True)
@@ -146,12 +151,14 @@ class TransformFeature(Feature):
     bases: tuple[Feature, ...]
 
     def __post_init__(self) -> None:
-        """Confirm the primitive transforms rather than aggregates.
+        """Confirm the primitive is a transform that reads only its own row.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_reject_wrong_kind`, if it does not.
+        :func:`_reject_wrong_kind`, if it does not transform, and via
+        :func:`_reject_group_transform`, if it reads other rows.
         """
         _reject_wrong_kind(self.primitive, TransformPrimitive, "a transform feature")
+        _reject_group_transform(self.primitive, "a transform feature")
 
     @property
     def name(self) -> str:
@@ -384,6 +391,25 @@ class GroupByTransformFeature(Feature):
     def display_output_names(self) -> tuple[str, ...]:
         """One readable name per output column."""
         return self.primitive.display_output_names(self.display_name)
+
+
+def _reject_group_transform(primitive: Primitive, where: str) -> None:
+    """Confirm a primitive can run outside a foreign-key group.
+
+    Args:
+        primitive: The primitive to check.
+        where: What is applying it without a group, named for the error message.
+
+    Raises:
+        PrimitiveError: If ``primitive`` is a
+            :class:`~tusk.primitives.base.GroupTransformPrimitive`.
+    """
+    if isinstance(primitive, GroupTransformPrimitive):
+        raise PrimitiveError(
+            f"primitive {primitive.name!r} in {where} reads other rows, so it "
+            f"only runs within foreign-key groups; pass it in "
+            f"groupby_trans_primitives instead.",
+        )
 
 
 def _reject_wrong_kind(

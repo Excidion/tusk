@@ -11,8 +11,8 @@ from tusk.database import Relationship
 from tusk.dtypes import DtypeFamily as F
 from tusk.exceptions import PrimitiveError
 from tusk.feature_list import FeatureList
-from tusk.features import GroupByTransformFeature, IdentityFeature, TransformFeature
-from tusk.primitives.base import TransformPrimitive
+from tusk.features import GroupByTransformFeature, IdentityFeature
+from tusk.primitives.base import GroupTransformPrimitive
 from tusk.primitives.registry import register, resolve
 
 SESSION_TX = Relationship("sessions", "transactions", "session_id")
@@ -22,22 +22,14 @@ CREATION_TIMES = [datetime(2024, 1, 3), datetime(2024, 1, 1), datetime(2024, 1, 
 
 @register
 @dataclass(frozen=True)
-class ShareOfGroupTotal(TransformPrimitive):
+class ShareOfGroupTotal(GroupTransformPrimitive):
     """Test-only primitive: value divided by its group's total.
 
-    Exists to cover the grouped, non-order-dependent path of `_apply`
-    (`.over(partition)` with no `order_by`) end to end. No *built-in*
-    primitive can exercise that branch: every registered
-    non-order-dependent TransformPrimitive (absolute, add_numeric, year,
-    ...) is elementwise, and narwhals forbids `.over()` on a purely
-    elementwise expression (verified: wrapping e.g. `abs()` in `.over()`
-    raises `InvalidOperationError: Cannot apply over to elementwise
-    expression`, regardless of order_by). That doesn't make the branch
-    dead -- it is the compiler's extension point for user-defined,
-    group-aware transform primitives, and `x / x.sum()` (share of a
-    group's total) is a canonical example of one: it combines a per-row
-    value with a group aggregate, exactly the shape `.over(partition)`
-    exists for.
+    Covers the grouped path of `_apply` without an ordering
+    (`.over(partition)` with no `order_by`) end to end for a user-defined
+    group transform primitive, the compiler's extension point: `x / x.sum()`
+    combines a per-row value with a group aggregate, exactly the shape
+    `.over(partition)` exists for.
     """
 
     name = "share_of_group_total"
@@ -55,36 +47,7 @@ def test_groupby_cum_sum_restarts_per_group(db):
     assert got[feature.name].to_list() == [1.0, 4.0, 10.0, 30.0]
 
 
-def test_ungrouped_order_dependent_transform(db):
-    feature = TransformFeature(resolve("cum_sum"), (AMOUNT,))
-    got = compile_features(FeatureList([feature]), db).collect().to_native().sort("id")
-    assert got["CUM_SUM__amount"].to_list() == [1.0, 4.0, 14.0, 34.0]
-
-
-def test_ungrouped_order_dependent_transform_uses_row_creation_time_not_frame_order():
-    frame = pl.LazyFrame(
-        {
-            "id": [1, 2, 3],
-            "v": [100.0, 1.0, 10.0],
-            "t": CREATION_TIMES,  # deliberately not row order
-        },
-    )
-    db = tusk.Database("x").add_table(
-        "c",
-        frame,
-        primary_key="id",
-        row_creation_time="t",
-    )
-    feature = TransformFeature(
-        resolve("cum_sum"),
-        (IdentityFeature("c", "v", nw.Float64()),),
-    )
-    got = compile_features(FeatureList([feature]), db).collect().to_native().sort("id")
-    # ordered by t: 1.0, then 10.0, then 100.0 -> cumulative 111.0, 1.0, 11.0 by id
-    assert got[feature.name].to_list() == [111.0, 1.0, 11.0]
-
-
-def test_groupby_non_order_dependent_transform_applies_over_partition(db):
+def test_groupby_unordered_transform_applies_over_partition(db):
     feature = GroupByTransformFeature(
         resolve("share_of_group_total"),
         (AMOUNT,),
@@ -124,15 +87,19 @@ def test_ordering_uses_row_creation_time_not_frame_order():
     assert got[feature.name].to_list() == [111.0, 1.0, 11.0]
 
 
-def test_order_dependent_primitive_without_row_creation_time_raises():
-    db = tusk.Database("x").add_table(
-        "t",
-        pl.LazyFrame({"id": [1], "v": [1.0]}),
-        primary_key="id",
+def test_ordered_primitive_without_row_creation_time_raises():
+    db = (
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "t", pl.LazyFrame({"id": [1], "g": [1], "v": [1.0]}), primary_key="id"
+        )
+        .add_relationship(parent="p", child="t", foreign_key="g")
     )
-    feature = TransformFeature(
+    feature = GroupByTransformFeature(
         resolve("cum_sum"),
         (IdentityFeature("t", "v", nw.Float64()),),
+        Relationship("p", "t", "g"),
     )
     with pytest.raises(PrimitiveError, match="row_creation_time"):
         compile_features(FeatureList([feature]), db)

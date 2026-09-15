@@ -52,8 +52,15 @@ a different answer.
   so a row that did not exist yet at the cutoff will be left out.
   Tables with no `row_creation_time` are treated as timeless and pass through unfiltered.
 
+- **Group and ordered transforms only run within foreign-key groups.**
+  featuretools also runs `cum_sum`, `percentile` and the like across the whole
+  table. tusk only allows them in `groupby_trans_primitives`, so a row only
+  sees the rows sharing its foreign key. See [what can go in
+  `groupby_trans_primitives`](primitives.md#what-can-go-in-groupby_trans_primitives).
+
 - **`primary_key` is optional**, but a table without one cannot be a
-  relationship parent or a DFS target. Be warned: Order-dependent primitives on
+  relationship parent or a DFS target. Be warned:
+  [ordered transform primitives][tusk.primitives.OrderedTransformPrimitive] on
   such tables might behave non-deterministic.
 
 

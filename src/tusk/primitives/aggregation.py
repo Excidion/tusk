@@ -557,7 +557,11 @@ class PercentUnique(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class FirstLastTimeDelta(AggregationPrimitive):
-    """Time between a group's earliest and latest datetime."""
+    """Time between a group's earliest and latest datetime.
+
+    For a time-zone-aware column, a gap across a daylight-saving change can
+    vary by backend.
+    """
 
     name = "first_last_time_delta"
     input_dtypes = (F.HAS_DATE,)

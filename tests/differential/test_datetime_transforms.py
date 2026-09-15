@@ -17,6 +17,11 @@ import pytest
 
 import tusk
 from differential import _as_tusk
+from differential.transform_matrices import (
+    assert_agree,
+    featuretools_values,
+    tusk_values,
+)
 
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
@@ -136,3 +141,23 @@ def _tusk_matrix(frame, cutoff_time, primitive_name):
         cutoff_time=cutoff_time,
     )
     return matrix.collect().sort("id").to_pandas().set_index("id")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["minute", "second", "day_of_year", "year", "month", "day", "hour"],
+)
+def test_datetime_parts_match_featuretools(name):
+    """``due_at`` holds a null, 1900, 2000, 2100 and a day 366."""
+    assert_agree(
+        tusk_values(name, f"{name.upper()}__due_at"),
+        featuretools_values(name, f"{name.upper()}(due_at)"),
+    )
+
+
+def test_is_leap_year_of_a_null_date_is_null_rather_than_false():
+    """Row id 2 has no ``due_at``: tusk answers null, featuretools False."""
+    ours = tusk_values("is_leap_year", "IS_LEAP_YEAR__due_at")
+    theirs = featuretools_values("is_leap_year", "IS_LEAP_YEAR(due_at)")
+    assert ours == [True, None, False, True, False, False, True, False]
+    assert theirs == [True, False, False, True, False, False, True, False]

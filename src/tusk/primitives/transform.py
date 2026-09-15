@@ -1,8 +1,10 @@
 """Built-in transform primitives.
 
-Primitives with ``order_dependent = True`` must be wrapped by the compiler in
-``.over(..., order_by=...)``; narwhals requires this on lazy backends and will
-raise otherwise.
+Group transforms subclass ``GroupTransformPrimitive`` and are wrapped by the
+compiler in ``.over(foreign_key)``. Ordered transforms subclass
+``OrderedTransformPrimitive`` and are wrapped in
+``.over(foreign_key, order_by=...)``; narwhals requires the ordering on lazy
+backends and raises otherwise.
 """
 
 from __future__ import annotations
@@ -13,7 +15,12 @@ from datetime import datetime
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
+from tusk.primitives.base import (
+    GroupTransformPrimitive,
+    NeedsCutoffTime,
+    OrderedTransformPrimitive,
+    TransformPrimitive,
+)
 from tusk.primitives.registry import register
 
 TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "day", "weekday")
@@ -157,6 +164,91 @@ class IsWeekend(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class Minute(TransformPrimitive):
+    """Minute of the hour, 0-59."""
+
+    name = "minute"
+    input_dtypes = (F.HAS_TIME,)
+    output_dtype = nw.Int8
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the minute-of-hour expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the minute of the hour.
+        """
+        return expr.dt.minute()
+
+
+@register
+@dataclass(frozen=True)
+class Second(TransformPrimitive):
+    """Second of the minute, 0-59."""
+
+    name = "second"
+    input_dtypes = (F.HAS_TIME,)
+    output_dtype = nw.Int8
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the second-of-minute expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the second of the minute.
+        """
+        return expr.dt.second()
+
+
+@register
+@dataclass(frozen=True)
+class DayOfYear(TransformPrimitive):
+    """Day of the year, 1-366."""
+
+    name = "day_of_year"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Int16
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the day-of-year expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals expression of the day of the year.
+        """
+        return expr.dt.ordinal_day()
+
+
+@register
+@dataclass(frozen=True)
+class IsLeapYear(TransformPrimitive):
+    """Whether the date falls in a leap year. A null date gives null."""
+
+    name = "is_leap_year"
+    input_dtypes = (F.HAS_DATE,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the leap-year expression.
+
+        Args:
+            expr: A temporal expression.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        year = expr.dt.year().cast(nw.Int32)
+        return ((year % 4 == 0) & (year % 100 != 0)) | (year % 400 == 0)
+
+
+@register
+@dataclass(frozen=True)
 class Absolute(TransformPrimitive):
     """Absolute value."""
 
@@ -178,7 +270,11 @@ class Absolute(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class NaturalLog(TransformPrimitive):
-    """Natural logarithm. Non-positive inputs yield null or negative infinity."""
+    """Natural logarithm.
+
+    A negative input gives null, where the unguarded answer varies by
+    backend; zero gives negative infinity.
+    """
 
     name = "natural_log"
     input_dtypes = (F.NUMERIC,)
@@ -193,7 +289,146 @@ class NaturalLog(TransformPrimitive):
         Returns:
             A narwhals expression of natural logarithms.
         """
-        return expr.log()
+        return nw.when(expr >= 0).then(expr.log())
+
+
+@register
+@dataclass(frozen=True)
+class IsNull(TransformPrimitive):
+    """Whether the value is null."""
+
+    name = "is_null"
+    input_dtypes = (F.ANY,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the null-indicator expression.
+
+        Args:
+            expr: An expression of any dtype.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        return expr.is_null()
+
+
+@register
+@dataclass(frozen=True)
+class Negate(TransformPrimitive):
+    """The value with its sign flipped, as a float.
+
+    An integer above 2**53 in magnitude, or a high-precision decimal, loses
+    precision in the round trip through ``Float64``.
+    """
+
+    name = "negate"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the negation expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of the negated values.
+        """
+        # an integer dtype's minimum has no negation inside the same dtype
+        return expr.cast(nw.Float64) * -1
+
+
+@register
+@dataclass(frozen=True)
+class SquareRoot(TransformPrimitive):
+    """Square root.
+
+    A negative input gives null, where the unguarded answer varies by
+    backend; zero gives ``0.0``.
+    """
+
+    name = "square_root"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the square-root expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of square roots.
+        """
+        return nw.when(expr >= 0).then(expr.sqrt())
+
+
+@register
+@dataclass(frozen=True)
+class Sine(TransformPrimitive):
+    """Sine of a value in radians."""
+
+    name = "sine"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the sine expression.
+
+        Args:
+            expr: A numeric expression in radians.
+
+        Returns:
+            A narwhals expression of sines.
+        """
+        return expr.sin()
+
+
+@register
+@dataclass(frozen=True)
+class Cosine(TransformPrimitive):
+    """Cosine of a value in radians."""
+
+    name = "cosine"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cosine expression.
+
+        Args:
+            expr: A numeric expression in radians.
+
+        Returns:
+            A narwhals expression of cosines.
+        """
+        return expr.cos()
+
+
+@register
+@dataclass(frozen=True)
+class Percentile(GroupTransformPrimitive):
+    """Rank of the value among the known values of its group, from above 0 to 1.
+
+    Tied values share their average rank. A null stays null and is not
+    counted.
+    """
+
+    name = "percentile"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the percentile-rank expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of percentile ranks.
+        """
+        return expr.rank("average") / expr.count()
 
 
 @register
@@ -591,12 +826,11 @@ class Or(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumSum(TransformPrimitive):
+class CumSum(OrderedTransformPrimitive):
     """Running total in row-creation order."""
 
     name = "cum_sum"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-sum expression.
@@ -612,13 +846,12 @@ class CumSum(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumCount(TransformPrimitive):
+class CumCount(OrderedTransformPrimitive):
     """Running count of non-null values in row-creation order."""
 
     name = "cum_count"
     input_dtypes = (F.ANY,)
     output_dtype = nw.Int64
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-count expression.
@@ -634,12 +867,11 @@ class CumCount(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumMin(TransformPrimitive):
+class CumMin(OrderedTransformPrimitive):
     """Running minimum in row-creation order."""
 
     name = "cum_min"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-minimum expression.
@@ -655,12 +887,11 @@ class CumMin(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumMax(TransformPrimitive):
+class CumMax(OrderedTransformPrimitive):
     """Running maximum in row-creation order."""
 
     name = "cum_max"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-maximum expression.
@@ -676,12 +907,11 @@ class CumMax(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class Diff(TransformPrimitive):
+class Diff(OrderedTransformPrimitive):
     """Change from the previous row in row-creation order."""
 
     name = "diff"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the row-difference expression.
@@ -697,13 +927,12 @@ class Diff(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class TimeSincePrevious(TransformPrimitive):
+class TimeSincePrevious(OrderedTransformPrimitive):
     """Time elapsed since the previous row in row-creation order."""
 
     name = "time_since_previous"
     input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Duration
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the elapsed-time expression.
@@ -715,6 +944,161 @@ class TimeSincePrevious(TransformPrimitive):
             A narwhals expression of the duration since the previous row.
         """
         return expr.diff()
+
+
+@register
+@dataclass(frozen=True)
+class CumMean(OrderedTransformPrimitive):
+    """Running mean of the known values in row-creation order. A null row is null."""
+
+    name = "cum_mean"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the cumulative-mean expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of the running mean.
+        """
+        return expr.cum_sum() / expr.cum_count()
+
+
+@register
+@dataclass(frozen=True)
+class SameAsPrevious(OrderedTransformPrimitive):
+    """Whether the value equals the previous row's in row-creation order.
+
+    The first row, and a row whose own or previous value is null, is null.
+    """
+
+    name = "same_as_previous"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the equal-to-previous expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals boolean expression.
+        """
+        return expr == expr.shift(1)
+
+
+@register
+@dataclass(frozen=True)
+class AbsoluteDiff(OrderedTransformPrimitive):
+    """Size of the change from the previous row in row-creation order.
+
+    The first row, and a row whose own or previous value is null, is null.
+    An integer above 2**53 in magnitude, or a high-precision decimal, loses
+    precision in the round trip through ``Float64``.
+    """
+
+    name = "absolute_diff"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the absolute-difference expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of absolute differences.
+        """
+        # an integer dtype's difference can overflow or wrap around it
+        return expr.cast(nw.Float64).diff().abs()
+
+
+@register
+@dataclass(frozen=True)
+class PercentChange(OrderedTransformPrimitive):
+    """Relative change from the previous row in row-creation order.
+
+    The first row, and a row whose own or previous value is null, is null. A
+    zero previous value gives positive or negative infinity, or NaN when the
+    value is zero too.
+    """
+
+    name = "percent_change"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the relative-change expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of relative changes, where 0.5 is a 50% rise.
+        """
+        return expr / expr.shift(1) - 1
+
+
+@register
+@dataclass(frozen=True)
+class CumulativeTimeSinceLastTrue(OrderedTransformPrimitive):
+    """Time elapsed since the latest row whose flag is true, in row-creation order.
+
+    Null until the first true flag, and on a row whose datetime is null. A
+    null flag is not true. A matching row whose datetime is null is skipped,
+    so later rows measure from the match before it. For a time-zone-aware
+    column, a gap across a daylight-saving change can vary by backend.
+    """
+
+    name = "cumulative_time_since_last_true"
+    input_dtypes = (F.HAS_DATE, F.BOOLEAN)
+    output_dtype = nw.Duration
+
+    def build(self, moment: nw.Expr, flag: nw.Expr) -> nw.Expr:
+        """Build the time-since-last-true expression.
+
+        Args:
+            moment: The datetime of each row.
+            flag: The boolean flag of each row.
+
+        Returns:
+            A narwhals expression of the elapsed time.
+        """
+        return _time_since_last_match(moment, flag)
+
+
+@register
+@dataclass(frozen=True)
+class CumulativeTimeSinceLastFalse(OrderedTransformPrimitive):
+    """Time elapsed since the latest row whose flag is false, in row-creation order.
+
+    Null until the first false flag, and on a row whose datetime is null. A
+    null flag is not false. A matching row whose datetime is null is
+    skipped, so later rows measure from the match before it. For a
+    time-zone-aware column, a gap across a daylight-saving change can vary by
+    backend.
+    """
+
+    name = "cumulative_time_since_last_false"
+    input_dtypes = (F.HAS_DATE, F.BOOLEAN)
+    output_dtype = nw.Duration
+
+    def build(self, moment: nw.Expr, flag: nw.Expr) -> nw.Expr:
+        """Build the time-since-last-false expression.
+
+        Args:
+            moment: The datetime of each row.
+            flag: The boolean flag of each row.
+
+        Returns:
+            A narwhals expression of the elapsed time.
+        """
+        return _time_since_last_match(moment, ~flag)
 
 
 @register
@@ -737,3 +1121,19 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
             A narwhals expression of the duration since each value.
         """
         return nw.lit(cutoff_time) - expr
+
+
+def _time_since_last_match(moment: nw.Expr, is_match: nw.Expr) -> nw.Expr:
+    """Build the time elapsed since the latest row that matches.
+
+    Args:
+        moment: The datetime of each row.
+        is_match: Where the row matches; a null does not match.
+
+    Returns:
+        A narwhals expression of the elapsed time, to be ordered by the caller.
+    """
+    # duckdb subtracts two Dates into a day count instead of an interval
+    timestamps = moment.cast(nw.Datetime)
+    latest_match = nw.when(is_match).then(timestamps).fill_null(strategy="forward")
+    return timestamps - latest_match
