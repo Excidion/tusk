@@ -123,46 +123,38 @@ any two of them.
 You can guard against this with `db.validate()`.
 
 
-## What can go in `groupby_trans_primitives`
+## How transforms are applied
 
-A transform may only look at other rows that share its row's foreign key, the
-same rows an aggregation sees. Over the whole table, a running total or a rank
-would mix every entity's rows and change with whichever rows are in the
-dataset, such as a test split.
+`trans_primitives` takes every transform primitive, and synthesis applies each
+one by its class:
 
-Transforms that read other rows are **group transform primitives**
-([`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive]):
-`percentile`, which ranks each value within its group, and the **ordered
-transform primitives**
-([`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive]),
-which read their group's rows in `row_creation_time` order: `cum_sum`,
-`cum_count`, `cum_min`, `cum_max`, `cum_mean`, `diff`, `absolute_diff`,
-`same_as_previous`, `percent_change`, `time_since_previous`,
-`cumulative_time_since_last_true` and `cumulative_time_since_last_false`.
+- A **row-wise transform**
+  ([`TransformPrimitive`][tusk.primitives.TransformPrimitive]) runs on each
+  row, reading only that row: `absolute`, `month`, `add_numeric`, …
+- A **group transform primitive**
+  ([`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive]) runs
+  within each foreign-key group: `percentile`, which ranks each value within
+  its group.
+- An **ordered transform primitive**
+  ([`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive])
+  runs within each foreign-key group and reads the group's rows in
+  `row_creation_time` order: `cum_sum`, `cum_count`, `cum_min`, `cum_max`,
+  `cum_mean`, `diff`, `absolute_diff`, `same_as_previous`, `percent_change`,
+  `time_since_previous`, `cumulative_time_since_last_true` and
+  `cumulative_time_since_last_false`.
 
-They only run in `groupby_trans_primitives`. Passing one in `trans_primitives`
-raises [`PrimitiveError`][tusk.exceptions.PrimitiveError] before any query is
-built, and so does building a `TransformFeature` from one by hand.
+A group or ordered transform gives one feature per parent relationship of the
+table, named after the foreign key it groups by, such as
+`CUM_SUM__amount__by__session_id`. It never runs across the whole table: a
+running total or a rank over every row would mix every entity's rows and
+change with whichever rows are in the dataset, such as a test split, which is
+a data-leakage risk. It looks only at the rows sharing its row's foreign key,
+the same rows an aggregation sees.
 
 A group is not always a single entity. Grouping by a shared parent, such as
 drivers when the target is customers, puts several customers' rows in one
 group, exactly as an aggregation over drivers does.
 
-Every other built-in transform (`absolute`, `month`, `add_numeric`, …) is
-**elementwise** rather than group-aware, and narwhals rejects `.over()` on an
-elementwise expression:
-
-```
-InvalidOperationError: Cannot apply over to elementwise expression
-```
-
-Passing one of these in `groupby_trans_primitives` therefore fails — but at
-expression-build time, not later at `.collect()`, so you learn immediately
-rather than after a long query. The failure surfaces synchronously out of
-`deep_feature_synthesis()` only when it compiles, i.e. `features_only=False`; with
-`features_only=True` synthesis happily emits the definition and the error waits
-until you call `apply_features()` on it.
-
-A primitive of your own that reads its group, such as a share of the group's
-total, subclasses `GroupTransformPrimitive`; see [group-aware
-primitives](custom-primitives.md#group-aware-primitives).
+A primitive of your own picks its behavior the same way, through the class it
+subclasses; see [choosing a transform base
+class](custom-primitives.md#choosing-a-transform-base-class).
