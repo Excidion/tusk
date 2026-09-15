@@ -131,6 +131,11 @@ EXPECTED = {
         nw.Boolean,
         [True, None, False, True, False, False, True, False],
     ),
+    "PERCENTILE__value__by__group_id": (
+        "percentile",
+        nw.Float64,
+        [None, 5 / 14, 12 / 14, 1.0, 2 / 14, 9 / 14, 9 / 14, 5 / 14],
+    ),
     "CUM_MEAN__value__by__group_id": (
         "cum_mean",
         nw.Float64,

@@ -117,6 +117,12 @@ def test_ordered_primitives_are_ordered_transform_primitives(name):
     assert isinstance(resolve(name), OrderedTransformPrimitive)
 
 
+def test_percentile_is_a_group_transform_primitive_without_an_order():
+    percentile = resolve("percentile")
+    assert isinstance(percentile, GroupTransformPrimitive)
+    assert not isinstance(percentile, OrderedTransformPrimitive)
+
+
 def test_row_wise_primitives_are_not_group_transform_primitives():
     month = resolve("month")
     assert isinstance(month, TransformPrimitive)
@@ -788,6 +794,38 @@ def test_percent_change_gives_negative_infinity_over_a_zero_previous_value():
 def test_minute_and_second_read_a_time_column(name, expected):
     frame = nw.from_native(pl.LazyFrame({"at": [dt.time(1, 2, 3), None]}))
     assert _apply(frame, name, "at") == expected
+
+
+def test_percentile_ranks_within_each_group():
+    """Inside groupby_trans_primitives the rank is taken per foreign key."""
+    database = (
+        tusk.Database("groups")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3, 4, 5],
+                    "parent_id": [1, 1, 1, 2, 2],
+                    "amount": [1.0, 3.0, 3.0, 5.0, None],
+                },
+            ),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=["percentile"],
+        max_depth=1,
+    )
+    assert_values_match(
+        feature_values(matrix, "PERCENTILE__amount__by__parent_id"),
+        [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None],
+    )
 
 
 def test_cumulative_time_since_stays_within_each_group():

@@ -786,7 +786,7 @@ class ShareOfGroupMaximum(GroupTransformPrimitive):
         return expr / expr.max()
 
 
-@pytest.mark.parametrize("primitive", ["cum_sum", ShareOfGroupMaximum()])
+@pytest.mark.parametrize("primitive", ["cum_sum", "percentile", ShareOfGroupMaximum()])
 def test_group_transform_in_trans_primitives_raises_before_any_query(db, primitive):
     with pytest.raises(PrimitiveError, match="in groupby_trans_primitives"):
         synthesize(

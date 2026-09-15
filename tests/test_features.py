@@ -88,9 +88,10 @@ def test_transform_feature():
     assert feature.depth == 1
 
 
-def test_transform_feature_rejects_a_group_transform_primitive():
+@pytest.mark.parametrize("name", ["cum_sum", "percentile"])
+def test_transform_feature_rejects_a_group_transform_primitive(name):
     with pytest.raises(PrimitiveError, match="pass it in groupby_trans_primitives"):
-        TransformFeature(resolve("cum_sum"), (amount,))
+        TransformFeature(resolve(name), (amount,))
 
 
 def test_groupby_transform_feature_names_the_group():

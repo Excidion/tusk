@@ -16,6 +16,7 @@ import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
 from tusk.primitives.base import (
+    GroupTransformPrimitive,
     NeedsCutoffTime,
     OrderedTransformPrimitive,
     TransformPrimitive,
@@ -403,6 +404,31 @@ class Cosine(TransformPrimitive):
             A narwhals expression of cosines.
         """
         return expr.cos()
+
+
+@register
+@dataclass(frozen=True)
+class Percentile(GroupTransformPrimitive):
+    """Rank of the value among the known values of its group, from above 0 to 1.
+
+    Tied values share their average rank. A null stays null and is not
+    counted.
+    """
+
+    name = "percentile"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the percentile-rank expression.
+
+        Args:
+            expr: A numeric expression.
+
+        Returns:
+            A narwhals expression of percentile ranks.
+        """
+        return expr.rank("average") / expr.count()
 
 
 @register

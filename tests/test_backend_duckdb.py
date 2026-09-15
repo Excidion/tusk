@@ -598,6 +598,49 @@ def test_transforms_give_the_polars_values_on_duckdb(column):
     assert_transform_values_match(feature_values(matrix, column), expected)
 
 
+def test_percentile_ranks_within_each_group_on_duckdb():
+    """The grouped percentile partitions both its rank and its count window.
+
+    narwhals pushes ``groupby_trans_primitives`` into two separate windows on
+    duckdb: one for ``rank("average")``, one for ``count()``. If only one
+    carried the ``parent_id`` partition, ranks would divide by the whole
+    table's count instead of the group's.
+    """
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE percentile_parents AS SELECT * FROM (VALUES (1), (2)) t(id)",
+    )
+    con.execute(
+        "CREATE TABLE percentile_children AS SELECT * FROM (VALUES "
+        "(1, 1, 1.0), (2, 1, 3.0), (3, 1, 3.0), (4, 2, 5.0), (5, 2, NULL)) "
+        "t(id, parent_id, amount)",
+    )
+    database = (
+        tusk.Database("groups")
+        .add_table(
+            "parents",
+            con.table("percentile_parents"),
+            primary_key="id",
+        )
+        .add_table(
+            "children",
+            con.table("percentile_children"),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=["percentile"],
+        max_depth=1,
+    )
+    got = feature_values(matrix, "PERCENTILE__amount__by__parent_id")
+    assert_transform_values_match(got, [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None])
+
+
 def test_cumulative_time_since_stays_within_each_group_on_duckdb():
     """Parent 2's first row must not see parent 1's match."""
     con = duckdb.connect()
