@@ -135,8 +135,7 @@ the group defined by a foreign key. The order-dependent built-ins (`cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `cum_mean`, `diff`, `absolute_diff`,
 `same_as_previous`, `percent_change`, `time_since_previous`,
 `cumulative_time_since_last_true`, `cumulative_time_since_last_false`) all
-qualify, and so does `percentile`, which ranks each value within its group.
-These are the primitives you'll normally pass here.
+qualify. These are the primitives you'll normally pass here.
 
 Every other built-in transform (`absolute`, `month`, `add_numeric`, …) is
 **elementwise** rather than group-aware, and narwhals rejects `.over()` on an
@@ -153,6 +152,6 @@ rather than after a long query. The failure surfaces synchronously out of
 `features_only=True` synthesis happily emits the definition and the error waits
 until you call `apply_features()` on it.
 
-`percentile` is the only built-in on the grouped, non-order-dependent path;
-anything else of that kind needs a user-defined primitive — that's [the
-intended extension point](custom-primitives.md#group-aware-primitives).
+No built-in sits on the grouped, non-order-dependent path; a primitive of
+that kind needs a user-defined primitive — that's [the intended extension
+point](custom-primitives.md#group-aware-primitives).

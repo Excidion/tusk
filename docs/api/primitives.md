@@ -122,8 +122,6 @@
 
 ::: tusk.primitives.Cosine
 
-::: tusk.primitives.Percentile
-
 ::: tusk.primitives.AddNumeric
 
 ::: tusk.primitives.SubtractNumeric

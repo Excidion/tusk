@@ -23,14 +23,12 @@ LOGICAL_TYPES = {
 }
 
 
-def featuretools_values(primitive_name, feature_name, *, cutoff_time=None):
+def featuretools_values(primitive_name, feature_name):
     """Run one transform primitive through featuretools and read one column.
 
     Args:
         primitive_name: The primitive's featuretools name.
         feature_name: The featuretools feature column to read.
-        cutoff_time: Passed through to ``featuretools.dfs``. None disables
-            filtering, so every row is visible.
 
     Returns:
         The column's values in id order, missing values as featuretools
@@ -51,19 +49,16 @@ def featuretools_values(primitive_name, feature_name, *, cutoff_time=None):
         agg_primitives=[],
         trans_primitives=[primitive_name],
         max_depth=1,
-        cutoff_time=cutoff_time,
     )
     return matrix.sort_index()[feature_name].tolist()
 
 
-def tusk_values(primitive_name, column, *, cutoff_time=None):
+def tusk_values(primitive_name, column):
     """Run one transform primitive through tusk on polars and read one column.
 
     Args:
         primitive_name: The primitive's tusk name.
         column: The tusk feature column to read.
-        cutoff_time: Passed through to ``tusk.deep_feature_synthesis``. None
-            disables filtering, so every row is visible.
 
     Returns:
         The column's values in id order, null as None.
@@ -74,7 +69,6 @@ def tusk_values(primitive_name, column, *, cutoff_time=None):
         agg_primitives=[],
         trans_primitives=[primitive_name],
         max_depth=1,
-        cutoff_time=cutoff_time,
     )
     return feature_values(matrix, column)
 

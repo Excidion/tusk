@@ -762,38 +762,6 @@ def test_minute_and_second_read_a_time_column(name, expected):
     assert _apply(frame, name, "at") == expected
 
 
-def test_percentile_ranks_within_each_group():
-    """Inside groupby_trans_primitives the rank is taken per foreign key."""
-    database = (
-        tusk.Database("groups")
-        .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
-        .add_table(
-            "children",
-            pl.LazyFrame(
-                {
-                    "id": [1, 2, 3, 4, 5],
-                    "parent_id": [1, 1, 1, 2, 2],
-                    "amount": [1.0, 3.0, 3.0, 5.0, None],
-                },
-            ),
-            primary_key="id",
-        )
-        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
-    )
-    matrix, _ = tusk.deep_feature_synthesis(
-        database=database,
-        target_table="children",
-        agg_primitives=[],
-        trans_primitives=[],
-        groupby_trans_primitives=["percentile"],
-        max_depth=1,
-    )
-    assert_values_match(
-        feature_values(matrix, "PERCENTILE__amount__by__parent_id"),
-        [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None],
-    )
-
-
 def test_cumulative_time_since_stays_within_each_group():
     """Parent 2's first row must not see parent 1's match."""
     database = (
