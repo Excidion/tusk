@@ -47,8 +47,7 @@ feature_matrix, features = tusk.dfs(
     entityset=es,
     target_dataframe_name="customers",
     agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
-    trans_primitives=["month", "weekday"],
-    groupby_trans_primitives=["cum_sum"],
+    trans_primitives=["month", "weekday", "cum_sum"],
     max_depth=2,
     cutoff_time=datetime(2026, 1, 1),
     features_only=False,
@@ -422,22 +421,18 @@ multi-output machinery and is expressible as `expr.quantile(q)`.
 `time_since_previous`. Narwhals has no `cum_mean`; if wanted it must be composed
 from `cum_sum / cum_count`, so it is left out of v1.
 
-### What may go in `groupby_trans_primitives`
+### How transforms are routed
 
-Only **group-aware** primitives — ones whose expression reduces or scans across
-the group. The built-in order-dependent primitives above all qualify.
+`trans_primitives` takes every transform, and the primitive's class decides how
+it runs. A group-aware primitive — one whose expression reduces or scans across
+the group, such as the built-in order-dependent primitives above — runs within
+each foreign-key group, one feature per parent relationship. Every other
+transform (`absolute`, `month`, `add_numeric`, …) runs on each row. There is no
+separate argument for grouped transforms.
 
-Every other built-in transform is **elementwise** (`absolute`, `month`,
-`add_numeric`, …), and narwhals rejects `.over()` on an elementwise expression:
-`InvalidOperationError: Cannot apply over to elementwise expression`. Passing one
-in `groupby_trans_primitives` therefore fails — but it fails at expression-build
-time, raising synchronously out of `compile_features` rather than at `collect()`,
-so the user learns immediately rather than after a long query.
-
-This leaves the grouped, non-order-dependent window path reachable only by
-user-defined primitives. That is the intended extension point: a primitive such
-as `x / x.sum()` ("share of group total") is group-aware without being
-order-dependent, and is exactly what that path exists to serve.
+A user-defined primitive such as `x / x.sum()` ("share of group total") is
+group-aware without being order-dependent, and subclasses the group transform
+class to run within groups.
 
 **Multi-input arithmetic** — `add_numeric`, `subtract_numeric`,
 `multiply_numeric`, `divide_numeric` — ships but stays **out of the defaults**.
@@ -449,7 +444,6 @@ users are routinely burned by it. Available by name, off unless requested.
 `agg_primitives=None` resolves to
 `["count", "sum", "mean", "min", "max", "std", "n_unique"]`.
 `trans_primitives=None` resolves to `["year", "month", "weekday"]`.
-`groupby_trans_primitives=None` resolves to `[]`.
 
 A zero-configuration `dfs()` call therefore does something sensible.
 

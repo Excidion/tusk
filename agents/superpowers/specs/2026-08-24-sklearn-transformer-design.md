@@ -151,7 +151,6 @@ DFSTransformer(
     target_table,
     agg_primitives=None,
     trans_primitives=None,
-    groupby_trans_primitives=None,
     max_depth=2,
     cutoff_time=None,
     output_backend=None,

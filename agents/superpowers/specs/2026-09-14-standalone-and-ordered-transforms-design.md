@@ -43,11 +43,13 @@ Settled with the maintainer, on top of the roadmap's shared rules.
      `.over(foreign_key, order_by=(row_creation_time, primary_key))`. Every
      ordered primitive, old and new, is one.
 
-   A `GroupTransformPrimitive` passed in `trans_primitives` raises
-   `PrimitiveError` naming the primitive and `groupby_trans_primitives`,
-   before any query is built. `TransformFeature` raises the same error, so a
-   hand-built or unpickled feature cannot bypass synthesis;
-   `GroupByTransformFeature` accepts any `TransformPrimitive`. Over the whole
+   Synthesis routes each transform in `trans_primitives` by its class: a
+   `GroupTransformPrimitive` becomes a `GroupByTransformFeature` for each
+   parent relationship, any other transform a `TransformFeature`. There is no
+   `groupby_trans_primitives` argument. `TransformFeature` raises
+   `PrimitiveError` for a `GroupTransformPrimitive`, and
+   `GroupByTransformFeature` for anything else, so a hand-built or unpickled
+   feature cannot bypass the routing. Over the whole
    table a running total or a rank would mix every entity's rows and change
    with whichever rows are in the dataset. featuretools also computes these
    across the whole table, so that form is a deliberate divergence, and every
@@ -113,17 +115,17 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
 | --- | --- |
 | `diff_datetime` | ⚠️, pointing at `time_since_previous`. |
 | `cum_count` | ⚠️: featuretools counts every row, tusk only non-null values. |
-| `cum_sum`, `cum_min`, `cum_max`, `diff` | ❓ to ⚠️, once the differential test confirms grouped agreement: only in `groupby_trans_primitives` (decision 6). `diff` shares `absolute_diff`'s pre-cast integer overflow (decision 4); fixing it is a later phase's follow-up. |
+| `cum_sum`, `cum_min`, `cum_max`, `diff` | ❓ to ⚠️, once the differential test confirms grouped agreement: runs only within foreign-key groups (decision 6). `diff` shares `absolute_diff`'s pre-cast integer overflow (decision 4); fixing it is a later phase's follow-up. |
 | `absolute`, `year`, `month`, `day`, `hour` | ❓ to ✅, once the differential test confirms agreement. |
-| `cum_count`, `time_since_previous` and every ordered row above | The comment adds: only in `groupby_trans_primitives`, featuretools also computes it across the whole table. |
+| `cum_count`, `time_since_previous` and every ordered row above | The comment adds: runs only within foreign-key groups, featuretools also computes it across the whole table. |
 | `natural_log` | ❓ to ⚠️: a negative input is null, featuretools NaN. |
 
 ## Testing
 
 - `tests/transform_cases.py`: a shared eight-row table, `ROWS`, and `EXPECTED`,
   a value per column per new primitive. Every row belongs to the one row of a
-  parent table, `GROUPS`, so the group and ordered primitives run in
-  `groupby_trans_primitives` over all eight rows. It covers a null, a zero, a
+  parent table, `GROUPS`, so the group and ordered primitives run within one
+  group over all eight rows. It covers a null, a zero, a
   negative, a boolean flag and a nullable boolean flag, and a tied `value`
   column, so the cases reach negative `square_root` and `natural_log` inputs,
   ties in `percentile`, nulls in every ordered primitive and a null date in
@@ -152,7 +154,8 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
     against `time_since_previous`. The datetime column is featuretools' time
     index, which the `cumulative_time_since_last_*` primitives require and
     which orders the rows on both sides. Both sides relate every row to one
-    parent row and pass these primitives in `groupby_trans_primitives`.
+    parent row and run these primitives within that group: tusk from
+    `trans_primitives`, featuretools from its `groupby_trans_primitives`.
   - `tests/differential/test_group_transforms.py` (new): `percentile` and
     `cum_sum` over two groups whose rows interleave in `occurred_at` and, within
     a group, run against id order, with and without a cutoff. The other
@@ -167,7 +170,7 @@ Expected coverage, to be confirmed by the differential tests:
 | ✅ | `is_null`, `negate`, `sine`, `cosine`, `minute`, `second`, `day_of_year`, `absolute`, `year`, `month`, `day`, `hour` |
 | ⚠️ | `square_root`, `natural_log` (negative input), `is_leap_year` (null date), `percentile`, `cum_sum`, `cum_min`, `cum_max`, `diff` (integer overflow, see decision 4), `cum_mean` (null divisor), `same_as_previous` (first row, no fill), `absolute_diff`, `percent_change` (no fill), `cumulative_time_since_last_true`, `cumulative_time_since_last_false` (`Duration`, any datetime), `cum_count` (null rows), `diff_datetime` (pointer) |
 
-Every group and ordered row is also only in `groupby_trans_primitives`
+Every group and ordered row also runs only within foreign-key groups
 (decision 6).
 
 ## Documentation
@@ -176,8 +179,8 @@ Every group and ordered row is also only in `groupby_trans_primitives`
   `OrderedTransformPrimitive` under base classes; sixteen entries in the
   transform, group transform and ordered transform sections.
 - `docs/guide/primitives.md`: the shipped list; `percentile` and the new
-  ordered primitives in "What can go in `groupby_trans_primitives`", with the
-  rule that they only run there; the negative-input rule for `square_root`
+  ordered primitives in "How transforms are applied", with the rule that they
+  only run within foreign-key groups; the negative-input rule for `square_root`
   and `natural_log`.
 - `docs/guide/custom-primitives.md`: choosing `GroupTransformPrimitive` or
   `OrderedTransformPrimitive` for a primitive that reads other rows.

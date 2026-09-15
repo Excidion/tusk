@@ -97,7 +97,7 @@ the renamed class; the module file; prose, docstrings and error messages that
 say "entity set"; tests and their fixtures; the documentation site.
 
 **Out:** primitive vocabulary (`agg_primitives`, `trans_primitives`,
-`groupby_trans_primitives`, `AGG_DEFAULTS`, `TRANS_DEFAULTS`, `max_depth`);
+`AGG_DEFAULTS`, `TRANS_DEFAULTS`, `max_depth`);
 time vocabulary (`cutoff_time`, `row_creation_time`, "timeless" tables);
 key vocabulary (`primary_key`, `foreign_key`, `parent`, `child`);
 `features_only`; "feature matrix" as the name of the output; all behaviour.
