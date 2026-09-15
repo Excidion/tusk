@@ -12,6 +12,7 @@ the whole class here.
 """
 
 import datetime as dt
+import math
 
 import narwhals as nw
 import pytest
@@ -720,6 +721,29 @@ def test_absolute_diff_does_not_overflow_an_integer_dtype_on_duckdb():
     ).collect()
     assert got["small"].to_list() == [None, 255.0]
     assert got["unsigned"].to_list() == [None, 199.0]
+
+
+def test_percent_change_gives_negative_infinity_over_a_zero_previous_value_on_duckdb():
+    """A negative value after a zero previous one; polars and duckdb must agree."""
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES "
+            "(TIMESTAMP '2024-01-01', 0.0), (TIMESTAMP '2024-01-02', -1.0)) "
+            # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
+            't("at", v)',
+        ),
+    )
+    percent_change = resolve("percent_change")
+    got = (
+        frame.select(
+            percent_change.outputs(nw.col("v"))[0].over(order_by="at").alias("v"),
+        )
+        .collect()["v"]
+        .to_list()
+    )
+    assert got[0] is None
+    assert got[1] == -math.inf
 
 
 @pytest.mark.parametrize(

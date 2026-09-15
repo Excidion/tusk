@@ -742,6 +742,18 @@ def test_absolute_diff_does_not_wrap_around_an_integer_dtype(dtype, values, expe
     assert _apply(frame, "absolute_diff", "v") == expected
 
 
+def test_percent_change_gives_negative_infinity_over_a_zero_previous_value():
+    """A negative value after a zero previous one, the sign EXPECTED never covers."""
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"v": [0.0, -1.0], "t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)]},
+        ),
+    )
+    got = _apply(frame, "percent_change", "v")
+    assert got[0] is None
+    assert got[1] == -math.inf
+
+
 @pytest.mark.parametrize(
     ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
 )
