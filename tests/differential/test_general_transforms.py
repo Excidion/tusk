@@ -8,6 +8,7 @@ Run with: uv run --group validation pytest -m differential
 Verified against featuretools 1.31.0.
 """
 
+import datetime as dt
 import math
 
 import pytest
@@ -42,6 +43,29 @@ def test_percentile_matches_featuretools_within_the_group():
     theirs = featuretools_values(
         "percentile", "PERCENTILE(value) by group_id", grouped=True
     )
+    assert_agree(ours, theirs)
+
+
+def test_percentile_ranks_the_same_rows_on_both_sides_under_a_cutoff():
+    """A cutoff bounds featuretools' grouped percentile as it bounds tusk's.
+
+    At cutoff 2024-03-06, ids 1, 2, 3, 5, 8 are the rows visible (occurred_at
+    on or before it); their known values are 0, 4, -1 and 0. featuretools'
+    ``Percentile`` sets ``uses_full_dataframe = True``, but featuretools still
+    bounds the full-dataframe query by the cutoff before ranking, so both
+    sides rank among the same four known values within the one group.
+    """
+    cutoff = dt.datetime(2024, 3, 6)
+    ours = tusk_values(
+        "percentile", "PERCENTILE__value__by__group_id", cutoff_time=cutoff
+    )
+    theirs = featuretools_values(
+        "percentile",
+        "PERCENTILE(value) by group_id",
+        grouped=True,
+        cutoff_time=cutoff,
+    )
+    assert len(ours) == len(theirs) == 5
     assert_agree(ours, theirs)
 
 

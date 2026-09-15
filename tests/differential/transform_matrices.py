@@ -30,7 +30,13 @@ LOGICAL_TYPES = {
 }
 
 
-def featuretools_values(primitive_name, feature_name, *, grouped=False):
+def featuretools_values(
+    primitive_name,
+    feature_name,
+    *,
+    grouped=False,
+    cutoff_time=None,
+):
     """Run one transform primitive through featuretools and read one column.
 
     Args:
@@ -38,6 +44,8 @@ def featuretools_values(primitive_name, feature_name, *, grouped=False):
         feature_name: The featuretools feature column to read.
         grouped: Pass the primitive in ``groupby_trans_primitives`` rather
             than ``trans_primitives``.
+        cutoff_time: Passed through to ``featuretools.dfs``. None disables
+            filtering, so every row is visible.
 
     Returns:
         The column's values in id order, missing values as featuretools
@@ -68,11 +76,12 @@ def featuretools_values(primitive_name, feature_name, *, grouped=False):
         trans_primitives=[] if grouped else [primitive_name],
         groupby_trans_primitives=[primitive_name] if grouped else [],
         max_depth=1,
+        cutoff_time=cutoff_time,
     )
     return matrix.sort_index()[feature_name].tolist()
 
 
-def tusk_values(primitive_name, column):
+def tusk_values(primitive_name, column, *, cutoff_time=None):
     """Run one transform primitive through tusk on polars and read one column.
 
     A group transform primitive runs in ``groupby_trans_primitives``, any
@@ -81,6 +90,8 @@ def tusk_values(primitive_name, column):
     Args:
         primitive_name: The primitive's tusk name.
         column: The tusk feature column to read.
+        cutoff_time: Passed through to ``tusk.deep_feature_synthesis``. None
+            disables filtering, so every row is visible.
 
     Returns:
         The column's values in id order, null as None.
@@ -93,6 +104,7 @@ def tusk_values(primitive_name, column):
         target_table="rows",
         agg_primitives=[],
         max_depth=1,
+        cutoff_time=cutoff_time,
         **transform_arguments(primitive_name),
     )
     return feature_values(matrix, column)
