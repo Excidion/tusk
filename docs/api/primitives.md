@@ -98,11 +98,31 @@
 
 ::: tusk.primitives.IsWeekend
 
+::: tusk.primitives.Minute
+
+::: tusk.primitives.Second
+
+::: tusk.primitives.DayOfYear
+
+::: tusk.primitives.IsLeapYear
+
 ::: tusk.primitives.TimeSince
 
 ::: tusk.primitives.Absolute
 
 ::: tusk.primitives.NaturalLog
+
+::: tusk.primitives.IsNull
+
+::: tusk.primitives.Negate
+
+::: tusk.primitives.SquareRoot
+
+::: tusk.primitives.Sine
+
+::: tusk.primitives.Cosine
+
+::: tusk.primitives.Percentile
 
 ::: tusk.primitives.AddNumeric
 
@@ -151,3 +171,15 @@
 ::: tusk.primitives.Diff
 
 ::: tusk.primitives.TimeSincePrevious
+
+::: tusk.primitives.CumMean
+
+::: tusk.primitives.SameAsPrevious
+
+::: tusk.primitives.AbsoluteDiff
+
+::: tusk.primitives.PercentChange
+
+::: tusk.primitives.CumulativeTimeSinceLastTrue
+
+::: tusk.primitives.CumulativeTimeSinceLastFalse

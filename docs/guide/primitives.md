@@ -92,6 +92,12 @@ and tusk builds the operator rather than working around it.
 featuretools instead propagates the null in every one of those cells. `NOT`
 agrees on both sides: the negation of an unknown is unknown.
 
+## Negative inputs to `square_root` and `natural_log`
+
+A negative number has no real square root or logarithm, so both primitives
+give null for it on every backend. Zero is not negative: `square_root` gives
+`0.0` and `natural_log` gives negative infinity.
+
 ## Comparing two columns
 
 The comparison primitives accept a pair of numbers or a pair of datetimes,
@@ -126,8 +132,11 @@ You can guard against this with `db.validate()`.
 
 Only **group-aware** primitives — ones whose expression reduces or scans across
 the group defined by a foreign key. The order-dependent built-ins (`cum_sum`,
-`cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`) all qualify,
-and are the primitives you'll normally pass here.
+`cum_count`, `cum_min`, `cum_max`, `cum_mean`, `diff`, `absolute_diff`,
+`same_as_previous`, `percent_change`, `time_since_previous`,
+`cumulative_time_since_last_true`, `cumulative_time_since_last_false`) all
+qualify, and so does `percentile`, which ranks each value within its group.
+These are the primitives you'll normally pass here.
 
 Every other built-in transform (`absolute`, `month`, `add_numeric`, …) is
 **elementwise** rather than group-aware, and narwhals rejects `.over()` on an
