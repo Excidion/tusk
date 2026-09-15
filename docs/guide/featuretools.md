@@ -59,7 +59,8 @@ a different answer.
   `groupby_trans_primitives`](primitives.md#what-can-go-in-groupby_trans_primitives).
 
 - **`primary_key` is optional**, but a table without one cannot be a
-  relationship parent or a DFS target. Be warned: Order-dependent primitives on
+  relationship parent or a DFS target. Be warned:
+  [ordered transform primitives][tusk.primitives.OrderedTransformPrimitive] on
   such tables might behave non-deterministic.
 
 
