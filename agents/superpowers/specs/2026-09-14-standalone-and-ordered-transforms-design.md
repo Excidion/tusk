@@ -95,23 +95,26 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
 | --- | --- |
 | `diff_datetime` | ⚠️, pointing at `time_since_previous`. |
 | `cum_count` | ⚠️: featuretools counts every row, tusk only non-null values. |
-| `cum_sum`, `cum_min`, `cum_max`, `diff`, `absolute`, `year`, `month`, `day`, `hour` | ❓ to ✅, once the differential test confirms agreement. |
+| `cum_sum`, `cum_min`, `cum_max`, `diff`, `absolute`, `year`, `month`, `day`, `hour` | ❓ to ✅, once the differential test confirms agreement. `diff` shares `absolute_diff`'s pre-cast integer overflow (decision 4); fixing it is a later phase's follow-up. |
 | `natural_log` | ❓ to ⚠️: a negative input is null, featuretools NaN. |
 
 ## Testing
 
 - `tests/transform_cases.py`: a shared eight-row table, `ROWS`, and `EXPECTED`,
   a value per column per new primitive. It covers a null, a zero, a negative,
-  a boolean flag with its own nulls and a tied `value` column, so the cases
-  reach negative `square_root` and `natural_log` inputs, ties in `percentile`,
-  nulls in every ordered primitive and a null date in `is_leap_year`.
+  a boolean flag and a nullable boolean flag, and a tied `value` column, so
+  the cases reach negative `square_root` and `natural_log` inputs, ties in
+  `percentile`, nulls in every ordered primitive and a null date in
+  `is_leap_year`.
 - `tests/test_primitives_transform.py`: `EXPECTED` checked on polars, plus
   `negate` and `absolute_diff` on `Int8` and an unsigned integer dtype (where
-  `ROWS`'s `value` column, already a float, cannot reach the wraparound), and
-  `percentile` and `cumulative_time_since_last_true` each grouped by foreign
-  key, so a group's rank or match does not leak into its neighbour's.
-- `tests/test_backend_duckdb.py`: the same `EXPECTED`, integer-dtype and
-  grouped checks on duckdb. This is what pins decisions 3 and 4 and the
+  `ROWS`'s `value` column, already a float, cannot reach the wraparound),
+  `minute` and `second` on a standalone `Time` column, and `percentile` and
+  `cumulative_time_since_last_true` each grouped by foreign key, so a
+  group's rank or match does not leak into its neighbour's.
+- `tests/test_backend_duckdb.py`: the same `EXPECTED`, integer-dtype, `Time`-
+  column and grouped checks on duckdb. This is what pins decisions 3 and 4;
+  `test_cumulative_time_since_measures_a_date_column_on_duckdb` pins the
   `Date` cast.
 - Differential tests against featuretools 1.31.0. Agreement is asserted where
   values agree, and each divergence is asserted on both sides.
