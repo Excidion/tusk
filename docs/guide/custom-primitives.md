@@ -60,7 +60,7 @@ maps a row to a row.
 ## Group-aware primitives
 
 A primitive like "share of group total" is group-aware without being
-order-dependent, which no built-in covers:
+order-dependent, beyond what the built-in `percentile` offers:
 
 ```python
 from dataclasses import dataclass

@@ -153,6 +153,6 @@ rather than after a long query. The failure surfaces synchronously out of
 `features_only=True` synthesis happily emits the definition and the error waits
 until you call `apply_features()` on it.
 
-This leaves the grouped, non-order-dependent path reachable only by
-user-defined primitives — that's [the intended extension
-point](custom-primitives.md#group-aware-primitives).
+`percentile` is the only built-in on the grouped, non-order-dependent path;
+anything else of that kind needs a user-defined primitive — that's [the
+intended extension point](custom-primitives.md#group-aware-primitives).
