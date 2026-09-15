@@ -28,7 +28,7 @@ pytestmark = pytest.mark.differential
 
 @pytest.mark.parametrize("name", ["cum_sum", "cum_min", "cum_max", "diff"])
 def test_cumulative_transforms_match_featuretools(name):
-    """A null row stays null and the running value carries past it on both sides."""
+    """Both sides skip a null in the running value; diff is null next to a null."""
     assert_agree(
         tusk_values(name, f"{name.upper()}__value"),
         featuretools_values(name, f"{name.upper()}(value)"),
@@ -53,6 +53,7 @@ def test_cumulative_time_since_matches_featuretools_in_seconds(name):
 def test_cum_mean_divides_by_known_values_where_featuretools_divides_by_rows():
     ours = tusk_values("cum_mean", "CUM_MEAN__value")
     theirs = featuretools_values("cum_mean", "CUM_MEAN(value)")
+    assert ours[0] is None
     assert_agree(ours, [None, 1.0, 4.0, 2.4, 1.5, 16 / 7, 7 / 3, 0.75])
     assert_agree(theirs, [None, 0.75, 4.0, 2.0, 1.0, 2.0, 2.0, 0.6])
 
@@ -69,6 +70,7 @@ def test_absolute_diff_does_not_forward_fill():
     """The null (id 1) and the row after it (id 5) diverge."""
     ours = tusk_values("absolute_diff", "ABSOLUTE_DIFF__value")
     theirs = featuretools_values("absolute_diff", "ABSOLUTE_DIFF(value)")
+    assert [ours[0], ours[2], ours[4]] == [None, None, None]
     assert_agree(ours, [None, 1.0, None, 9.0, None, 0.0, 7.0, 0.0])
     assert theirs[0] == 0.0
     assert theirs[4] == 5.0
@@ -88,8 +90,8 @@ def test_percent_change_does_not_forward_fill():
     assert theirs[4] == -1.25
     assert math.isnan(ours[7])
     assert math.isnan(theirs[7])
-    assert_agree(ours, [None, -1.0, None, math.inf, None, 0.0, -7 / 9, None])
-    assert_agree(theirs, [0.0, -1.0, None, math.inf, -1.25, 0.0, -7 / 9, None])
+    assert_agree(ours, [None, -1.0, None, math.inf, None, 0.0, -7 / 9, math.nan])
+    assert_agree(theirs, [0.0, -1.0, None, math.inf, -1.25, 0.0, -7 / 9, math.nan])
 
 
 def test_cum_count_counts_known_values_where_featuretools_counts_rows():
@@ -107,6 +109,12 @@ def test_diff_datetime_is_time_since_previous():
     """
     ordered = ROWS.sort_values("occurred_at")
     theirs = featuretools.primitives.DiffDatetime()(ordered["occurred_at"]).tolist()
-    ours_by_id = tusk_values("time_since_previous", "TIME_SINCE_PREVIOUS__occurred_at")
-    ours = [ours_by_id[row_id - 1] for row_id in ordered["id"]]
+    ours_by_id = dict(
+        zip(
+            sorted(ROWS["id"]),
+            tusk_values("time_since_previous", "TIME_SINCE_PREVIOUS__occurred_at"),
+            strict=True,
+        ),
+    )
+    ours = [ours_by_id[row_id] for row_id in ordered["id"]]
     assert_agree(ours, theirs)
