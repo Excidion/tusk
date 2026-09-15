@@ -36,6 +36,8 @@ def featuretools_values(
     *,
     grouped=False,
     cutoff_time=None,
+    rows=ROWS,
+    groups=GROUPS,
 ):
     """Run one transform primitive through featuretools and read one column.
 
@@ -46,6 +48,8 @@ def featuretools_values(
             than ``trans_primitives``.
         cutoff_time: Passed through to ``featuretools.dfs``. None disables
             filtering, so every row is visible.
+        rows: The child table, related to ``groups`` through ``group_id``.
+        groups: The parent table.
 
     Returns:
         The column's values in id order, missing values as featuretools
@@ -55,17 +59,21 @@ def featuretools_values(
         featuretools.EntitySet("rows")
         .add_dataframe(
             dataframe_name="groups",
-            dataframe=GROUPS.copy(),
+            dataframe=groups.copy(),
             index="id",
         )
         .add_dataframe(
             dataframe_name="rows",
             # featuretools' woodwork initialization sorts and re-types its
-            # input in place; copy so ROWS stays untouched for every other test.
-            dataframe=ROWS.copy(),
+            # input in place; copy so the table stays untouched for every other test.
+            dataframe=rows.copy(),
             index="id",
             time_index="occurred_at",
-            logical_types=LOGICAL_TYPES,
+            logical_types={
+                column: logical_type
+                for column, logical_type in LOGICAL_TYPES.items()
+                if column in rows
+            },
         )
         .add_relationship("groups", "id", "rows", "group_id")
     )
@@ -81,7 +89,7 @@ def featuretools_values(
     return matrix.sort_index()[feature_name].tolist()
 
 
-def tusk_values(primitive_name, column, *, cutoff_time=None):
+def tusk_values(primitive_name, column, *, cutoff_time=None, rows=ROWS, groups=GROUPS):
     """Run one transform primitive through tusk on polars and read one column.
 
     A group transform primitive runs in ``groupby_trans_primitives``, any
@@ -92,14 +100,16 @@ def tusk_values(primitive_name, column, *, cutoff_time=None):
         column: The tusk feature column to read.
         cutoff_time: Passed through to ``tusk.deep_feature_synthesis``. None
             disables filtering, so every row is visible.
+        rows: The child table, related to ``groups`` through ``group_id``.
+        groups: The parent table.
 
     Returns:
         The column's values in id order, null as None.
     """
     matrix, _ = tusk.deep_feature_synthesis(
         database=rows_database(
-            pl.from_pandas(ROWS).lazy(),
-            pl.from_pandas(GROUPS).lazy(),
+            pl.from_pandas(rows).lazy(),
+            pl.from_pandas(groups).lazy(),
         ),
         target_table="rows",
         agg_primitives=[],
