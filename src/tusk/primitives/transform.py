@@ -1038,6 +1038,60 @@ class PercentChange(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class CumulativeTimeSinceLastTrue(TransformPrimitive):
+    """Time elapsed since the latest row whose flag is true, in row-creation order.
+
+    Null until the first true flag, and on a row whose datetime is null. A
+    null flag is not true.
+    """
+
+    name = "cumulative_time_since_last_true"
+    input_dtypes = (F.HAS_DATE, F.BOOLEAN)
+    output_dtype = nw.Duration
+    order_dependent = True
+
+    def build(self, moment: nw.Expr, flag: nw.Expr) -> nw.Expr:
+        """Build the time-since-last-true expression.
+
+        Args:
+            moment: The datetime of each row.
+            flag: The boolean flag of each row.
+
+        Returns:
+            A narwhals expression of the elapsed time.
+        """
+        return _time_since_last_match(moment, flag)
+
+
+@register
+@dataclass(frozen=True)
+class CumulativeTimeSinceLastFalse(TransformPrimitive):
+    """Time elapsed since the latest row whose flag is false, in row-creation order.
+
+    Null until the first false flag, and on a row whose datetime is null. A
+    null flag is not false.
+    """
+
+    name = "cumulative_time_since_last_false"
+    input_dtypes = (F.HAS_DATE, F.BOOLEAN)
+    output_dtype = nw.Duration
+    order_dependent = True
+
+    def build(self, moment: nw.Expr, flag: nw.Expr) -> nw.Expr:
+        """Build the time-since-last-false expression.
+
+        Args:
+            moment: The datetime of each row.
+            flag: The boolean flag of each row.
+
+        Returns:
+            A narwhals expression of the elapsed time.
+        """
+        return _time_since_last_match(moment, ~flag)
+
+
+@register
+@dataclass(frozen=True)
 class TimeSince(NeedsCutoffTime, TransformPrimitive):
     """Time elapsed from a datetime to the cutoff time."""
 
@@ -1056,3 +1110,19 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
             A narwhals expression of the duration since each value.
         """
         return nw.lit(cutoff_time) - expr
+
+
+def _time_since_last_match(moment: nw.Expr, is_match: nw.Expr) -> nw.Expr:
+    """Build the time elapsed since the latest row that matches.
+
+    Args:
+        moment: The datetime of each row.
+        is_match: Where the row matches; a null does not match.
+
+    Returns:
+        A narwhals expression of the elapsed time, to be ordered by the caller.
+    """
+    # duckdb subtracts two Dates into a day count instead of an interval
+    timestamps = moment.cast(nw.Datetime)
+    latest_match = nw.when(is_match).then(timestamps).fill_null(strategy="forward")
+    return timestamps - latest_match

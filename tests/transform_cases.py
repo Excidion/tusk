@@ -150,6 +150,62 @@ EXPECTED = {
         nw.Float64,
         [None, -1.0, None, math.inf, None, 0.0, -7 / 9, math.nan],
     ),
+    "CUMULATIVE_TIME_SINCE_LAST_TRUE__occurred_at__flag": (
+        "cumulative_time_since_last_true",
+        nw.Duration,
+        [
+            dt.timedelta(0),
+            dt.timedelta(days=1, seconds=65675),
+            None,
+            dt.timedelta(days=4, seconds=53451),
+            dt.timedelta(seconds=60270),
+            dt.timedelta(0),
+            dt.timedelta(days=10, seconds=10251),
+            dt.timedelta(0),
+        ],
+    ),
+    "CUMULATIVE_TIME_SINCE_LAST_FALSE__occurred_at__flag": (
+        "cumulative_time_since_last_false",
+        nw.Duration,
+        [
+            dt.timedelta(days=59, seconds=49531),
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.timedelta(days=5, seconds=22545),
+            dt.timedelta(0),
+            dt.timedelta(days=3, seconds=4144),
+        ],
+    ),
+    "CUMULATIVE_TIME_SINCE_LAST_TRUE__occurred_at__maybe_flag": (
+        "cumulative_time_since_last_true",
+        nw.Duration,
+        [
+            dt.timedelta(days=59, seconds=49531),
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.timedelta(days=7, seconds=57595),
+            dt.timedelta(days=60, seconds=23401),
+            dt.timedelta(0),
+            dt.timedelta(days=13, seconds=14395),
+            dt.timedelta(days=3, seconds=4144),
+        ],
+    ),
+    "CUMULATIVE_TIME_SINCE_LAST_FALSE__occurred_at__maybe_flag": (
+        "cumulative_time_since_last_false",
+        nw.Duration,
+        [
+            None,
+            dt.timedelta(days=1, seconds=5405),
+            None,
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.timedelta(days=5, seconds=22545),
+            dt.timedelta(0),
+            dt.timedelta(days=4, seconds=9549),
+        ],
+    ),
 }
 
 

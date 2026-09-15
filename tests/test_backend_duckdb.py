@@ -664,3 +664,37 @@ def test_minute_and_second_read_a_time_column_on_duckdb(name, expected):
     primitive = resolve(name)
     got = frame.select("id", primitive.outputs(nw.col("at"))[0].alias("o"))
     assert got.collect().sort("id")["o"].to_list() == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (
+            "cumulative_time_since_last_true",
+            [dt.timedelta(0), dt.timedelta(days=4), dt.timedelta(0)],
+        ),
+        (
+            "cumulative_time_since_last_false",
+            [None, dt.timedelta(0), dt.timedelta(days=4)],
+        ),
+    ],
+)
+def test_cumulative_time_since_measures_a_date_column_on_duckdb(name, expected):
+    """duckdb subtracts two DATEs into a day count, so the primitive casts first.
+
+    Args:
+        name: The primitive under test.
+        expected: The elapsed time per row, in id order.
+    """
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES (1, DATE '2024-01-01', TRUE), "
+            "(2, DATE '2024-01-05', FALSE), (3, DATE '2024-01-09', TRUE)) "
+            "t(id, d, f)",
+        ),
+    )
+    primitive = resolve(name)
+    elapsed = primitive.outputs(nw.col("d"), nw.col("f"))[0].over(order_by="id")
+    got = frame.select("id", elapsed.alias("o")).collect().sort("id")["o"].to_list()
+    assert_transform_values_match(got, expected)
