@@ -36,7 +36,9 @@ def featuretools_values(primitive_name, feature_name):
     """
     entityset = featuretools.EntitySet("rows").add_dataframe(
         dataframe_name="rows",
-        dataframe=ROWS,
+        # featuretools' woodwork initialization sorts and re-types its input
+        # in place; copy so ROWS stays untouched for every other test.
+        dataframe=ROWS.copy(),
         index="id",
         time_index="occurred_at",
         logical_types=LOGICAL_TYPES,
