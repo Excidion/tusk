@@ -1020,7 +1020,8 @@ class PercentChange(TransformPrimitive):
     """Relative change from the previous row in row-creation order.
 
     The first row, and a row whose own or previous value is null, is null. A
-    zero previous value gives infinity, or NaN when the value is zero too.
+    zero previous value gives positive or negative infinity, or NaN when the
+    value is zero too.
     """
 
     name = "percent_change"
@@ -1047,7 +1048,9 @@ class CumulativeTimeSinceLastTrue(TransformPrimitive):
 
     Null until the first true flag, and on a row whose datetime is null. A
     null flag is not true. A matching row whose datetime is null is skipped,
-    so later rows measure from the match before it.
+    so later rows measure from the match before it. For a time-zone-aware
+    column, duckdb measures wall-clock time, so a gap across a daylight-saving
+    change can differ by an hour from polars.
     """
 
     name = "cumulative_time_since_last_true"
@@ -1075,7 +1078,9 @@ class CumulativeTimeSinceLastFalse(TransformPrimitive):
 
     Null until the first false flag, and on a row whose datetime is null. A
     null flag is not false. A matching row whose datetime is null is
-    skipped, so later rows measure from the match before it.
+    skipped, so later rows measure from the match before it. For a
+    time-zone-aware column, duckdb measures wall-clock time, so a gap across
+    a daylight-saving change can differ by an hour from polars.
     """
 
     name = "cumulative_time_since_last_false"
