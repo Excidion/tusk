@@ -135,7 +135,7 @@ Expected coverage, to be confirmed by the differential tests:
 
 | Status | Rows |
 | --- | --- |
-| ✅ | `is_null`, `negate`, `sine`, `cosine`, `minute`, `second`, `day_of_year`, `percentile`, `cum_sum`, `cum_min`, `cum_max`, `diff`, `absolute`, `year`, `month`, `day`, `hour` |
+| ✅ | `is_null`, `negate`, `sine`, `cosine`, `minute`, `second`, `day_of_year`, `percentile`, `cum_sum`, `cum_min`, `cum_max`, `diff` (integer overflow, see decision 4), `absolute`, `year`, `month`, `day`, `hour` |
 | ⚠️ | `square_root`, `natural_log` (negative input), `is_leap_year` (null date), `cum_mean` (null divisor), `same_as_previous` (first row, no fill), `absolute_diff`, `percent_change` (no fill), `cumulative_time_since_last_true`, `cumulative_time_since_last_false` (`Duration`, any datetime), `cum_count` (null rows), `diff_datetime` (pointer) |
 
 ## Documentation
