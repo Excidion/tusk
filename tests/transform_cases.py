@@ -206,6 +206,20 @@ EXPECTED = {
             dt.timedelta(days=4, seconds=9549),
         ],
     ),
+    "CUMULATIVE_TIME_SINCE_LAST_FALSE__due_at__flag": (
+        "cumulative_time_since_last_false",
+        nw.Duration,
+        [
+            dt.datetime(2024, 2, 29, 13, 45, 30) - dt.datetime(1900, 3, 1, 23, 59, 59),
+            None,
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.timedelta(0),
+            dt.datetime(2100, 1, 1, 12, 30) - dt.datetime(2024, 12, 31, 23, 0, 1),
+            dt.timedelta(0),
+            dt.datetime(2019, 1, 1) - dt.datetime(2023, 6, 15, 7, 8, 9),
+        ],
+    ),
 }
 
 

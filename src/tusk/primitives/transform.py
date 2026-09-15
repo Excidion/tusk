@@ -1042,7 +1042,8 @@ class CumulativeTimeSinceLastTrue(TransformPrimitive):
     """Time elapsed since the latest row whose flag is true, in row-creation order.
 
     Null until the first true flag, and on a row whose datetime is null. A
-    null flag is not true.
+    null flag is not true. A matching row whose datetime is null is skipped,
+    so later rows measure from the match before it.
     """
 
     name = "cumulative_time_since_last_true"
@@ -1069,7 +1070,8 @@ class CumulativeTimeSinceLastFalse(TransformPrimitive):
     """Time elapsed since the latest row whose flag is false, in row-creation order.
 
     Null until the first false flag, and on a row whose datetime is null. A
-    null flag is not false.
+    null flag is not false. A matching row whose datetime is null is
+    skipped, so later rows measure from the match before it.
     """
 
     name = "cumulative_time_since_last_false"

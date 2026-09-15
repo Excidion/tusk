@@ -634,6 +634,52 @@ def test_percentile_ranks_within_each_group_on_duckdb():
     assert_transform_values_match(got, [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None])
 
 
+def test_cumulative_time_since_stays_within_each_group_on_duckdb():
+    """Parent 2's first row must not see parent 1's match."""
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE cumulative_parents AS SELECT * FROM (VALUES (1), (2)) t(id)",
+    )
+    con.execute(
+        "CREATE TABLE cumulative_children AS SELECT * FROM (VALUES "
+        "(1, 1, TIMESTAMP '2024-01-01', TRUE), "
+        "(2, 1, TIMESTAMP '2024-01-02', FALSE), "
+        "(3, 2, TIMESTAMP '2024-01-03', FALSE), "
+        "(4, 2, TIMESTAMP '2024-01-04', TRUE)) "
+        't(id, parent_id, "at", flag)',
+    )
+    database = (
+        tusk.Database("groups")
+        .add_table(
+            "parents",
+            con.table("cumulative_parents"),
+            primary_key="id",
+        )
+        .add_table(
+            "children",
+            con.table("cumulative_children"),
+            primary_key="id",
+            row_creation_time="at",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=["cumulative_time_since_last_true"],
+        max_depth=1,
+    )
+    got = feature_values(
+        matrix, "CUMULATIVE_TIME_SINCE_LAST_TRUE__at__flag__by__parent_id"
+    )
+    assert_transform_values_match(
+        got,
+        [dt.timedelta(0), dt.timedelta(days=1), None, dt.timedelta(0)],
+    )
+
+
 def test_negate_does_not_overflow_an_integer_dtype_on_duckdb():
     """duckdb raises on negating TINYINT's minimum and wraps an unsigned value."""
     con = duckdb.connect()

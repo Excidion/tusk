@@ -765,6 +765,47 @@ def test_percentile_ranks_within_each_group():
     )
 
 
+def test_cumulative_time_since_stays_within_each_group():
+    """Parent 2's first row must not see parent 1's match."""
+    database = (
+        tusk.Database("groups")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3, 4],
+                    "parent_id": [1, 1, 2, 2],
+                    "at": [
+                        dt.datetime(2024, 1, 1),
+                        dt.datetime(2024, 1, 2),
+                        dt.datetime(2024, 1, 3),
+                        dt.datetime(2024, 1, 4),
+                    ],
+                    "flag": [True, False, False, True],
+                },
+            ),
+            primary_key="id",
+            row_creation_time="at",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=["cumulative_time_since_last_true"],
+        max_depth=1,
+    )
+    assert_values_match(
+        feature_values(
+            matrix, "CUMULATIVE_TIME_SINCE_LAST_TRUE__at__flag__by__parent_id"
+        ),
+        [dt.timedelta(0), dt.timedelta(days=1), None, dt.timedelta(0)],
+    )
+
+
 @pytest.mark.parametrize(
     "name",
     ["cum_mean", "same_as_previous", "absolute_diff", "percent_change"],
