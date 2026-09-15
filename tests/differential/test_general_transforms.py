@@ -66,6 +66,9 @@ def test_percentile_ranks_the_same_rows_on_both_sides_under_a_cutoff():
         cutoff_time=cutoff,
     )
     assert len(ours) == len(theirs) == 5
+    # id 3 (value 4) and id 5 (value -1) would rank 6/7 and 1/7 among the
+    # seven known values if either side ranked rows created after the cutoff.
+    assert_agree(ours, [None, 0.625, 1.0, 0.25, 0.625])
     assert_agree(ours, theirs)
 
 
