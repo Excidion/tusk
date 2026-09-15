@@ -153,6 +153,11 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
     index, which the `cumulative_time_since_last_*` primitives require and
     which orders the rows on both sides. Both sides relate every row to one
     parent row and pass these primitives in `groupby_trans_primitives`.
+  - `tests/differential/test_group_transforms.py` (new): `percentile` and
+    `cum_sum` over two groups whose rows interleave in `occurred_at` and, within
+    a group, run against id order, with and without a cutoff. The shared table
+    has one group, so only this file catches a result that ignores the
+    partition or orders a group by id.
 
 Expected coverage, to be confirmed by the differential tests:
 
