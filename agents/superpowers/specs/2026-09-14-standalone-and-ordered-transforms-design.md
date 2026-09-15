@@ -155,9 +155,10 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
     parent row and pass these primitives in `groupby_trans_primitives`.
   - `tests/differential/test_group_transforms.py` (new): `percentile` and
     `cum_sum` over two groups whose rows interleave in `occurred_at` and, within
-    a group, run against id order, with and without a cutoff. The shared table
-    has one group, so only this file catches a result that ignores the
-    partition or orders a group by id.
+    a group, run against id order, with and without a cutoff. The other
+    differential tests use one group, so this is the only featuretools check
+    that results stay within a partition and are ordered by creation time
+    inside each of several groups.
 
 Expected coverage, to be confirmed by the differential tests:
 
