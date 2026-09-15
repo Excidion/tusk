@@ -233,8 +233,11 @@ def rows_database(table, groups):
     """Wrap the shared table and its parent in a database.
 
     Args:
-        table: ``ROWS`` as a native lazy frame of any backend.
-        groups: ``GROUPS`` as a native lazy frame of the same backend.
+        table: A child table keyed by ``id``, with ``occurred_at`` and
+            ``group_id``, such as ``ROWS``, as a native lazy frame of any
+            backend.
+        groups: Its parent table keyed by ``id``, such as ``GROUPS``, as a
+            native lazy frame of the same backend.
 
     Returns:
         A database whose ``rows`` table is ordered by ``occurred_at`` and

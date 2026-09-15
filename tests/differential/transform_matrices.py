@@ -1,10 +1,11 @@
 """Build one transform column in tusk and in featuretools.
 
 Both helpers read the shared ``ROWS`` and ``GROUPS`` tables by default, or any
-child table ordered by ``occurred_at`` and related to its parent through
-``group_id``. Both sides order the rows by ``occurred_at``: tusk as the row
-creation time, featuretools as the time index. A group transform runs within
-each ``group_id`` group.
+child table keyed by ``id``, ordered by ``occurred_at`` and related through
+``group_id`` to a parent keyed by ``id``. Both return values in id order.
+Both sides order the rows by ``occurred_at``: tusk as the row creation time,
+featuretools as the time index. A group transform runs within each
+``group_id`` group.
 """
 
 import datetime as dt
