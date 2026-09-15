@@ -12,7 +12,6 @@ from transform_cases import (
     assert_values_match,
     feature_values,
     rows_database,
-    transform_arguments,
 )
 
 import tusk
@@ -741,7 +740,7 @@ def test_transforms_give_the_expected_value_on_every_row(column):
         target_table="rows",
         agg_primitives=[],
         max_depth=1,
-        **transform_arguments(primitive_name),
+        trans_primitives=[primitive_name],
     )
     assert nw.from_native(matrix).collect_schema()[column] == dtype
     assert_values_match(feature_values(matrix, column), expected)
@@ -797,7 +796,7 @@ def test_minute_and_second_read_a_time_column(name, expected):
 
 
 def test_percentile_ranks_within_each_group():
-    """Inside groupby_trans_primitives the rank is taken per foreign key."""
+    """A group transform takes its rank per foreign key."""
     database = (
         tusk.Database("groups")
         .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
@@ -818,8 +817,7 @@ def test_percentile_ranks_within_each_group():
         database=database,
         target_table="children",
         agg_primitives=[],
-        trans_primitives=[],
-        groupby_trans_primitives=["percentile"],
+        trans_primitives=["percentile"],
         max_depth=1,
     )
     assert_values_match(
@@ -857,8 +855,7 @@ def test_cumulative_time_since_stays_within_each_group():
         database=database,
         target_table="children",
         agg_primitives=[],
-        trans_primitives=[],
-        groupby_trans_primitives=["cumulative_time_since_last_true"],
+        trans_primitives=["cumulative_time_since_last_true"],
         max_depth=1,
     )
     assert_values_match(

@@ -29,12 +29,12 @@ from tusk.features import (
     GroupByTransformFeature,
     IdentityFeature,
     TransformFeature,
-    _reject_group_transform,
     _reject_wrong_kind,
 )
 from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import (
     AggregationPrimitive,
+    GroupTransformPrimitive,
     OrderedTransformPrimitive,
     Primitive,
     TransformPrimitive,
@@ -48,7 +48,6 @@ def synthesize(
     target_table: str,
     agg_primitives: Iterable[str | Primitive] | None = None,
     trans_primitives: Iterable[str | Primitive] | None = None,
-    groupby_trans_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
 ) -> FeatureList:
     """Generate feature definitions for a target table.
@@ -59,11 +58,8 @@ def synthesize(
     :func:`~tusk.features._reject_wrong_kind`, if a primitive resolved from
     ``agg_primitives`` is not an
     :class:`~tusk.primitives.base.AggregationPrimitive`, or one from
-    ``trans_primitives`` or ``groupby_trans_primitives`` is not a
-    :class:`~tusk.primitives.base.TransformPrimitive`, and, via
-    :func:`~tusk.features._reject_group_transform`, if one from
-    ``trans_primitives`` is a
-    :class:`~tusk.primitives.base.GroupTransformPrimitive`. Checked here, eagerly,
+    ``trans_primitives`` is not a
+    :class:`~tusk.primitives.base.TransformPrimitive`. Checked here, eagerly,
     rather than left to each :class:`Feature` subclass's own check: a
     primitive that matches no column is never built into a feature at all, so
     only the argument it was passed to can name the mistake.
@@ -73,11 +69,10 @@ def synthesize(
         target_table: Table to build features for.
         agg_primitives: Aggregation primitives, as names or instances. None
             selects ``AGG_DEFAULTS``.
-        trans_primitives: Transform primitives that read only their own row,
-            as names or instances. None selects ``TRANS_DEFAULTS``.
-        groupby_trans_primitives: Transform primitives applied within
-            foreign-key groups, including every group and ordered transform.
-            None selects none.
+        trans_primitives: Transform primitives, as names or instances. Each
+            :class:`~tusk.primitives.base.GroupTransformPrimitive` is applied
+            within each foreign-key group, every other one to each row. None
+            selects ``TRANS_DEFAULTS``.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
@@ -101,15 +96,16 @@ def synthesize(
     trans = resolve_all(
         TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
     )
-    groupby = resolve_all(groupby_trans_primitives or ())
     for primitive in agg:
         _reject_wrong_kind(primitive, AggregationPrimitive, "agg_primitives")
     for primitive in trans:
         _reject_wrong_kind(primitive, TransformPrimitive, "trans_primitives")
-        _reject_group_transform(primitive, "trans_primitives")
-    for primitive in groupby:
-        _reject_wrong_kind(primitive, TransformPrimitive, "groupby_trans_primitives")
-    context = _Context(database=database, agg=agg, trans=trans, groupby=groupby)
+    context = _Context(
+        database=database,
+        agg=agg,
+        trans=[p for p in trans if not isinstance(p, GroupTransformPrimitive)],
+        groupby=[p for p in trans if isinstance(p, GroupTransformPrimitive)],
+    )
     features = context.build(target_table, max_depth, ())
     context.warn_unmatched()
     keys = database.output_excluded_columns(target_table)
@@ -142,8 +138,9 @@ class _Context:
         Args:
             database: The schema to walk.
             agg: Resolved aggregation primitives.
-            trans: Resolved transform primitives.
-            groupby: Resolved groupby-transform primitives.
+            trans: Resolved transform primitives applied to each row.
+            groupby: Resolved group transform primitives, applied within
+                each foreign-key group.
         """
         self.database = database
         self.agg = agg
@@ -151,7 +148,7 @@ class _Context:
         self.groupby = groupby
         self._categorical_warned: set[tuple[str, str, str]] = set()
         self._matched: set[str] = set()
-        self._unmatched: dict[tuple[str, str], None] = {}
+        self._unmatched: dict[tuple[str, str], str] = {}
 
     def build(
         self,
@@ -292,7 +289,7 @@ class _Context:
         depth_limit: int,
         path: tuple[Relationship, ...],
     ) -> list[Feature]:
-        """Apply transform primitives within each foreign-key group.
+        """Apply group transform primitives within each foreign-key group.
 
         Args:
             table: The table being built.
@@ -301,19 +298,22 @@ class _Context:
             path: Relationships already traversed.
 
         Returns:
-            features: Groupby-transform features on the table.
-                ``_check_ordering`` raises
+            features: Groupby-transform features on the table, one per parent
+                relationship not on ``path``. ``_check_ordering`` raises
                 :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
                 primitive is requested for a table with no
                 ``row_creation_time``.
         """
         if not self.groupby:
             return []
+        relationships = [
+            rel for rel in self.database.parents_of(table) if rel not in path
+        ]
+        if not relationships:
+            self._record_ungroupable(table)
         usable = self._usable(table, existing)
         out: list[Feature] = []
-        for rel in self.database.parents_of(table):
-            if rel in path:
-                continue
+        for rel in relationships:
             for primitive in self.groupby:
                 self._check_ordering(primitive, table)
                 for combo in self._combinations(primitive, usable, table):
@@ -321,6 +321,20 @@ class _Context:
                     if feature.depth <= depth_limit:
                         out.append(feature)
         return out
+
+    def _record_ungroupable(self, table: str) -> None:
+        """Record every group transform primitive as unmatched on ``table``.
+
+        Args:
+            table: A table with no parent relationship left to group by.
+        """
+        for primitive in self.groupby:
+            self._unmatched.setdefault(
+                (primitive.name, table),
+                f"table {table!r} has no parent relationship to group its rows "
+                f"by, so it generated no features there. Add a relationship, or "
+                f"drop the primitive from the request.",
+            )
 
     def warn_unmatched(self) -> None:
         """Warn about requested primitives that matched nothing anywhere.
@@ -335,14 +349,11 @@ class _Context:
         would bury the genuinely unusable case in noise. Each surviving
         (primitive, table) pair warns once.
         """
-        for primitive_name, table in self._unmatched:
+        for (primitive_name, _), reason in self._unmatched.items():
             if primitive_name in self._matched:
                 continue
             warnings.warn(
-                f"primitive {primitive_name!r} was requested but no column on "
-                f"table {table!r} matches its input dtypes, so it generated no "
-                f"features there. Check the column dtypes, or drop the "
-                f"primitive from the request.",
+                f"primitive {primitive_name!r} was requested but {reason}",
                 UnmatchedPrimitiveWarning,
                 stacklevel=4,
             )
@@ -501,7 +512,12 @@ class _Context:
         if combos:
             self._matched.add(primitive.name)
         else:
-            self._unmatched.setdefault((primitive.name, table), None)
+            self._unmatched.setdefault(
+                (primitive.name, table),
+                f"no column on table {table!r} matches its input dtypes, so it "
+                f"generated no features there. Check the column dtypes, or drop "
+                f"the primitive from the request.",
+            )
         return combos
 
     def _fill_slots(

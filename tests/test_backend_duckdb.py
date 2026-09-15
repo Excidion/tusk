@@ -25,7 +25,6 @@ from transform_cases import (
     ROWS,
     feature_values,
     rows_database,
-    transform_arguments,
 )
 from transform_cases import (
     assert_values_match as assert_transform_values_match,
@@ -593,7 +592,7 @@ def test_transforms_give_the_polars_values_on_duckdb(column):
         target_table="rows",
         agg_primitives=[],
         max_depth=1,
-        **transform_arguments(primitive_name),
+        trans_primitives=[primitive_name],
     )
     assert_transform_values_match(feature_values(matrix, column), expected)
 
@@ -601,7 +600,7 @@ def test_transforms_give_the_polars_values_on_duckdb(column):
 def test_percentile_ranks_within_each_group_on_duckdb():
     """The grouped percentile partitions both its rank and its count window.
 
-    narwhals pushes ``groupby_trans_primitives`` into two separate windows on
+    narwhals pushes the grouped ``percentile`` into two separate windows on
     duckdb: one for ``rank("average")``, one for ``count()``. If only one
     carried the ``parent_id`` partition, ranks would divide by the whole
     table's count instead of the group's.
@@ -633,8 +632,7 @@ def test_percentile_ranks_within_each_group_on_duckdb():
         database=database,
         target_table="children",
         agg_primitives=[],
-        trans_primitives=[],
-        groupby_trans_primitives=["percentile"],
+        trans_primitives=["percentile"],
         max_depth=1,
     )
     got = feature_values(matrix, "PERCENTILE__amount__by__parent_id")
@@ -674,8 +672,7 @@ def test_cumulative_time_since_stays_within_each_group_on_duckdb():
         database=database,
         target_table="children",
         agg_primitives=[],
-        trans_primitives=[],
-        groupby_trans_primitives=["cumulative_time_since_last_true"],
+        trans_primitives=["cumulative_time_since_last_true"],
         max_depth=1,
     )
     got = feature_values(

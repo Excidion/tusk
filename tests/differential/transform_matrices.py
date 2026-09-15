@@ -18,10 +18,12 @@ from transform_cases import (
     ROWS,
     feature_values,
     rows_database,
-    transform_arguments,
 )
 
 import tusk
+from tusk.exceptions import PrimitiveError
+from tusk.primitives.base import GroupTransformPrimitive
+from tusk.primitives.registry import resolve
 
 featuretools = pytest.importorskip("featuretools")
 
@@ -37,18 +39,18 @@ def featuretools_values(
     primitive_name,
     feature_name,
     *,
-    grouped=False,
     cutoff_time=None,
     rows=ROWS,
     groups=GROUPS,
 ):
     """Run one transform primitive through featuretools and read one column.
 
+    A primitive that tusk runs within foreign-key groups goes in featuretools'
+    ``groupby_trans_primitives``, any other in its ``trans_primitives``.
+
     Args:
         primitive_name: The primitive's featuretools name.
         feature_name: The featuretools feature column to read.
-        grouped: Pass the primitive in ``groupby_trans_primitives`` rather
-            than ``trans_primitives``.
         cutoff_time: Passed through to ``featuretools.dfs``. None disables
             filtering, so every row is visible.
         rows: The child table, related to ``groups`` through ``group_id``.
@@ -80,6 +82,7 @@ def featuretools_values(
         )
         .add_relationship("groups", "id", "rows", "group_id")
     )
+    grouped = _runs_within_groups_in_tusk(primitive_name)
     matrix, _ = featuretools.dfs(
         entityset=entityset,
         target_dataframe_name="rows",
@@ -92,11 +95,24 @@ def featuretools_values(
     return matrix.sort_index()[feature_name].tolist()
 
 
+def _runs_within_groups_in_tusk(primitive_name):
+    """Report whether tusk runs a primitive of this name within foreign-key groups.
+
+    Args:
+        primitive_name: The primitive's featuretools name.
+
+    Returns:
+        True for a tusk group transform primitive; False for any other, and
+        for a name tusk does not register under the same spelling.
+    """
+    try:
+        return isinstance(resolve(primitive_name), GroupTransformPrimitive)
+    except PrimitiveError:
+        return False
+
+
 def tusk_values(primitive_name, column, *, cutoff_time=None, rows=ROWS, groups=GROUPS):
     """Run one transform primitive through tusk on polars and read one column.
-
-    A group transform primitive runs in ``groupby_trans_primitives``, any
-    other in ``trans_primitives``.
 
     Args:
         primitive_name: The primitive's tusk name.
@@ -118,7 +134,7 @@ def tusk_values(primitive_name, column, *, cutoff_time=None, rows=ROWS, groups=G
         agg_primitives=[],
         max_depth=1,
         cutoff_time=cutoff_time,
-        **transform_arguments(primitive_name),
+        trans_primitives=[primitive_name],
     )
     return feature_values(matrix, column)
 

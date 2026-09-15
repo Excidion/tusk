@@ -65,7 +65,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         target_table: str,
         agg_primitives: Iterable[str | Primitive] | None = None,
         trans_primitives: Iterable[str | Primitive] | None = None,
-        groupby_trans_primitives: Iterable[str | Primitive] | None = None,
         max_depth: int = 2,
         cutoff_time: datetime | None = None,
         output_backend: str | None = None,
@@ -76,7 +75,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             target_table: Table to build features for.
             agg_primitives: Aggregation primitives; None selects the defaults.
             trans_primitives: Transform primitives; None selects the defaults.
-            groupby_trans_primitives: Transforms within foreign-key groups.
             max_depth: Maximum stacked primitive applications.
             cutoff_time: Only rows at or before this are visible.
             output_backend: Backend to collect the matrix to. None collects to
@@ -85,7 +83,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         self.target_table = target_table
         self.agg_primitives = agg_primitives
         self.trans_primitives = trans_primitives
-        self.groupby_trans_primitives = groupby_trans_primitives
         self.max_depth = max_depth
         self.cutoff_time = cutoff_time
         self.output_backend = output_backend
@@ -123,7 +120,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             target_table=self.target_table,
             agg_primitives=self.agg_primitives,
             trans_primitives=self.trans_primitives,
-            groupby_trans_primitives=self.groupby_trans_primitives,
             max_depth=self.max_depth,
         )
         return self
@@ -238,7 +234,6 @@ class DFSSelectorTransformer(DFSTransformer):
         selection_pipeline: Any = None,
         agg_primitives: Iterable[str | Primitive] | None = None,
         trans_primitives: Iterable[str | Primitive] | None = None,
-        groupby_trans_primitives: Iterable[str | Primitive] | None = None,
         max_depth: int = 2,
         cutoff_time: datetime | None = None,
         output_backend: str | None = None,
@@ -251,7 +246,6 @@ class DFSSelectorTransformer(DFSTransformer):
                 everything before it encodes.
             agg_primitives: Aggregation primitives; None selects the defaults.
             trans_primitives: Transform primitives; None selects the defaults.
-            groupby_trans_primitives: Transforms within foreign-key groups.
             max_depth: Maximum stacked primitive applications.
             cutoff_time: Only rows at or before this are visible.
             output_backend: Backend to collect to; None collects natively.
@@ -260,7 +254,6 @@ class DFSSelectorTransformer(DFSTransformer):
             target_table=target_table,
             agg_primitives=agg_primitives,
             trans_primitives=trans_primitives,
-            groupby_trans_primitives=groupby_trans_primitives,
             max_depth=max_depth,
             cutoff_time=cutoff_time,
             output_backend=output_backend,

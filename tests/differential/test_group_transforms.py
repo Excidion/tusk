@@ -3,7 +3,7 @@
 The shared table in ``tests/transform_cases.py`` puts every row in one group,
 so it cannot tell a grouped result from a whole-table one. Here two groups
 interleave in ``occurred_at``, so a result that ignored ``group_id`` would
-differ from featuretools' ``groupby_trans_primitives``. Within group 1,
+differ from featuretools' grouped result. Within group 1,
 ``occurred_at`` orders the rows 5, 3, 1, against id order, so a result
 ordered by id would differ too.
 
@@ -64,7 +64,6 @@ def test_group_transforms_stay_within_their_group(name, cutoff_time, expected):
     theirs = featuretools_values(
         name,
         f"{name.upper()}(value) by group_id",
-        grouped=True,
         cutoff_time=cutoff_time,
         rows=INTERLEAVED_ROWS,
         groups=GROUPS,

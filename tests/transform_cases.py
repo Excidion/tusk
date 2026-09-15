@@ -15,8 +15,6 @@ import pyarrow as pa
 import pytest
 
 import tusk
-from tusk.primitives.base import GroupTransformPrimitive
-from tusk.primitives.registry import resolve
 
 GROUPS = pd.DataFrame({"id": [1]})
 
@@ -255,22 +253,6 @@ def rows_database(table, groups):
         )
         .add_relationship(parent="groups", child="rows", foreign_key="group_id")
     )
-
-
-def transform_arguments(primitive_name):
-    """Pass a transform primitive in the synthesis argument that accepts it.
-
-    Args:
-        primitive_name: The primitive's tusk name.
-
-    Returns:
-        Keyword arguments for ``tusk.deep_feature_synthesis``: a group
-        transform primitive in ``groupby_trans_primitives``, any other in
-        ``trans_primitives``.
-    """
-    if isinstance(resolve(primitive_name), GroupTransformPrimitive):
-        return {"trans_primitives": [], "groupby_trans_primitives": [primitive_name]}
-    return {"trans_primitives": [primitive_name]}
 
 
 def feature_values(matrix, column):

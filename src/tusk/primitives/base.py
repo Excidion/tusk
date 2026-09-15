@@ -183,7 +183,7 @@ class TransformPrimitive(Primitive):
 class GroupTransformPrimitive(TransformPrimitive):
     """A transform that reads the other rows sharing its row's foreign key.
 
-    Only allowed in ``groupby_trans_primitives``, where the compiler wraps its
+    Synthesis applies it within each foreign-key group: the compiler wraps its
     expression in ``.over(foreign_key)``.
     """
 
