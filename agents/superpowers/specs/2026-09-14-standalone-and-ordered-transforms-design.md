@@ -50,7 +50,7 @@ All live in `src/tusk/primitives/transform.py`. "Ordered" primitives set
 | `percentile` | `NUMERIC` | `Float64` | `expr.rank("average") / expr.count()` | |
 | `cum_mean` | `NUMERIC` | `Float64` | `expr.cum_sum() / expr.cum_count()` | ✓ |
 | `same_as_previous` | `NUMERIC` | `Boolean` | `expr == expr.shift(1)` | ✓ |
-| `absolute_diff` | `NUMERIC` | input's | `expr.diff().abs()` | ✓ |
+| `absolute_diff` | `NUMERIC` | `Float64` | `expr.diff().abs()` | ✓ |
 | `percent_change` | `NUMERIC` | `Float64` | `expr / expr.shift(1) - 1` | ✓ |
 | `cumulative_time_since_last_true` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(flag).then(moment).fill_null(strategy="forward")` | ✓ |
 | `cumulative_time_since_last_false` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(~flag).then(moment).fill_null(strategy="forward")` | ✓ |

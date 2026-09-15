@@ -698,6 +698,30 @@ def test_negate_does_not_overflow_an_integer_dtype_on_duckdb():
     assert got["unsigned"].to_list() == [-4294967295.0]
 
 
+def test_absolute_diff_does_not_overflow_an_integer_dtype_on_duckdb():
+    """duckdb raises subtracting TINYINT's minimum from its maximum, and on a
+    UTINYINT decrease."""
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES "
+            "(TIMESTAMP '2024-01-01', CAST(-128 AS TINYINT), CAST(200 AS UTINYINT)), "
+            "(TIMESTAMP '2024-01-02', CAST(127 AS TINYINT), CAST(1 AS UTINYINT))) "
+            # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
+            't("at", small, unsigned)',
+        ),
+    )
+    absolute_diff = resolve("absolute_diff")
+    got = frame.select(
+        absolute_diff.outputs(nw.col("small"))[0].over(order_by="at").alias("small"),
+        absolute_diff.outputs(nw.col("unsigned"))[0]
+        .over(order_by="at")
+        .alias("unsigned"),
+    ).collect()
+    assert got["small"].to_list() == [None, 255.0]
+    assert got["unsigned"].to_list() == [None, 199.0]
+
+
 @pytest.mark.parametrize(
     ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
 )

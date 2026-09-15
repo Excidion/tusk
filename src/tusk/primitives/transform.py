@@ -992,10 +992,13 @@ class AbsoluteDiff(TransformPrimitive):
     """Size of the change from the previous row in row-creation order.
 
     The first row, and a row whose own or previous value is null, is null.
+    An integer above 2**53 in magnitude, or a high-precision decimal, loses
+    precision in the round trip through ``Float64``.
     """
 
     name = "absolute_diff"
     input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
     order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
@@ -1007,7 +1010,8 @@ class AbsoluteDiff(TransformPrimitive):
         Returns:
             A narwhals expression of absolute differences.
         """
-        return expr.diff().abs()
+        # an integer dtype's difference can overflow or wrap around it
+        return expr.cast(nw.Float64).diff().abs()
 
 
 @register

@@ -726,6 +726,23 @@ def test_negate_does_not_wrap_around_an_integer_dtype(dtype, values, expected):
 
 
 @pytest.mark.parametrize(
+    ("dtype", "values", "expected"),
+    [
+        (pl.Int8, [-128, 127], [None, 255.0]),
+        (pl.UInt8, [200, 1], [None, 199.0]),
+    ],
+)
+def test_absolute_diff_does_not_wrap_around_an_integer_dtype(dtype, values, expected):
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"v": values, "t": [dt.datetime(2024, 1, 1), dt.datetime(2024, 1, 2)]},
+            schema={"v": dtype, "t": pl.Datetime},
+        ),
+    )
+    assert _apply(frame, "absolute_diff", "v") == expected
+
+
+@pytest.mark.parametrize(
     ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
 )
 def test_minute_and_second_read_a_time_column(name, expected):
