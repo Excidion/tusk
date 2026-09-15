@@ -263,7 +263,11 @@ class Absolute(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class NaturalLog(TransformPrimitive):
-    """Natural logarithm. A negative input gives null; zero gives negative infinity."""
+    """Natural logarithm.
+
+    A negative input gives null, where the unguarded answer varies by
+    backend; zero gives negative infinity.
+    """
 
     name = "natural_log"
     input_dtypes = (F.NUMERIC,)
@@ -278,7 +282,6 @@ class NaturalLog(TransformPrimitive):
         Returns:
             A narwhals expression of natural logarithms.
         """
-        # polars answers NaN for a negative input, duckdb null
         return nw.when(expr >= 0).then(expr.log())
 
 
@@ -332,7 +335,11 @@ class Negate(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class SquareRoot(TransformPrimitive):
-    """Square root. A negative input gives null."""
+    """Square root.
+
+    A negative input gives null, where the unguarded answer varies by
+    backend; zero gives ``0.0``.
+    """
 
     name = "square_root"
     input_dtypes = (F.NUMERIC,)
@@ -347,7 +354,6 @@ class SquareRoot(TransformPrimitive):
         Returns:
             A narwhals expression of square roots.
         """
-        # polars answers NaN for a negative input, duckdb null
         return nw.when(expr >= 0).then(expr.sqrt())
 
 
@@ -1024,8 +1030,7 @@ class CumulativeTimeSinceLastTrue(TransformPrimitive):
     Null until the first true flag, and on a row whose datetime is null. A
     null flag is not true. A matching row whose datetime is null is skipped,
     so later rows measure from the match before it. For a time-zone-aware
-    column, duckdb measures wall-clock time, so a gap across a daylight-saving
-    change can differ by an hour from polars.
+    column, a gap across a daylight-saving change can vary by backend.
     """
 
     name = "cumulative_time_since_last_true"
@@ -1054,8 +1059,8 @@ class CumulativeTimeSinceLastFalse(TransformPrimitive):
     Null until the first false flag, and on a row whose datetime is null. A
     null flag is not false. A matching row whose datetime is null is
     skipped, so later rows measure from the match before it. For a
-    time-zone-aware column, duckdb measures wall-clock time, so a gap across
-    a daylight-saving change can differ by an hour from polars.
+    time-zone-aware column, a gap across a daylight-saving change can vary by
+    backend.
     """
 
     name = "cumulative_time_since_last_false"

@@ -92,12 +92,6 @@ and tusk builds the operator rather than working around it.
 featuretools instead propagates the null in every one of those cells. `NOT`
 agrees on both sides: the negation of an unknown is unknown.
 
-## Negative inputs to `square_root` and `natural_log`
-
-A negative number has no real square root or logarithm, so both primitives
-give null for it on every backend. Zero is not negative: `square_root` gives
-`0.0` and `natural_log` gives negative infinity.
-
 ## Comparing two columns
 
 The comparison primitives accept a pair of numbers or a pair of datetimes,
