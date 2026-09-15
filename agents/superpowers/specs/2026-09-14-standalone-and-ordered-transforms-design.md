@@ -1,6 +1,6 @@
 # Standalone and ordered transforms
 
-Phase 2 of `2026-09-13-primitive-parity-roadmap-design.md`: fifteen transform
+Phase 2 of `2026-09-13-primitive-parity-roadmap-design.md`: sixteen transform
 primitives that each fit a single narwhals expression, tests for the ❓
 transform rows, and the ⚠️ pointer for a featuretools transform tusk answers
 with an existing primitive.
@@ -33,14 +33,33 @@ Settled with the maintainer, on top of the roadmap's shared rules.
 5. **No new defaults.** featuretools' default transforms are `age`, `day`,
    `year`, `month`, `weekday`, `haversine`, `num_words` and `num_characters`;
    none of them belongs to this phase.
+6. **Transforms that read other rows only run within foreign-key groups.**
+   `TransformPrimitive` has two subclasses in `tusk.primitives.base`, replacing
+   the `order_dependent` flag:
+   - `GroupTransformPrimitive` reads the other rows sharing its row's foreign
+     key. The compiler wraps it in `.over(foreign_key)`. `percentile` is one.
+   - `OrderedTransformPrimitive(GroupTransformPrimitive)` also reads them in
+     `row_creation_time` order. The compiler wraps it in
+     `.over(foreign_key, order_by=(row_creation_time, primary_key))`. Every
+     ordered primitive, old and new, is one.
+
+   A `GroupTransformPrimitive` passed in `trans_primitives` raises
+   `PrimitiveError` naming the primitive and `groupby_trans_primitives`,
+   before any query is built. `TransformFeature` raises the same error, so a
+   hand-built or unpickled feature cannot bypass synthesis;
+   `GroupByTransformFeature` accepts any `TransformPrimitive`. Over the whole
+   table a running total or a rank would mix every entity's rows and change
+   with whichever rows are in the dataset. featuretools also computes these
+   across the whole table, so that form is a deliberate divergence, and every
+   row for these primitives is ⚠️.
 
 ## Primitives
 
-All live in `src/tusk/primitives/transform.py`. "Ordered" primitives set
-`order_dependent = True` and are wrapped by the compiler in
-`.over(..., order_by=(row_creation_time, primary_key))`.
+All live in `src/tusk/primitives/transform.py`. "Group" primitives subclass
+`GroupTransformPrimitive` and "ordered" primitives `OrderedTransformPrimitive`
+(decision 6).
 
-| Name | Input | Output | Expression | Ordered |
+| Name | Input | Output | Expression | Kind |
 | --- | --- | --- | --- | --- |
 | `is_null` | `ANY` | `Boolean` | `expr.is_null()` | |
 | `negate` | `NUMERIC` | `Float64` | `expr.cast(Float64) * -1` | |
@@ -51,17 +70,20 @@ All live in `src/tusk/primitives/transform.py`. "Ordered" primitives set
 | `second` | `HAS_TIME` | `Int8` | `expr.dt.second()` | |
 | `day_of_year` | `HAS_DATE` | `Int16` | `expr.dt.ordinal_day()` | |
 | `is_leap_year` | `HAS_DATE` | `Boolean` | `(year % 4 == 0) & (year % 100 != 0) \| (year % 400 == 0)`, `year` cast to `Int32` | |
-| `cum_mean` | `NUMERIC` | `Float64` | `expr.cum_sum() / expr.cum_count()` | ✓ |
-| `same_as_previous` | `NUMERIC` | `Boolean` | `expr == expr.shift(1)` | ✓ |
-| `absolute_diff` | `NUMERIC` | `Float64` | `expr.cast(Float64).diff().abs()` | ✓ |
-| `percent_change` | `NUMERIC` | `Float64` | `expr / expr.shift(1) - 1` | ✓ |
-| `cumulative_time_since_last_true` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(flag).then(moment).fill_null(strategy="forward")` | ✓ |
-| `cumulative_time_since_last_false` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(~flag).then(moment).fill_null(strategy="forward")` | ✓ |
+| `percentile` | `NUMERIC` | `Float64` | `expr.rank("average") / expr.count()` | group |
+| `cum_mean` | `NUMERIC` | `Float64` | `expr.cum_sum() / expr.cum_count()` | ordered |
+| `same_as_previous` | `NUMERIC` | `Boolean` | `expr == expr.shift(1)` | ordered |
+| `absolute_diff` | `NUMERIC` | `Float64` | `expr.cast(Float64).diff().abs()` | ordered |
+| `percent_change` | `NUMERIC` | `Float64` | `expr / expr.shift(1) - 1` | ordered |
+| `cumulative_time_since_last_true` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(flag).then(moment).fill_null(strategy="forward")` | ordered |
+| `cumulative_time_since_last_false` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(~flag).then(moment).fill_null(strategy="forward")` | ordered |
 
 `natural_log` changes to `when(expr >= 0).then(expr.log())`.
 
 ### Null and edge behavior
 
+- `percentile` ranks the non-null values of its group with ties averaged and
+  divides by the number of non-null values in the group; a null stays null.
 - `cum_mean` skips nulls in both the running sum and the running count; a null
   row is null.
 - `same_as_previous`, `absolute_diff` and `percent_change` are null on the
@@ -91,22 +113,27 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
 | --- | --- |
 | `diff_datetime` | ⚠️, pointing at `time_since_previous`. |
 | `cum_count` | ⚠️: featuretools counts every row, tusk only non-null values. |
-| `cum_sum`, `cum_min`, `cum_max`, `diff`, `absolute`, `year`, `month`, `day`, `hour` | ❓ to ✅, once the differential test confirms agreement. `diff` shares `absolute_diff`'s pre-cast integer overflow (decision 4); fixing it is a later phase's follow-up. |
+| `cum_sum`, `cum_min`, `cum_max`, `diff` | ❓ to ⚠️, once the differential test confirms grouped agreement: only in `groupby_trans_primitives` (decision 6). `diff` shares `absolute_diff`'s pre-cast integer overflow (decision 4); fixing it is a later phase's follow-up. |
+| `absolute`, `year`, `month`, `day`, `hour` | ❓ to ✅, once the differential test confirms agreement. |
+| `cum_count`, `time_since_previous` and every ordered row above | The comment adds: only in `groupby_trans_primitives`, featuretools also computes it across the whole table. |
 | `natural_log` | ❓ to ⚠️: a negative input is null, featuretools NaN. |
 
 ## Testing
 
 - `tests/transform_cases.py`: a shared eight-row table, `ROWS`, and `EXPECTED`,
-  a value per column per new primitive. It covers a null, a zero, a negative,
-  a boolean flag and a nullable boolean flag, and a tied `value` column, so
-  the cases reach negative `square_root` and `natural_log` inputs, nulls in
-  every ordered primitive and a null date in `is_leap_year`.
+  a value per column per new primitive. Every row belongs to the one row of a
+  parent table, `GROUPS`, so the group and ordered primitives run in
+  `groupby_trans_primitives` over all eight rows. It covers a null, a zero, a
+  negative, a boolean flag and a nullable boolean flag, and a tied `value`
+  column, so the cases reach negative `square_root` and `natural_log` inputs,
+  ties in `percentile`, nulls in every ordered primitive and a null date in
+  `is_leap_year`.
 - `tests/test_primitives_transform.py`: `EXPECTED` checked on polars, plus
   `negate` and `absolute_diff` on `Int8` and an unsigned integer dtype (where
   `ROWS`'s `value` column, already a float, cannot reach the wraparound),
-  `minute` and `second` on a standalone `Time` column, and
-  `cumulative_time_since_last_true` grouped by foreign key, so a group's
-  match does not leak into its neighbour's.
+  `minute` and `second` on a standalone `Time` column, and `percentile` and
+  `cumulative_time_since_last_true` each over two parent rows, so a
+  group's rank or match does not leak into its neighbour's.
 - `tests/test_backend_duckdb.py`: the same `EXPECTED`, integer-dtype, `Time`-
   column and grouped checks on duckdb. This is what pins decisions 3 and 4;
   `test_cumulative_time_since_measures_a_date_column_on_duckdb` pins the
@@ -116,29 +143,38 @@ Against narwhals 2.24.0, polars 1.43.2 and duckdb 1.5.5:
   - `tests/differential/test_datetime_transforms.py`: `minute`, `second`,
     `day_of_year`, `is_leap_year`, `year`, `month`, `day`, `hour`.
   - `tests/differential/test_general_transforms.py` (new): `is_null`,
-    `negate`, `square_root`, `sine`, `cosine`, `absolute`, `natural_log`.
+    `negate`, `square_root`, `sine`, `cosine`, `absolute`, `natural_log`, and
+    `percentile` grouped, with and without a cutoff.
   - `tests/differential/test_cumulative_transforms.py` (new): `cum_mean`,
     `same_as_previous`, `absolute_diff`, `percent_change`,
     `cumulative_time_since_last_true`, `cumulative_time_since_last_false`,
     `cum_sum`, `cum_min`, `cum_max`, `diff`, `cum_count`; `diff_datetime`
     against `time_since_previous`. The datetime column is featuretools' time
     index, which the `cumulative_time_since_last_*` primitives require and
-    which orders the rows on both sides.
+    which orders the rows on both sides. Both sides relate every row to one
+    parent row and pass these primitives in `groupby_trans_primitives`.
 
 Expected coverage, to be confirmed by the differential tests:
 
 | Status | Rows |
 | --- | --- |
-| ✅ | `is_null`, `negate`, `sine`, `cosine`, `minute`, `second`, `day_of_year`, `cum_sum`, `cum_min`, `cum_max`, `diff` (integer overflow, see decision 4), `absolute`, `year`, `month`, `day`, `hour` |
-| ⚠️ | `square_root`, `natural_log` (negative input), `is_leap_year` (null date), `cum_mean` (null divisor), `same_as_previous` (first row, no fill), `absolute_diff`, `percent_change` (no fill), `cumulative_time_since_last_true`, `cumulative_time_since_last_false` (`Duration`, any datetime), `cum_count` (null rows), `diff_datetime` (pointer) |
+| ✅ | `is_null`, `negate`, `sine`, `cosine`, `minute`, `second`, `day_of_year`, `absolute`, `year`, `month`, `day`, `hour` |
+| ⚠️ | `square_root`, `natural_log` (negative input), `is_leap_year` (null date), `percentile`, `cum_sum`, `cum_min`, `cum_max`, `diff` (integer overflow, see decision 4), `cum_mean` (null divisor), `same_as_previous` (first row, no fill), `absolute_diff`, `percent_change` (no fill), `cumulative_time_since_last_true`, `cumulative_time_since_last_false` (`Duration`, any datetime), `cum_count` (null rows), `diff_datetime` (pointer) |
+
+Every group and ordered row is also only in `groupby_trans_primitives`
+(decision 6).
 
 ## Documentation
 
-- `docs/api/primitives.md`: fifteen entries in the transform and
-  order-dependent transform sections.
-- `docs/guide/primitives.md`: the shipped list; the new ordered primitives in
-  "What can go in `groupby_trans_primitives`"; the negative-input rule for
-  `square_root` and `natural_log`.
+- `docs/api/primitives.md`: `GroupTransformPrimitive` and
+  `OrderedTransformPrimitive` under base classes; sixteen entries in the
+  transform, group transform and ordered transform sections.
+- `docs/guide/primitives.md`: the shipped list; `percentile` and the new
+  ordered primitives in "What can go in `groupby_trans_primitives`", with the
+  rule that they only run there; the negative-input rule for `square_root`
+  and `natural_log`.
+- `docs/guide/custom-primitives.md`: choosing `GroupTransformPrimitive` or
+  `OrderedTransformPrimitive` for a primitive that reads other rows.
 - `docs/guide/primitive-coverage.md`: every row named above, with its test
   link, and the stale "narwhals has none" comment on the
   `cumulative_time_since_last_*` rows removed.
@@ -147,5 +183,3 @@ Expected coverage, to be confirmed by the differential tests:
 
 - Every primitive in roadmap phases 3 to 6, including `is_weekend`.
 - Forward-filling nulls, which would need a primitive to build in two stages.
-- `percentile`: data leakage risk, scaling is the job of downstream sklearn
-  transformers.
