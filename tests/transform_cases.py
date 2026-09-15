@@ -230,7 +230,7 @@ EXPECTED = {
 
 
 def rows_database(table, groups):
-    """Wrap the shared table and its parent in a database.
+    """Wrap a child table and its parent in a database.
 
     Args:
         table: A child table keyed by ``id``, with ``occurred_at`` and
@@ -240,8 +240,9 @@ def rows_database(table, groups):
             native lazy frame of the same backend.
 
     Returns:
-        A database whose ``rows`` table is ordered by ``occurred_at`` and
-        belongs to ``groups`` through ``group_id``.
+        A database that always names the child table ``rows`` and the parent
+        ``groups``; ``rows`` is ordered by ``occurred_at`` and belongs to
+        ``groups`` through ``group_id``.
     """
     return (
         tusk.Database("rows")
