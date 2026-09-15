@@ -7,11 +7,12 @@ everything pushed down to the backend.
 ## What ships with tusk
 
 See the [API reference](../api/primitives.md) for the full list of
-aggregation, transform and order-dependent primitives tusk ships.
+aggregation, transform, group transform and ordered transform primitives tusk
+ships.
 
 Every `time_since_*` primitive needs more than its input columns: it
 requires a `cutoff_time` at apply time, since its value is measured against
-that moment rather than derived from the rows alone. Order-dependent
+that moment rather than derived from the rows alone. Ordered transform
 primitives require a `row_creation_time` on the table.
 
 See [primitive coverage](primitive-coverage.md) for how these line up against
@@ -124,12 +125,28 @@ You can guard against this with `db.validate()`.
 
 ## What can go in `groupby_trans_primitives`
 
-Only **group-aware** primitives — ones whose expression reduces or scans across
-the group defined by a foreign key. The order-dependent built-ins (`cum_sum`,
+A transform may only look at other rows that share its row's foreign key, the
+same rows an aggregation sees. Over the whole table, a running total or a rank
+would mix every entity's rows and change with whichever rows are in the
+dataset, such as a test split.
+
+Transforms that read other rows are **group transform primitives**
+([`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive]):
+`percentile`, which ranks each value within its group, and the **ordered
+transform primitives**
+([`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive]),
+which read their group's rows in `row_creation_time` order: `cum_sum`,
 `cum_count`, `cum_min`, `cum_max`, `cum_mean`, `diff`, `absolute_diff`,
 `same_as_previous`, `percent_change`, `time_since_previous`,
-`cumulative_time_since_last_true`, `cumulative_time_since_last_false`) all
-qualify. These are the primitives you'll normally pass here.
+`cumulative_time_since_last_true` and `cumulative_time_since_last_false`.
+
+They only run in `groupby_trans_primitives`. Passing one in `trans_primitives`
+raises [`PrimitiveError`][tusk.exceptions.PrimitiveError] before any query is
+built, and so does building a `TransformFeature` from one by hand.
+
+A group is not always a single entity. Grouping by a shared parent, such as
+drivers when the target is customers, puts several customers' rows in one
+group, exactly as an aggregation over drivers does.
 
 Every other built-in transform (`absolute`, `month`, `add_numeric`, …) is
 **elementwise** rather than group-aware, and narwhals rejects `.over()` on an
@@ -146,6 +163,6 @@ rather than after a long query. The failure surfaces synchronously out of
 `features_only=True` synthesis happily emits the definition and the error waits
 until you call `apply_features()` on it.
 
-No built-in sits on the grouped, non-order-dependent path; that kind of
-primitive must be user-defined — that's [the intended extension
-point](custom-primitives.md#group-aware-primitives).
+A primitive of your own that reads its group, such as a share of the group's
+total, subclasses `GroupTransformPrimitive`; see [group-aware
+primitives](custom-primitives.md#group-aware-primitives).

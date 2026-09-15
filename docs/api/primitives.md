@@ -12,6 +12,10 @@
 
 ::: tusk.primitives.TransformPrimitive
 
+::: tusk.primitives.GroupTransformPrimitive
+
+::: tusk.primitives.OrderedTransformPrimitive
+
 ::: tusk.primitives.NeedsCutoffTime
 
 ## Registry
@@ -156,7 +160,11 @@
 
 ::: tusk.primitives.Or
 
-## Order-dependent transform primitives
+## Group transform primitives
+
+::: tusk.primitives.Percentile
+
+## Ordered transform primitives
 
 ::: tusk.primitives.CumSum
 
