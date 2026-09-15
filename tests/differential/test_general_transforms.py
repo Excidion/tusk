@@ -36,6 +36,15 @@ def test_general_transforms_match_featuretools(ours, column, theirs, feature_nam
     assert_agree(tusk_values(ours, column), featuretools_values(theirs, feature_name))
 
 
+def test_percentile_matches_featuretools_within_the_group():
+    """Every row shares one group; the tied values in ``value`` share a rank."""
+    ours = tusk_values("percentile", "PERCENTILE__value__by__group_id")
+    theirs = featuretools_values(
+        "percentile", "PERCENTILE(value) by group_id", grouped=True
+    )
+    assert_agree(ours, theirs)
+
+
 @pytest.mark.parametrize(
     ("ours", "column", "theirs", "feature_name"),
     [

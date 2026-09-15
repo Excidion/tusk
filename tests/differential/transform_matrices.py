@@ -1,7 +1,8 @@
 """Build one transform column over the shared table in tusk and in featuretools.
 
 Both sides order the rows by ``occurred_at``: tusk as the row creation time,
-featuretools as the time index.
+featuretools as the time index. Both sides relate every row to the one row of
+``GROUPS`` through ``group_id``, so a group transform runs within that group.
 """
 
 import datetime as dt
@@ -9,7 +10,13 @@ import datetime as dt
 import pandas as pd
 import polars as pl
 import pytest
-from transform_cases import ROWS, feature_values, rows_database
+from transform_cases import (
+    GROUPS,
+    ROWS,
+    feature_values,
+    rows_database,
+    transform_arguments,
+)
 
 import tusk
 
@@ -23,31 +30,43 @@ LOGICAL_TYPES = {
 }
 
 
-def featuretools_values(primitive_name, feature_name):
+def featuretools_values(primitive_name, feature_name, *, grouped=False):
     """Run one transform primitive through featuretools and read one column.
 
     Args:
         primitive_name: The primitive's featuretools name.
         feature_name: The featuretools feature column to read.
+        grouped: Pass the primitive in ``groupby_trans_primitives`` rather
+            than ``trans_primitives``.
 
     Returns:
         The column's values in id order, missing values as featuretools
         stores them.
     """
-    entityset = featuretools.EntitySet("rows").add_dataframe(
-        dataframe_name="rows",
-        # featuretools' woodwork initialization sorts and re-types its input
-        # in place; copy so ROWS stays untouched for every other test.
-        dataframe=ROWS.copy(),
-        index="id",
-        time_index="occurred_at",
-        logical_types=LOGICAL_TYPES,
+    entityset = (
+        featuretools.EntitySet("rows")
+        .add_dataframe(
+            dataframe_name="groups",
+            dataframe=GROUPS.copy(),
+            index="id",
+        )
+        .add_dataframe(
+            dataframe_name="rows",
+            # featuretools' woodwork initialization sorts and re-types its
+            # input in place; copy so ROWS stays untouched for every other test.
+            dataframe=ROWS.copy(),
+            index="id",
+            time_index="occurred_at",
+            logical_types=LOGICAL_TYPES,
+        )
+        .add_relationship("groups", "id", "rows", "group_id")
     )
     matrix, _ = featuretools.dfs(
         entityset=entityset,
         target_dataframe_name="rows",
         agg_primitives=[],
-        trans_primitives=[primitive_name],
+        trans_primitives=[] if grouped else [primitive_name],
+        groupby_trans_primitives=[primitive_name] if grouped else [],
         max_depth=1,
     )
     return matrix.sort_index()[feature_name].tolist()
@@ -55,6 +74,9 @@ def featuretools_values(primitive_name, feature_name):
 
 def tusk_values(primitive_name, column):
     """Run one transform primitive through tusk on polars and read one column.
+
+    A group transform primitive runs in ``groupby_trans_primitives``, any
+    other in ``trans_primitives``.
 
     Args:
         primitive_name: The primitive's tusk name.
@@ -64,11 +86,14 @@ def tusk_values(primitive_name, column):
         The column's values in id order, null as None.
     """
     matrix, _ = tusk.deep_feature_synthesis(
-        database=rows_database(pl.from_pandas(ROWS).lazy()),
+        database=rows_database(
+            pl.from_pandas(ROWS).lazy(),
+            pl.from_pandas(GROUPS).lazy(),
+        ),
         target_table="rows",
         agg_primitives=[],
-        trans_primitives=[primitive_name],
         max_depth=1,
+        **transform_arguments(primitive_name),
     )
     return feature_values(matrix, column)
 
