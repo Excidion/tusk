@@ -7,7 +7,8 @@ import pytest
 
 import tusk
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import TransformPrimitive
+from tusk.exceptions import PrimitiveError
+from tusk.primitives.base import GroupTransformPrimitive, TransformPrimitive
 from tusk.synthesis import synthesize
 
 
@@ -752,21 +753,68 @@ def test_zero_config_run_warns_about_nothing(db, recwarn):
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 
 
-def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one():
-    db = tusk.Database("x").add_table(
-        "t",
-        pl.LazyFrame({"id": [1], "v": [1.0]}),
-        primary_key="id",
+def test_ordered_transform_without_row_creation_time_fails_in_phase_one():
+    db = (
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "t", pl.LazyFrame({"id": [1], "g": [1], "v": [1.0]}), primary_key="id"
+        )
+        .add_relationship(parent="p", child="t", foreign_key="g")
     )
-    with pytest.raises(tusk.exceptions.PrimitiveError, match="row_creation_time"):
+    with pytest.raises(PrimitiveError, match="row_creation_time"):
         synthesize(
             db,
             "t",
             agg_primitives=[],
-            trans_primitives=["cum_sum"],
+            trans_primitives=[],
+            groupby_trans_primitives=["cum_sum"],
+            max_depth=1,
+        )
+
+
+@dataclass(frozen=True)
+class ShareOfGroupMaximum(GroupTransformPrimitive):
+    """A user-defined group transform: each value divided by its group's maximum."""
+
+    name = "share_of_group_maximum"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Divide the value by the group's maximum."""
+        return expr / expr.max()
+
+
+@pytest.mark.parametrize("primitive", ["cum_sum", ShareOfGroupMaximum()])
+def test_group_transform_in_trans_primitives_raises_before_any_query(db, primitive):
+    with pytest.raises(PrimitiveError, match="in groupby_trans_primitives"):
+        synthesize(
+            db,
+            "transactions",
+            agg_primitives=[],
+            trans_primitives=[primitive],
             groupby_trans_primitives=[],
             max_depth=1,
         )
+
+
+def test_custom_group_transform_runs_in_groupby_trans_primitives(db):
+    features = synthesize(
+        db,
+        "transactions",
+        agg_primitives=[],
+        trans_primitives=[],
+        groupby_trans_primitives=[ShareOfGroupMaximum()],
+        max_depth=1,
+    )
+    feature = next(
+        f
+        for f in features
+        if f.name == "SHARE_OF_GROUP_MAXIMUM__amount__by__session_id"
+    )
+    matrix = features.apply(db).collect().sort("id")
+    assert matrix[feature.name].to_list() == [1 / 3, 1.0, 0.5, 1.0]
 
 
 def test_unknown_target_raises(db):

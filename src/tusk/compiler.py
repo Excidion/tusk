@@ -23,7 +23,7 @@ from tusk.features import (
     IdentityFeature,
     TransformFeature,
 )
-from tusk.primitives.base import NeedsCutoffTime, Primitive
+from tusk.primitives.base import NeedsCutoffTime, OrderedTransformPrimitive, Primitive
 
 if TYPE_CHECKING:
     from tusk.feature_list import FeatureList
@@ -390,8 +390,9 @@ def _apply(
 ) -> nw.LazyFrame:
     """Add a row-wise feature's columns to a frame.
 
-    Order-dependent primitives are wrapped in ``.over(..., order_by=...)``
-    rather than relying on a frame-level sort: on lazy backends a sort is not
+    A groupby transform is wrapped in ``.over(foreign_key)``, and an ordered
+    transform primitive in ``.over(foreign_key, order_by=...)``, rather than
+    relying on a frame-level sort: on lazy backends a sort is not
     guaranteed to survive later operations, and narwhals requires ``order_by``
     for these expressions in any case.
 
@@ -420,7 +421,7 @@ def _apply(
         if isinstance(feature, GroupByTransformFeature)
         else []
     )
-    if getattr(feature.primitive, "order_dependent", False):
+    if isinstance(feature.primitive, OrderedTransformPrimitive):
         order_by = _order_by(database, feature.table, feature.primitive.name)
         exprs = [e.over(*partition, order_by=order_by) for e in exprs]
     elif partition:

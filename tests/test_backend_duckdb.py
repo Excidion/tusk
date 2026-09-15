@@ -21,9 +21,11 @@ from transform_cases import (
     EXPECTED as TRANSFORM_EXPECTED,
 )
 from transform_cases import (
+    GROUPS,
     ROWS,
     feature_values,
     rows_database,
+    transform_arguments,
 )
 from transform_cases import (
     assert_values_match as assert_transform_values_match,
@@ -570,7 +572,7 @@ def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name
 
 @pytest.mark.parametrize("column", sorted(TRANSFORM_EXPECTED))
 def test_transforms_give_the_polars_values_on_duckdb(column):
-    """Every standalone and ordered transform survives translation to SQL, row by row.
+    """Every standalone, group and ordered transform survives translation to SQL.
 
     ``square_root`` and ``natural_log`` pin the negative-input guard, which
     polars would otherwise answer with NaN, and the ordered primitives pin
@@ -582,12 +584,16 @@ def test_transforms_give_the_polars_values_on_duckdb(column):
     primitive_name, _, expected = TRANSFORM_EXPECTED[column]
     con = duckdb.connect()
     con.register("rows_frame", ROWS)
+    con.register("groups_frame", GROUPS)
     matrix, _ = tusk.deep_feature_synthesis(
-        database=rows_database(con.sql("SELECT * FROM rows_frame")),
+        database=rows_database(
+            con.sql("SELECT * FROM rows_frame"),
+            con.sql("SELECT * FROM groups_frame"),
+        ),
         target_table="rows",
         agg_primitives=[],
-        trans_primitives=[primitive_name],
         max_depth=1,
+        **transform_arguments(primitive_name),
     )
     assert_transform_values_match(feature_values(matrix, column), expected)
 

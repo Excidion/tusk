@@ -35,7 +35,9 @@ from tusk.primitives.aggregation import (
 )
 from tusk.primitives.base import (
     AggregationPrimitive,
+    GroupTransformPrimitive,
     NeedsCutoffTime,
+    OrderedTransformPrimitive,
     Primitive,
     TransformPrimitive,
 )
@@ -118,6 +120,7 @@ __all__ = [
     "FirstLastTimeDelta",
     "GreaterThan",
     "GreaterThanEqualTo",
+    "GroupTransformPrimitive",
     "Hour",
     "IsLeapYear",
     "IsNull",
@@ -149,6 +152,7 @@ __all__ = [
     "NotEqual",
     "NotEqualCategorical",
     "Or",
+    "OrderedTransformPrimitive",
     "PercentChange",
     "PercentTrue",
     "PercentUnique",

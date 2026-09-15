@@ -29,10 +29,16 @@ from tusk.features import (
     GroupByTransformFeature,
     IdentityFeature,
     TransformFeature,
+    _reject_group_transform,
     _reject_wrong_kind,
 )
 from tusk.primitives.aggregation import AGG_DEFAULTS
-from tusk.primitives.base import AggregationPrimitive, Primitive, TransformPrimitive
+from tusk.primitives.base import (
+    AggregationPrimitive,
+    OrderedTransformPrimitive,
+    Primitive,
+    TransformPrimitive,
+)
 from tusk.primitives.registry import resolve_all
 from tusk.primitives.transform import TRANS_DEFAULTS
 
@@ -54,7 +60,10 @@ def synthesize(
     ``agg_primitives`` is not an
     :class:`~tusk.primitives.base.AggregationPrimitive`, or one from
     ``trans_primitives`` or ``groupby_trans_primitives`` is not a
-    :class:`~tusk.primitives.base.TransformPrimitive`. Checked here, eagerly,
+    :class:`~tusk.primitives.base.TransformPrimitive`, and, via
+    :func:`~tusk.features._reject_group_transform`, if one from
+    ``trans_primitives`` is a
+    :class:`~tusk.primitives.base.GroupTransformPrimitive`. Checked here, eagerly,
     rather than left to each :class:`Feature` subclass's own check: a
     primitive that matches no column is never built into a feature at all, so
     only the argument it was passed to can name the mistake.
@@ -64,10 +73,11 @@ def synthesize(
         target_table: Table to build features for.
         agg_primitives: Aggregation primitives, as names or instances. None
             selects ``AGG_DEFAULTS``.
-        trans_primitives: Transform primitives, as names or instances. None
-            selects ``TRANS_DEFAULTS``.
+        trans_primitives: Transform primitives that read only their own row,
+            as names or instances. None selects ``TRANS_DEFAULTS``.
         groupby_trans_primitives: Transform primitives applied within
-            foreign-key groups. None selects none.
+            foreign-key groups, including every group and ordered transform.
+            None selects none.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
@@ -96,6 +106,7 @@ def synthesize(
         _reject_wrong_kind(primitive, AggregationPrimitive, "agg_primitives")
     for primitive in trans:
         _reject_wrong_kind(primitive, TransformPrimitive, "trans_primitives")
+        _reject_group_transform(primitive, "trans_primitives")
     for primitive in groupby:
         _reject_wrong_kind(primitive, TransformPrimitive, "groupby_trans_primitives")
     context = _Context(database=database, agg=agg, trans=trans, groupby=groupby)
@@ -263,15 +274,11 @@ class _Context:
             depth_limit: Maximum depth of returned features.
 
         Returns:
-            features: Transform features on the table. ``_check_ordering``
-                raises :class:`~tusk.exceptions.PrimitiveError` if an
-                order-dependent primitive is requested for a table with no
-                ``row_creation_time``.
+            features: Transform features on the table.
         """
         usable = self._usable(table, existing)
         out: list[Feature] = []
         for primitive in self.trans:
-            self._check_ordering(primitive, table)
             for combo in self._combinations(primitive, usable, table):
                 feature = TransformFeature(primitive, combo)
                 if feature.depth <= depth_limit:
@@ -390,7 +397,7 @@ class _Context:
             )
 
     def _check_ordering(self, primitive: Primitive, table: str) -> None:
-        """Reject order-dependent primitives on tables that cannot be ordered.
+        """Reject ordered transform primitives on tables that cannot be ordered.
 
         Narwhals requires ``order_by`` for these expressions on lazy backends,
         and the ordering column is the table's ``row_creation_time``. Checking
@@ -401,10 +408,11 @@ class _Context:
             table: The table it would be applied to.
 
         Raises:
-            PrimitiveError: If the primitive is order-dependent and the table
-                has no ``row_creation_time``.
+            PrimitiveError: If the primitive is an
+                :class:`~tusk.primitives.base.OrderedTransformPrimitive` and the
+                table has no ``row_creation_time``.
         """
-        if not getattr(primitive, "order_dependent", False):
+        if not isinstance(primitive, OrderedTransformPrimitive):
             return
         if self.database.schema(table).row_creation_time is None:
             raise PrimitiveError(

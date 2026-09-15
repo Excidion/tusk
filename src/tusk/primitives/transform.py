@@ -1,8 +1,10 @@
 """Built-in transform primitives.
 
-Primitives with ``order_dependent = True`` must be wrapped by the compiler in
-``.over(..., order_by=...)``; narwhals requires this on lazy backends and will
-raise otherwise.
+Group transforms subclass ``GroupTransformPrimitive`` and are wrapped by the
+compiler in ``.over(foreign_key)``. Ordered transforms subclass
+``OrderedTransformPrimitive`` and are wrapped in
+``.over(foreign_key, order_by=...)``; narwhals requires the ordering on lazy
+backends and raises otherwise.
 """
 
 from __future__ import annotations
@@ -13,7 +15,11 @@ from datetime import datetime
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
+from tusk.primitives.base import (
+    NeedsCutoffTime,
+    OrderedTransformPrimitive,
+    TransformPrimitive,
+)
 from tusk.primitives.registry import register
 
 TRANS_DEFAULTS: tuple[str, ...] = ("year", "month", "day", "weekday")
@@ -794,12 +800,11 @@ class Or(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumSum(TransformPrimitive):
+class CumSum(OrderedTransformPrimitive):
     """Running total in row-creation order."""
 
     name = "cum_sum"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-sum expression.
@@ -815,13 +820,12 @@ class CumSum(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumCount(TransformPrimitive):
+class CumCount(OrderedTransformPrimitive):
     """Running count of non-null values in row-creation order."""
 
     name = "cum_count"
     input_dtypes = (F.ANY,)
     output_dtype = nw.Int64
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-count expression.
@@ -837,12 +841,11 @@ class CumCount(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumMin(TransformPrimitive):
+class CumMin(OrderedTransformPrimitive):
     """Running minimum in row-creation order."""
 
     name = "cum_min"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-minimum expression.
@@ -858,12 +861,11 @@ class CumMin(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumMax(TransformPrimitive):
+class CumMax(OrderedTransformPrimitive):
     """Running maximum in row-creation order."""
 
     name = "cum_max"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-maximum expression.
@@ -879,12 +881,11 @@ class CumMax(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class Diff(TransformPrimitive):
+class Diff(OrderedTransformPrimitive):
     """Change from the previous row in row-creation order."""
 
     name = "diff"
     input_dtypes = (F.NUMERIC,)
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the row-difference expression.
@@ -900,13 +901,12 @@ class Diff(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class TimeSincePrevious(TransformPrimitive):
+class TimeSincePrevious(OrderedTransformPrimitive):
     """Time elapsed since the previous row in row-creation order."""
 
     name = "time_since_previous"
     input_dtypes = (F.HAS_DATE,)
     output_dtype = nw.Duration
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the elapsed-time expression.
@@ -922,13 +922,12 @@ class TimeSincePrevious(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumMean(TransformPrimitive):
+class CumMean(OrderedTransformPrimitive):
     """Running mean of the known values in row-creation order. A null row is null."""
 
     name = "cum_mean"
     input_dtypes = (F.NUMERIC,)
     output_dtype = nw.Float64
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the cumulative-mean expression.
@@ -944,7 +943,7 @@ class CumMean(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class SameAsPrevious(TransformPrimitive):
+class SameAsPrevious(OrderedTransformPrimitive):
     """Whether the value equals the previous row's in row-creation order.
 
     The first row, and a row whose own or previous value is null, is null.
@@ -953,7 +952,6 @@ class SameAsPrevious(TransformPrimitive):
     name = "same_as_previous"
     input_dtypes = (F.NUMERIC,)
     output_dtype = nw.Boolean
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the equal-to-previous expression.
@@ -969,7 +967,7 @@ class SameAsPrevious(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class AbsoluteDiff(TransformPrimitive):
+class AbsoluteDiff(OrderedTransformPrimitive):
     """Size of the change from the previous row in row-creation order.
 
     The first row, and a row whose own or previous value is null, is null.
@@ -980,7 +978,6 @@ class AbsoluteDiff(TransformPrimitive):
     name = "absolute_diff"
     input_dtypes = (F.NUMERIC,)
     output_dtype = nw.Float64
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the absolute-difference expression.
@@ -997,7 +994,7 @@ class AbsoluteDiff(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class PercentChange(TransformPrimitive):
+class PercentChange(OrderedTransformPrimitive):
     """Relative change from the previous row in row-creation order.
 
     The first row, and a row whose own or previous value is null, is null. A
@@ -1008,7 +1005,6 @@ class PercentChange(TransformPrimitive):
     name = "percent_change"
     input_dtypes = (F.NUMERIC,)
     output_dtype = nw.Float64
-    order_dependent = True
 
     def build(self, expr: nw.Expr) -> nw.Expr:
         """Build the relative-change expression.
@@ -1024,7 +1020,7 @@ class PercentChange(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumulativeTimeSinceLastTrue(TransformPrimitive):
+class CumulativeTimeSinceLastTrue(OrderedTransformPrimitive):
     """Time elapsed since the latest row whose flag is true, in row-creation order.
 
     Null until the first true flag, and on a row whose datetime is null. A
@@ -1036,7 +1032,6 @@ class CumulativeTimeSinceLastTrue(TransformPrimitive):
     name = "cumulative_time_since_last_true"
     input_dtypes = (F.HAS_DATE, F.BOOLEAN)
     output_dtype = nw.Duration
-    order_dependent = True
 
     def build(self, moment: nw.Expr, flag: nw.Expr) -> nw.Expr:
         """Build the time-since-last-true expression.
@@ -1053,7 +1048,7 @@ class CumulativeTimeSinceLastTrue(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
-class CumulativeTimeSinceLastFalse(TransformPrimitive):
+class CumulativeTimeSinceLastFalse(OrderedTransformPrimitive):
     """Time elapsed since the latest row whose flag is false, in row-creation order.
 
     Null until the first false flag, and on a row whose datetime is null. A
@@ -1066,7 +1061,6 @@ class CumulativeTimeSinceLastFalse(TransformPrimitive):
     name = "cumulative_time_since_last_false"
     input_dtypes = (F.HAS_DATE, F.BOOLEAN)
     output_dtype = nw.Duration
-    order_dependent = True
 
     def build(self, moment: nw.Expr, flag: nw.Expr) -> nw.Expr:
         """Build the time-since-last-false expression.

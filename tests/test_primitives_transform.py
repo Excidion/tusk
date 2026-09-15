@@ -7,16 +7,23 @@ import polars as pl
 import pytest
 from transform_cases import (
     EXPECTED,
+    GROUPS,
     ROWS,
     assert_values_match,
     feature_values,
     rows_database,
+    transform_arguments,
 )
 
 import tusk
 from tusk.dtypes import DtypeFamily
 from tusk.exceptions import ValidationError
-from tusk.primitives.base import NeedsCutoffTime, TransformPrimitive
+from tusk.primitives.base import (
+    GroupTransformPrimitive,
+    NeedsCutoffTime,
+    OrderedTransformPrimitive,
+    TransformPrimitive,
+)
 from tusk.primitives.registry import resolve
 from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
 from tusk.synthesis import synthesize
@@ -46,7 +53,7 @@ def lf():
 def _apply(lf, name, *columns):
     primitive = resolve(name)
     expr = primitive.outputs(*[nw.col(c) for c in columns])[0]
-    if isinstance(primitive, TransformPrimitive) and primitive.order_dependent:
+    if isinstance(primitive, OrderedTransformPrimitive):
         expr = expr.over(order_by="t")
     return lf.with_columns(expr.alias("o")).collect().to_native()["o"].to_list()
 
@@ -85,17 +92,35 @@ def test_row_wise_transforms(lf, name, columns, expected):
         ("diff", [5.0, None, 1.0]),
     ],
 )
-def test_order_dependent_transforms(lf, name, expected):
+def test_ordered_transforms(lf, name, expected):
     assert _apply(lf, name, "v") == expected
 
 
-def test_order_dependent_primitives_are_flagged():
-    cum_sum = resolve("cum_sum")
-    assert isinstance(cum_sum, TransformPrimitive)
-    assert cum_sum.order_dependent is True
+@pytest.mark.parametrize(
+    "name",
+    [
+        "cum_sum",
+        "cum_count",
+        "cum_min",
+        "cum_max",
+        "diff",
+        "time_since_previous",
+        "cum_mean",
+        "same_as_previous",
+        "absolute_diff",
+        "percent_change",
+        "cumulative_time_since_last_true",
+        "cumulative_time_since_last_false",
+    ],
+)
+def test_ordered_primitives_are_ordered_transform_primitives(name):
+    assert isinstance(resolve(name), OrderedTransformPrimitive)
+
+
+def test_row_wise_primitives_are_not_group_transform_primitives():
     month = resolve("month")
     assert isinstance(month, TransformPrimitive)
-    assert month.order_dependent is False
+    assert not isinstance(month, GroupTransformPrimitive)
 
 
 def test_time_since_previous_is_a_timedelta(lf):
@@ -703,11 +728,14 @@ def test_deep_feature_synthesis_builds_the_categorical_equality_transform():
 def test_transforms_give_the_expected_value_on_every_row(column):
     primitive_name, dtype, expected = EXPECTED[column]
     matrix, _ = tusk.deep_feature_synthesis(
-        database=rows_database(pl.from_pandas(ROWS).lazy()),
+        database=rows_database(
+            pl.from_pandas(ROWS).lazy(),
+            pl.from_pandas(GROUPS).lazy(),
+        ),
         target_table="rows",
         agg_primitives=[],
-        trans_primitives=[primitive_name],
         max_depth=1,
+        **transform_arguments(primitive_name),
     )
     assert nw.from_native(matrix).collect_schema()[column] == dtype
     assert_values_match(feature_values(matrix, column), expected)
@@ -801,13 +829,3 @@ def test_cumulative_time_since_stays_within_each_group():
         ),
         [dt.timedelta(0), dt.timedelta(days=1), None, dt.timedelta(0)],
     )
-
-
-@pytest.mark.parametrize(
-    "name",
-    ["cum_mean", "same_as_previous", "absolute_diff", "percent_change"],
-)
-def test_ordered_numeric_transforms_are_flagged(name):
-    primitive = resolve(name)
-    assert isinstance(primitive, TransformPrimitive)
-    assert primitive.order_dependent is True

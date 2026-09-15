@@ -177,15 +177,24 @@ class AggregationPrimitive(Primitive):
 
 
 class TransformPrimitive(Primitive):
-    """A primitive applied row-wise within a single table.
+    """A primitive applied row-wise within a single table."""
 
-    Attributes:
-        order_dependent: Whether the expression needs an explicit ordering.
-            Narwhals requires ``.over(order_by=...)`` for these on lazy
-            backends, so tusk requires a ``row_creation_time`` on the table.
+
+class GroupTransformPrimitive(TransformPrimitive):
+    """A transform that reads the other rows sharing its row's foreign key.
+
+    Only allowed in ``groupby_trans_primitives``, where the compiler wraps its
+    expression in ``.over(foreign_key)``.
     """
 
-    order_dependent: ClassVar[bool] = False
+
+class OrderedTransformPrimitive(GroupTransformPrimitive):
+    """A group transform that reads its group's rows in ``row_creation_time`` order.
+
+    The compiler wraps its expression in
+    ``.over(foreign_key, order_by=(row_creation_time, primary_key))``, so the
+    table needs a ``row_creation_time``.
+    """
 
 
 class NeedsCutoffTime(Primitive):

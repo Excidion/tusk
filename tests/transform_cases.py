@@ -1,8 +1,9 @@
-"""One table and the value every standalone and ordered transform gives on it.
+"""One table and the value every standalone, group and ordered transform gives on it.
 
 Shared by the polars suite, the duckdb suite and the differential suite, so
 all three check the same rows. ``occurred_at`` is the row creation time and
-orders the rows 3, 1, 5, 2, 8, 4, 7, 6, which differs from id order.
+orders the rows 3, 1, 5, 2, 8, 4, 7, 6, which differs from id order. Every row
+belongs to the one row of ``GROUPS``, so a group transform sees all eight.
 """
 
 import datetime as dt
@@ -14,10 +15,15 @@ import pyarrow as pa
 import pytest
 
 import tusk
+from tusk.primitives.base import GroupTransformPrimitive
+from tusk.primitives.registry import resolve
+
+GROUPS = pd.DataFrame({"id": [1]})
 
 ROWS = pd.DataFrame(
     {
         "id": range(1, 9),
+        "group_id": [1] * 8,
         "occurred_at": pd.to_datetime(
             [
                 dt.datetime(2024, 2, 29, 13, 45, 30),
@@ -125,27 +131,27 @@ EXPECTED = {
         nw.Boolean,
         [True, None, False, True, False, False, True, False],
     ),
-    "CUM_MEAN__value": (
+    "CUM_MEAN__value__by__group_id": (
         "cum_mean",
         nw.Float64,
         [None, 1.0, 4.0, 2.4, 1.5, 16 / 7, 7 / 3, 0.75],
     ),
-    "SAME_AS_PREVIOUS__value": (
+    "SAME_AS_PREVIOUS__value__by__group_id": (
         "same_as_previous",
         nw.Boolean,
         [None, False, None, False, None, True, False, True],
     ),
-    "ABSOLUTE_DIFF__value": (
+    "ABSOLUTE_DIFF__value__by__group_id": (
         "absolute_diff",
         nw.Float64,
         [None, 1.0, None, 9.0, None, 0.0, 7.0, 0.0],
     ),
-    "PERCENT_CHANGE__value": (
+    "PERCENT_CHANGE__value__by__group_id": (
         "percent_change",
         nw.Float64,
         [None, -1.0, None, math.inf, None, 0.0, -7 / 9, math.nan],
     ),
-    "CUMULATIVE_TIME_SINCE_LAST_TRUE__occurred_at__flag": (
+    "CUMULATIVE_TIME_SINCE_LAST_TRUE__occurred_at__flag__by__group_id": (
         "cumulative_time_since_last_true",
         nw.Duration,
         [
@@ -159,7 +165,7 @@ EXPECTED = {
             dt.timedelta(0),
         ],
     ),
-    "CUMULATIVE_TIME_SINCE_LAST_FALSE__occurred_at__flag": (
+    "CUMULATIVE_TIME_SINCE_LAST_FALSE__occurred_at__flag__by__group_id": (
         "cumulative_time_since_last_false",
         nw.Duration,
         [
@@ -173,7 +179,7 @@ EXPECTED = {
             dt.timedelta(days=3, seconds=4144),
         ],
     ),
-    "CUMULATIVE_TIME_SINCE_LAST_TRUE__occurred_at__maybe_flag": (
+    "CUMULATIVE_TIME_SINCE_LAST_TRUE__occurred_at__maybe_flag__by__group_id": (
         "cumulative_time_since_last_true",
         nw.Duration,
         [
@@ -187,7 +193,7 @@ EXPECTED = {
             dt.timedelta(days=3, seconds=4144),
         ],
     ),
-    "CUMULATIVE_TIME_SINCE_LAST_FALSE__occurred_at__maybe_flag": (
+    "CUMULATIVE_TIME_SINCE_LAST_FALSE__occurred_at__maybe_flag__by__group_id": (
         "cumulative_time_since_last_false",
         nw.Duration,
         [
@@ -201,7 +207,7 @@ EXPECTED = {
             dt.timedelta(days=4, seconds=9549),
         ],
     ),
-    "CUMULATIVE_TIME_SINCE_LAST_FALSE__due_at__flag": (
+    "CUMULATIVE_TIME_SINCE_LAST_FALSE__due_at__flag__by__group_id": (
         "cumulative_time_since_last_false",
         nw.Duration,
         [
@@ -218,21 +224,44 @@ EXPECTED = {
 }
 
 
-def rows_database(table):
-    """Wrap the shared table in a one-table database.
+def rows_database(table, groups):
+    """Wrap the shared table and its parent in a database.
 
     Args:
         table: ``ROWS`` as a native lazy frame of any backend.
+        groups: ``GROUPS`` as a native lazy frame of the same backend.
 
     Returns:
-        A database whose ``rows`` table is ordered by ``occurred_at``.
+        A database whose ``rows`` table is ordered by ``occurred_at`` and
+        belongs to ``groups`` through ``group_id``.
     """
-    return tusk.Database("rows").add_table(
-        "rows",
-        table,
-        primary_key="id",
-        row_creation_time="occurred_at",
+    return (
+        tusk.Database("rows")
+        .add_table("groups", groups, primary_key="id")
+        .add_table(
+            "rows",
+            table,
+            primary_key="id",
+            row_creation_time="occurred_at",
+        )
+        .add_relationship(parent="groups", child="rows", foreign_key="group_id")
     )
+
+
+def transform_arguments(primitive_name):
+    """Pass a transform primitive in the synthesis argument that accepts it.
+
+    Args:
+        primitive_name: The primitive's tusk name.
+
+    Returns:
+        Keyword arguments for ``tusk.deep_feature_synthesis``: a group
+        transform primitive in ``groupby_trans_primitives``, any other in
+        ``trans_primitives``.
+    """
+    if isinstance(resolve(primitive_name), GroupTransformPrimitive):
+        return {"trans_primitives": [], "groupby_trans_primitives": [primitive_name]}
+    return {"trans_primitives": [primitive_name]}
 
 
 def feature_values(matrix, column):
