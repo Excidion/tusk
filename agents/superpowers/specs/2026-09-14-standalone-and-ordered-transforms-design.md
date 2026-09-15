@@ -24,9 +24,12 @@ Settled with the maintainer, on top of the roadmap's shared rules.
    backends null; zero stays `0.0` and `-inf` respectively. featuretools
    answers NaN, so both rows are ⚠️. This changes `natural_log`, whose
    negative inputs were backend-defined until now.
-4. **`negate` returns `Float64`.** Negating an unsigned integer fails on polars
-   and wraps around on duckdb; negating `Int8`'s minimum wraps on polars and
-   raises on duckdb. Casting to `Float64` first gives one answer everywhere.
+4. **`negate` and `absolute_diff` return `Float64`.** Negating an unsigned
+   integer fails on polars and wraps around on duckdb; negating `Int8`'s
+   minimum wraps on polars and raises on duckdb. `absolute_diff`'s `diff()`
+   has the same failure mode: an `Int8` column from -128 to 127 wraps on
+   polars and raises on duckdb, and a `UInt8` decrease raises on duckdb.
+   Casting to `Float64` first gives one answer everywhere for both.
 5. **No new defaults.** featuretools' default transforms are `age`, `day`,
    `year`, `month`, `weekday`, `haversine`, `num_words` and `num_characters`;
    none of them belongs to this phase.
@@ -51,7 +54,7 @@ All live in `src/tusk/primitives/transform.py`. "Ordered" primitives set
 | `percentile` | `NUMERIC` | `Float64` | `expr.rank("average") / expr.count()` | |
 | `cum_mean` | `NUMERIC` | `Float64` | `expr.cum_sum() / expr.cum_count()` | ✓ |
 | `same_as_previous` | `NUMERIC` | `Boolean` | `expr == expr.shift(1)` | ✓ |
-| `absolute_diff` | `NUMERIC` | `Float64` | `expr.diff().abs()` | ✓ |
+| `absolute_diff` | `NUMERIC` | `Float64` | `expr.cast(Float64).diff().abs()` | ✓ |
 | `percent_change` | `NUMERIC` | `Float64` | `expr / expr.shift(1) - 1` | ✓ |
 | `cumulative_time_since_last_true` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(flag).then(moment).fill_null(strategy="forward")` | ✓ |
 | `cumulative_time_since_last_false` | `(HAS_DATE, BOOLEAN)` | `Duration` | `moment - when(~flag).then(moment).fill_null(strategy="forward")` | ✓ |
