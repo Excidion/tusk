@@ -729,7 +729,8 @@ def test_percent_change_gives_negative_infinity_over_a_zero_previous_value_on_du
     frame = nw.from_native(
         con.sql(
             "SELECT * FROM (VALUES "
-            "(TIMESTAMP '2024-01-01', 0.0), (TIMESTAMP '2024-01-02', -1.0)) "
+            "(TIMESTAMP '2024-01-01', CAST(0.0 AS DOUBLE)), "
+            "(TIMESTAMP '2024-01-02', CAST(-1.0 AS DOUBLE))) "
             # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
             't("at", v)',
         ),
