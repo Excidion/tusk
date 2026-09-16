@@ -138,10 +138,8 @@ one by its class:
 - An **ordered transform primitive**
   ([`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive])
   runs within each foreign-key group and reads the group's rows in
-  `row_creation_time` order: `cum_sum`, `cum_count`, `cum_min`, `cum_max`,
-  `cum_mean`, `diff`, `absolute_diff`, `same_as_previous`, `percent_change`,
-  `time_since_previous`, `cumulative_time_since_last_true` and
-  `cumulative_time_since_last_false`.
+  `row_creation_time` order, such as `cum_sum`; the [API
+  reference](../api/primitives.md#ordered-transform-primitives) lists them all.
 
 A group or ordered transform gives one feature per parent relationship of the
 table, named after the foreign key it groups by, such as
