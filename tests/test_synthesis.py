@@ -806,6 +806,42 @@ def test_group_transform_on_a_database_without_relationships_warns():
     assert names(got) == {"v", "ABSOLUTE__v"}
 
 
+def test_only_a_parentless_table_is_blamed_for_grouping_nothing(db):
+    """The walk reaches ``sessions`` and ``transactions`` with their parents
+    already on the path, so ``cum_sum`` groups nothing there either. Only
+    ``customers``, which has no parent at all, may be named: telling the user
+    to add a relationship that already exists would be wrong.
+    """
+    with pytest.warns(UnmatchedPrimitiveWarning) as caught:
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["cum_sum"],
+            max_depth=2,
+        )
+    messages = [str(warning.message) for warning in caught]
+    assert any("table 'customers' has no parent relationship" in m for m in messages)
+    assert not [m for m in messages if "'sessions'" in m or "'transactions'" in m]
+
+
+def test_a_group_transform_that_grouped_somewhere_does_not_warn(db, recwarn):
+    """``cum_sum`` groups ``customers.age`` by ``customer_id`` on ``sessions``.
+
+    ``customers`` itself has no parent and so records nothing groupable, but a
+    primitive that produced a feature anywhere must stay silent.
+    """
+    got = synthesize(
+        db,
+        "sessions",
+        agg_primitives=[],
+        trans_primitives=["cum_sum"],
+        max_depth=2,
+    )
+    assert "CUM_SUM__customers__age__by__customer_id" in names(got)
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
+
+
 def test_custom_group_transform_runs_within_groups(db):
     features = synthesize(
         db,
