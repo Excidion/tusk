@@ -306,11 +306,10 @@ class _Context:
         """
         if not self.groupby:
             return []
-        relationships = [
-            rel for rel in self.database.parents_of(table) if rel not in path
-        ]
-        if not self.database.parents_of(table):
+        parents = self.database.parents_of(table)
+        if not parents:
             self._record_ungroupable(table)
+        relationships = [rel for rel in parents if rel not in path]
         usable = self._usable(table, existing)
         out: list[Feature] = []
         for rel in relationships:
@@ -326,9 +325,8 @@ class _Context:
         """Record every group transform primitive as unmatched on ``table``.
 
         Only a table with no parent at all is recorded. A table whose parents
-        the walk has merely traversed already is reached again by another
-        path, where it does group, so reporting it here would tell the user to
-        add a relationship that exists.
+        the walk has merely consumed on its path does have a relationship, so
+        naming it here would tell the user to add one they already have.
 
         Args:
             table: A table with no parent relationship.
