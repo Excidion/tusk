@@ -49,11 +49,10 @@ Settled with the maintainer, on top of the roadmap's shared rules.
    `groupby_trans_primitives` argument. `TransformFeature` raises
    `PrimitiveError` for a `GroupTransformPrimitive`, and
    `GroupByTransformFeature` for anything else, so a hand-built or unpickled
-   feature cannot bypass the routing. Over the whole
-   table a running total or a rank would mix every entity's rows and change
-   with whichever rows are in the dataset. featuretools also computes these
-   across the whole table, so that form is a deliberate divergence, and every
-   row for these primitives is ⚠️.
+   feature cannot bypass the routing. Over the whole table a running total or a
+   rank would mix every entity's rows and change with whichever rows are in the
+   dataset. featuretools also computes these across the whole table, so that
+   form is a deliberate divergence, and every row for these primitives is ⚠️.
 
 ## Primitives
 
