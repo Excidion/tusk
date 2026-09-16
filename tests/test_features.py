@@ -29,7 +29,7 @@ class Neither(Primitive):
 
     Stands in for a custom primitive that subclasses only
     :class:`~tusk.primitives.base.Primitive`, to exercise the case
-    :func:`~tusk.features._reject_wrong_kind` cannot name a rejected
+    :func:`~tusk.features._require_kind` cannot name a rejected
     primitive's actual kind for.
     """
 

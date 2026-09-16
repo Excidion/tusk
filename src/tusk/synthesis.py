@@ -29,7 +29,7 @@ from tusk.features import (
     GroupByTransformFeature,
     IdentityFeature,
     TransformFeature,
-    _reject_wrong_kind,
+    _require_kind,
 )
 from tusk.primitives.aggregation import AGG_DEFAULTS
 from tusk.primitives.base import (
@@ -55,7 +55,7 @@ def synthesize(
     ``database.schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
     target table is unknown. Also raises
     :class:`~tusk.exceptions.PrimitiveError`, via
-    :func:`~tusk.features._reject_wrong_kind`, if a primitive resolved from
+    :func:`~tusk.features._require_kind`, if a primitive resolved from
     ``agg_primitives`` is not an
     :class:`~tusk.primitives.base.AggregationPrimitive`, or one from
     ``trans_primitives`` is not a
@@ -97,9 +97,9 @@ def synthesize(
         TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
     )
     for primitive in agg:
-        _reject_wrong_kind(primitive, AggregationPrimitive, "agg_primitives")
+        _require_kind(primitive, AggregationPrimitive, "agg_primitives")
     for primitive in trans:
-        _reject_wrong_kind(primitive, TransformPrimitive, "trans_primitives")
+        _require_kind(primitive, TransformPrimitive, "trans_primitives")
     context = _Context(
         database=database,
         agg=agg,

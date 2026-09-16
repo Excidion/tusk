@@ -154,10 +154,10 @@ class TransformFeature(Feature):
         """Confirm the primitive is a transform that reads only its own row.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_reject_wrong_kind`, if it does not transform, or if it is a
+        :func:`_require_kind`, if it does not transform, or if it is a
         :class:`~tusk.primitives.base.GroupTransformPrimitive`.
         """
-        _reject_wrong_kind(self.primitive, TransformPrimitive, "a transform feature")
+        _require_kind(self.primitive, TransformPrimitive, "a transform feature")
         if isinstance(self.primitive, GroupTransformPrimitive):
             raise PrimitiveError(
                 f"primitive {self.primitive.name!r} reads other rows, so it only "
@@ -227,9 +227,9 @@ class AggregationFeature(Feature):
         """Confirm the primitive aggregates rather than transforms.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_reject_wrong_kind`, if it does not.
+        :func:`_require_kind`, if it does not.
         """
-        _reject_wrong_kind(
+        _require_kind(
             self.primitive,
             AggregationPrimitive,
             "an aggregation feature",
@@ -349,10 +349,10 @@ class GroupByTransformFeature(Feature):
         """Confirm the primitive runs within foreign-key groups.
 
         Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_reject_wrong_kind`, if it is not a
+        :func:`_require_kind`, if it is not a
         :class:`~tusk.primitives.base.GroupTransformPrimitive`.
         """
-        _reject_wrong_kind(
+        _require_kind(
             self.primitive,
             GroupTransformPrimitive,
             "a groupby transform feature",
@@ -403,7 +403,7 @@ class GroupByTransformFeature(Feature):
         return self.primitive.display_output_names(self.display_name)
 
 
-def _reject_wrong_kind(
+def _require_kind(
     primitive: Primitive,
     required: type[Primitive],
     where: str,
