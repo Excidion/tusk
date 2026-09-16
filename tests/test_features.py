@@ -29,7 +29,7 @@ class Neither(Primitive):
 
     Stands in for a custom primitive that subclasses only
     :class:`~tusk.primitives.base.Primitive`, to exercise the case
-    :func:`~tusk.features._reject_wrong_kind` cannot name a rejected
+    :func:`~tusk.features._require_kind` cannot name a rejected
     primitive's actual kind for.
     """
 
@@ -86,6 +86,17 @@ def test_transform_feature():
     assert feature.name == "MONTH__started_at"
     assert feature.table == "sessions"
     assert feature.depth == 1
+
+
+@pytest.mark.parametrize("name", ["cum_sum", "percentile"])
+def test_transform_feature_rejects_a_group_transform_primitive(name):
+    with pytest.raises(PrimitiveError, match="runs within foreign-key groups"):
+        TransformFeature(resolve(name), (amount,))
+
+
+def test_groupby_transform_feature_rejects_a_row_wise_primitive():
+    with pytest.raises(PrimitiveError, match="'absolute'.*GroupTransformPrimitive"):
+        GroupByTransformFeature(resolve("absolute"), (amount,), SESSION_TX)
 
 
 def test_groupby_transform_feature_names_the_group():

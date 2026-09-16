@@ -12,12 +12,26 @@ the whole class here.
 """
 
 import datetime as dt
+import math
 
 import narwhals as nw
 import pytest
 from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
+from transform_cases import (
+    EXPECTED as TRANSFORM_EXPECTED,
+)
+from transform_cases import (
+    GROUPS,
+    ROWS,
+    feature_values,
+    rows_database,
+)
+from transform_cases import (
+    assert_values_match as assert_transform_values_match,
+)
 
 import tusk
+from tusk.primitives import Negate, resolve
 
 duckdb = pytest.importorskip("duckdb")
 pd = pytest.importorskip("pandas")
@@ -553,3 +567,232 @@ def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name
     )
     got = matrix.df().sort_values("id")[column].tolist()
     assert_values_match(got, expected)
+
+
+@pytest.mark.parametrize("column", sorted(TRANSFORM_EXPECTED))
+def test_transforms_give_the_polars_values_on_duckdb(column):
+    """Every standalone, group and ordered transform survives translation to SQL.
+
+    ``square_root`` and ``natural_log`` pin the negative-input guard, which
+    polars would otherwise answer with NaN, and the ordered primitives pin
+    the ordering by ``occurred_at``.
+
+    Args:
+        column: The feature column under test.
+    """
+    primitive_name, _, expected = TRANSFORM_EXPECTED[column]
+    con = duckdb.connect()
+    con.register("rows_frame", ROWS)
+    con.register("groups_frame", GROUPS)
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=rows_database(
+            con.sql("SELECT * FROM rows_frame"),
+            con.sql("SELECT * FROM groups_frame"),
+        ),
+        target_table="rows",
+        agg_primitives=[],
+        max_depth=1,
+        trans_primitives=[primitive_name],
+    )
+    assert_transform_values_match(feature_values(matrix, column), expected)
+
+
+def test_percentile_ranks_within_each_group_on_duckdb():
+    """The grouped percentile partitions both its rank and its count window.
+
+    narwhals pushes the grouped ``percentile`` into two separate windows on
+    duckdb: one for ``rank("average")``, one for ``count()``. If only one
+    carried the ``parent_id`` partition, ranks would divide by the whole
+    table's count instead of the group's.
+    """
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE percentile_parents AS SELECT * FROM (VALUES (1), (2)) t(id)",
+    )
+    con.execute(
+        "CREATE TABLE percentile_children AS SELECT * FROM (VALUES "
+        "(1, 1, 1.0), (2, 1, 3.0), (3, 1, 3.0), (4, 2, 5.0), (5, 2, NULL)) "
+        "t(id, parent_id, amount)",
+    )
+    database = (
+        tusk.Database("groups")
+        .add_table(
+            "parents",
+            con.table("percentile_parents"),
+            primary_key="id",
+        )
+        .add_table(
+            "children",
+            con.table("percentile_children"),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=["percentile"],
+        max_depth=1,
+    )
+    got = feature_values(matrix, "PERCENTILE__amount__by__parent_id")
+    assert_transform_values_match(got, [1 / 3, 2.5 / 3, 2.5 / 3, 1.0, None])
+
+
+def test_cumulative_time_since_stays_within_each_group_on_duckdb():
+    """Parent 2's first row must not see parent 1's match."""
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE cumulative_parents AS SELECT * FROM (VALUES (1), (2)) t(id)",
+    )
+    con.execute(
+        "CREATE TABLE cumulative_children AS SELECT * FROM (VALUES "
+        "(1, 1, TIMESTAMP '2024-01-01', TRUE), "
+        "(2, 1, TIMESTAMP '2024-01-02', FALSE), "
+        "(3, 2, TIMESTAMP '2024-01-03', FALSE), "
+        "(4, 2, TIMESTAMP '2024-01-04', TRUE)) "
+        't(id, parent_id, "at", flag)',
+    )
+    database = (
+        tusk.Database("groups")
+        .add_table(
+            "parents",
+            con.table("cumulative_parents"),
+            primary_key="id",
+        )
+        .add_table(
+            "children",
+            con.table("cumulative_children"),
+            primary_key="id",
+            row_creation_time="at",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="children",
+        agg_primitives=[],
+        trans_primitives=["cumulative_time_since_last_true"],
+        max_depth=1,
+    )
+    got = feature_values(
+        matrix, "CUMULATIVE_TIME_SINCE_LAST_TRUE__at__flag__by__parent_id"
+    )
+    assert_transform_values_match(
+        got,
+        [dt.timedelta(0), dt.timedelta(days=1), None, dt.timedelta(0)],
+    )
+
+
+def test_negate_does_not_overflow_an_integer_dtype_on_duckdb():
+    """duckdb raises on negating TINYINT's minimum and wraps an unsigned value."""
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES (CAST(-128 AS TINYINT), 4294967295::UINTEGER)) "
+            "t(small, unsigned)",
+        ),
+    )
+    negate = Negate()
+    got = frame.select(
+        negate.outputs(nw.col("small"))[0].alias("small"),
+        negate.outputs(nw.col("unsigned"))[0].alias("unsigned"),
+    ).collect()
+    assert got["small"].to_list() == [128.0]
+    assert got["unsigned"].to_list() == [-4294967295.0]
+
+
+def test_absolute_diff_does_not_overflow_an_integer_dtype_on_duckdb():
+    """duckdb raises subtracting TINYINT's minimum from its maximum, and on a
+    UTINYINT decrease."""
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES "
+            "(TIMESTAMP '2024-01-01', CAST(-128 AS TINYINT), CAST(200 AS UTINYINT)), "
+            "(TIMESTAMP '2024-01-02', CAST(127 AS TINYINT), CAST(1 AS UTINYINT))) "
+            # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
+            't("at", small, unsigned)',
+        ),
+    )
+    absolute_diff = resolve("absolute_diff")
+    got = frame.select(
+        absolute_diff.outputs(nw.col("small"))[0].over(order_by="at").alias("small"),
+        absolute_diff.outputs(nw.col("unsigned"))[0]
+        .over(order_by="at")
+        .alias("unsigned"),
+    ).collect()
+    assert got["small"].to_list() == [None, 255.0]
+    assert got["unsigned"].to_list() == [None, 199.0]
+
+
+def test_percent_change_gives_negative_infinity_over_a_zero_previous_value_on_duckdb():
+    """A negative value after a zero previous one; polars and duckdb must agree."""
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES "
+            "(TIMESTAMP '2024-01-01', CAST(0.0 AS DOUBLE)), "
+            "(TIMESTAMP '2024-01-02', CAST(-1.0 AS DOUBLE))) "
+            # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
+            't("at", v)',
+        ),
+    )
+    percent_change = resolve("percent_change")
+    got = (
+        frame.select(
+            percent_change.outputs(nw.col("v"))[0].over(order_by="at").alias("v"),
+        )
+        .collect()["v"]
+        .to_list()
+    )
+    assert got[0] is None
+    assert got[1] == -math.inf
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"), [("minute", [2, None]), ("second", [3, None])]
+)
+def test_minute_and_second_read_a_time_column_on_duckdb(name, expected):
+    con = duckdb.connect()
+    frame = nw.from_native(
+        # "at" quoted: unquoted it collides with duckdb's AT TIME ZONE keyword.
+        con.sql("SELECT * FROM (VALUES (1, TIME '01:02:03'), (2, NULL)) t(id, \"at\")"),
+    )
+    primitive = resolve(name)
+    got = frame.select("id", primitive.outputs(nw.col("at"))[0].alias("o"))
+    assert got.collect().sort("id")["o"].to_list() == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (
+            "cumulative_time_since_last_true",
+            [dt.timedelta(0), dt.timedelta(days=4), dt.timedelta(0)],
+        ),
+        (
+            "cumulative_time_since_last_false",
+            [None, dt.timedelta(0), dt.timedelta(days=4)],
+        ),
+    ],
+)
+def test_cumulative_time_since_measures_a_date_column_on_duckdb(name, expected):
+    """duckdb subtracts two DATEs into a day count, so the primitive casts first.
+
+    Args:
+        name: The primitive under test.
+        expected: The elapsed time per row, in id order.
+    """
+    con = duckdb.connect()
+    frame = nw.from_native(
+        con.sql(
+            "SELECT * FROM (VALUES (1, DATE '2024-01-01', TRUE), "
+            "(2, DATE '2024-01-05', FALSE), (3, DATE '2024-01-09', TRUE)) "
+            "t(id, d, f)",
+        ),
+    )
+    primitive = resolve(name)
+    elapsed = primitive.outputs(nw.col("d"), nw.col("f"))[0].over(order_by="id")
+    got = frame.select("id", elapsed.alias("o")).collect().sort("id")["o"].to_list()
+    assert_transform_values_match(got, expected)

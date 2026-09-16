@@ -52,27 +52,68 @@ of inputs.
 Subclass [`AggregationPrimitive`][tusk.primitives.AggregationPrimitive] for
 something that reduces a child table to one row per parent, and
 [`TransformPrimitive`][tusk.primitives.TransformPrimitive] for something that
-maps a row to a row.
+maps a row to a row. A transform that reads the other rows of its foreign-key
+group subclasses
+[`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive], or
+[`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive] when
+it reads them in `row_creation_time` order; see [choosing a transform base
+class](#choosing-a-transform-base-class).
 
 [`@register`][tusk.primitives.register] puts the class in the registry so its
 `name` resolves as a string; without it you can still pass an instance.
 
-## Group-aware primitives
+## Choosing a transform base class
 
-A primitive like "share of group total" is group-aware without being
-order-dependent, which no built-in covers:
+Every transform goes in `trans_primitives`, and the class it subclasses decides
+how synthesis applies it:
+
+- [`TransformPrimitive`][tusk.primitives.TransformPrimitive]: the value comes
+  from the row's own columns only, as in `year` or `add_numeric`. It runs on
+  each row.
+- [`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive]: the
+  value needs the other rows sharing the row's foreign key, but not their
+  order, as in a share of the group's total or `percentile`. It runs within
+  each foreign-key group.
+- [`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive]:
+  the value needs the earlier rows of its group in `row_creation_time` order,
+  as in `cum_sum` or `diff`. It runs within each foreign-key group, ordered by
+  the table's `row_creation_time`, then its primary key, so the table needs a
+  `row_creation_time`.
+
+A practical test is to look at what `build()` calls on its input:
+
+- a reduction or window over the column (`sum`, `mean`, `count`, `rank`, …)
+  reads other rows, so subclass `GroupTransformPrimitive`;
+- `cum_*`, `shift`, `diff` or a forward fill depends on order, so subclass
+  `OrderedTransformPrimitive`;
+- anything else subclasses `TransformPrimitive`.
+
+tusk cannot inspect an expression, so a primitive that reads other rows but
+subclasses `TransformPrimitive` is not caught:
+
+- A reduction, such as `expr / expr.sum()`, silently computes over every row
+  of the table, on lazy polars and on duckdb alike. No error is raised, and
+  every row's value leaks into every other row's.
+- An order-dependent expression, such as `expr.cum_sum()`, passes synthesis,
+  including with `features_only=True`. narwhals then raises
+  `InvalidOperationError: Order-dependent expressions are not supported for use
+  in LazyFrame` when the feature matrix's query is built, on lazy polars and
+  on duckdb alike, before anything is collected.
+
+A share of the group's total reads the other rows of its group without needing
+them in order, so it subclasses `GroupTransformPrimitive`:
 
 ```python
 from dataclasses import dataclass
 
 import narwhals as nw
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives import TransformPrimitive, register
+from tusk.primitives import GroupTransformPrimitive, register
 
 
 @register
 @dataclass(frozen=True)
-class ShareOfGroupTotal(TransformPrimitive):
+class ShareOfGroupTotal(GroupTransformPrimitive):
     """Each value's fraction of its group's total."""
 
     name = "share_of_group_total"
@@ -83,12 +124,12 @@ class ShareOfGroupTotal(TransformPrimitive):
         return expr / expr.sum()
 ```
 
-Pass `"share_of_group_total"` in `groupby_trans_primitives` and it computes
-each transaction's share of its session's total, each session's share of its
-customer's total, and so on — a genuinely useful feature type that has no other
-path into tusk. See [what can go in
-`groupby_trans_primitives`](primitives.md#what-can-go-in-groupby_trans_primitives)
-for why the built-in elementwise transforms cannot.
+Pass `"share_of_group_total"` in `trans_primitives` and it computes each
+transaction's share of its session's total, each session's share of its
+customer's total, and so on. Its total never spans the whole table.
+
+See [how transforms are applied](primitives.md#how-transforms-are-applied) for
+the built-in transforms of each kind.
 
 ## Primitives that measure against the cutoff time
 

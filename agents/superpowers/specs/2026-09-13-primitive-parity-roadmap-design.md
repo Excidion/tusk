@@ -36,6 +36,13 @@ These were settled with the maintainer and hold for every phase.
 7. **❓ rows get tests** in the phase covering their group. The divergent
    `cum_count` and `is_weekend` get a test asserting the divergence and move
    from ❌ to ⚠️.
+8. **A transform may only look at rows sharing a foreign key.** A transform
+   whose value for a row depends on other rows, such as a running total or a
+   rank, is a data leakage risk over the whole table. Group and ordered
+   transforms subclass `GroupTransformPrimitive`/`OrderedTransformPrimitive`;
+   passed in `trans_primitives` like any transform, they run only within
+   foreign-key groups, one feature per parent relationship. Grouping by a
+   shared parent can still mix entities, as aggregations can.
 
 ## Phases
 

@@ -22,7 +22,6 @@ def deep_feature_synthesis(
     target_table: str,
     agg_primitives: Iterable[str | Primitive] | None = None,
     trans_primitives: Iterable[str | Primitive] | None = None,
-    groupby_trans_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
     cutoff_time: datetime | None = None,
     features_only: bool = False,
@@ -46,9 +45,10 @@ def deep_feature_synthesis(
             filtered like any other table, so the matrix may have fewer rows.
         agg_primitives: Aggregation primitives, as names or instances. None
             selects the documented defaults.
-        trans_primitives: Transform primitives. None selects the defaults.
-        groupby_trans_primitives: Transforms applied within foreign-key groups.
-            None means none.
+        trans_primitives: Transform primitives, as names or instances. Each
+            group or ordered transform primitive is applied within each
+            foreign-key group, every other one to each row. None selects the
+            defaults.
         max_depth: Maximum number of stacked primitive applications.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives.
@@ -80,7 +80,6 @@ def deep_feature_synthesis(
         target_table=target_table,
         agg_primitives=agg_primitives,
         trans_primitives=trans_primitives,
-        groupby_trans_primitives=groupby_trans_primitives,
         max_depth=max_depth,
     )
     if features_only:

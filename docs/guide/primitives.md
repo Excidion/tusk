@@ -7,11 +7,12 @@ everything pushed down to the backend.
 ## What ships with tusk
 
 See the [API reference](../api/primitives.md) for the full list of
-aggregation, transform and order-dependent primitives tusk ships.
+aggregation, transform, group transform and ordered transform primitives tusk
+ships.
 
 Every `time_since_*` primitive needs more than its input columns: it
 requires a `cutoff_time` at apply time, since its value is measured against
-that moment rather than derived from the rows alone. Order-dependent
+that moment rather than derived from the rows alone. Ordered transform
 primitives require a `row_creation_time` on the table.
 
 See [primitive coverage](primitive-coverage.md) for how these line up against
@@ -122,28 +123,36 @@ any two of them.
 You can guard against this with `db.validate()`.
 
 
-## What can go in `groupby_trans_primitives`
+## How transforms are applied
 
-Only **group-aware** primitives — ones whose expression reduces or scans across
-the group defined by a foreign key. The order-dependent built-ins (`cum_sum`,
-`cum_count`, `cum_min`, `cum_max`, `diff`, `time_since_previous`) all qualify,
-and are the primitives you'll normally pass here.
+`trans_primitives` takes every transform primitive, and synthesis applies each
+one by its class:
 
-Every other built-in transform (`absolute`, `month`, `add_numeric`, …) is
-**elementwise** rather than group-aware, and narwhals rejects `.over()` on an
-elementwise expression:
+- A **row-wise transform**
+  ([`TransformPrimitive`][tusk.primitives.TransformPrimitive]) runs on each
+  row, reading only that row: `absolute`, `month`, `add_numeric`, …
+- A **group transform primitive**
+  ([`GroupTransformPrimitive`][tusk.primitives.GroupTransformPrimitive]) runs
+  within each foreign-key group: `percentile`, which ranks each value within
+  its group.
+- An **ordered transform primitive**
+  ([`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive])
+  runs within each foreign-key group and reads the group's rows in
+  `row_creation_time` order, such as `cum_sum`; the [API
+  reference](../api/primitives.md#ordered-transform-primitives) lists them all.
 
-```
-InvalidOperationError: Cannot apply over to elementwise expression
-```
+A group or ordered transform gives one feature per parent relationship of the
+table, named after the foreign key it groups by, such as
+`CUM_SUM__amount__by__session_id`. It never runs across the whole table: a
+running total or a rank over every row would mix every entity's rows and
+change with whichever rows are in the dataset, such as a test split, which is
+a data-leakage risk. It looks only at the rows sharing its row's foreign key,
+the same rows an aggregation sees.
 
-Passing one of these in `groupby_trans_primitives` therefore fails — but at
-expression-build time, not later at `.collect()`, so you learn immediately
-rather than after a long query. The failure surfaces synchronously out of
-`deep_feature_synthesis()` only when it compiles, i.e. `features_only=False`; with
-`features_only=True` synthesis happily emits the definition and the error waits
-until you call `apply_features()` on it.
+A group is not always a single entity. Grouping by a shared parent, such as
+drivers when the target is customers, puts several customers' rows in one
+group, exactly as an aggregation over drivers does.
 
-This leaves the grouped, non-order-dependent path reachable only by
-user-defined primitives — that's [the intended extension
-point](custom-primitives.md#group-aware-primitives).
+A primitive of your own picks its behavior the same way, through the class it
+subclasses; see [choosing a transform base
+class](custom-primitives.md#choosing-a-transform-base-class).

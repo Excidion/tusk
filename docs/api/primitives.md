@@ -12,6 +12,10 @@
 
 ::: tusk.primitives.TransformPrimitive
 
+::: tusk.primitives.GroupTransformPrimitive
+
+::: tusk.primitives.OrderedTransformPrimitive
+
 ::: tusk.primitives.NeedsCutoffTime
 
 ## Registry
@@ -98,11 +102,29 @@
 
 ::: tusk.primitives.IsWeekend
 
+::: tusk.primitives.Minute
+
+::: tusk.primitives.Second
+
+::: tusk.primitives.DayOfYear
+
+::: tusk.primitives.IsLeapYear
+
 ::: tusk.primitives.TimeSince
 
 ::: tusk.primitives.Absolute
 
 ::: tusk.primitives.NaturalLog
+
+::: tusk.primitives.IsNull
+
+::: tusk.primitives.Negate
+
+::: tusk.primitives.SquareRoot
+
+::: tusk.primitives.Sine
+
+::: tusk.primitives.Cosine
 
 ::: tusk.primitives.AddNumeric
 
@@ -138,7 +160,11 @@
 
 ::: tusk.primitives.Or
 
-## Order-dependent transform primitives
+## Group transform primitives
+
+::: tusk.primitives.Percentile
+
+## Ordered transform primitives
 
 ::: tusk.primitives.CumSum
 
@@ -151,3 +177,15 @@
 ::: tusk.primitives.Diff
 
 ::: tusk.primitives.TimeSincePrevious
+
+::: tusk.primitives.CumMean
+
+::: tusk.primitives.SameAsPrevious
+
+::: tusk.primitives.AbsoluteDiff
+
+::: tusk.primitives.PercentChange
+
+::: tusk.primitives.CumulativeTimeSinceLastTrue
+
+::: tusk.primitives.CumulativeTimeSinceLastFalse

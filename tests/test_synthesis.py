@@ -7,7 +7,8 @@ import pytest
 
 import tusk
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import TransformPrimitive
+from tusk.exceptions import PrimitiveError, UnmatchedPrimitiveWarning
+from tusk.primitives.base import GroupTransformPrimitive, TransformPrimitive
 from tusk.synthesis import synthesize
 
 
@@ -28,7 +29,6 @@ def test_depth_one_aggregations(db):
             "customers",
             agg_primitives=["count", "mean"],
             trans_primitives=[],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
     assert names(got) == {"age", "COUNT__sessions"}
@@ -40,7 +40,6 @@ def test_depth_two_stacks_through_two_relationships(db):
         "customers",
         agg_primitives=["count", "mean"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=2,
     )
     assert "MEAN__sessions__MEAN__transactions__amount" in names(got)
@@ -54,7 +53,6 @@ def test_target_keys_are_not_emitted_as_features(db):
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=1,
     )
     assert "id" not in names(got)
@@ -67,7 +65,6 @@ def test_never_traverses_back_so_target_columns_do_not_return(db):
         "customers",
         agg_primitives=["mean"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=3,
     )
     assert not any("customers__age" in n for n in names(got))
@@ -79,7 +76,6 @@ def test_direct_features_come_from_parents(db):
         "sessions",
         agg_primitives=[],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=1,
     )
     assert "customers__age" in names(got)
@@ -112,7 +108,6 @@ def test_transforms_respect_dtype_families():
             "events",
             agg_primitives=[],
             trans_primitives=["month", "absolute"],
-            groupby_trans_primitives=[],
             max_depth=1,
         ),
     )
@@ -149,7 +144,6 @@ def test_calendar_primitives_skip_a_duration_column():
             "events",
             agg_primitives=[],
             trans_primitives=["year", "month"],
-            groupby_trans_primitives=[],
             max_depth=1,
         ),
     )
@@ -184,7 +178,6 @@ def test_hour_skips_a_date_column_but_month_does_not():
             "events",
             agg_primitives=[],
             trans_primitives=["hour", "month"],
-            groupby_trans_primitives=[],
             max_depth=1,
         ),
     )
@@ -216,7 +209,6 @@ def test_hour_applies_to_a_time_column_but_year_does_not():
         "events",
         agg_primitives=[],
         trans_primitives=["hour", "year"],
-        groupby_trans_primitives=[],
         max_depth=1,
     )
     got = names(features)
@@ -240,7 +232,6 @@ def test_row_creation_time_is_available_as_a_transform_input(db):
             "customers",
             agg_primitives=[],
             trans_primitives=["month", "year", "weekday"],
-            groupby_trans_primitives=[],
             max_depth=1,
         ),
     )
@@ -287,7 +278,6 @@ def test_aggregations_can_reach_a_temporal_column(db):
             "sessions",
             agg_primitives=["n_unique", "last_time", "max"],
             trans_primitives=[],
-            groupby_trans_primitives=[],
             max_depth=1,
         ),
     )
@@ -311,7 +301,6 @@ def test_multi_output_feature_is_an_output_but_never_an_input(db):
         "customers",
         agg_primitives=["mean", Quantiles(qs=(0.25, 0.5, 0.75))],
         trans_primitives=["absolute"],
-        groupby_trans_primitives=[],
         max_depth=2,
     )
     n = names(got)
@@ -339,7 +328,6 @@ def test_transform_stacks_on_aggregation(db):
         "customers",
         agg_primitives=["mean"],
         trans_primitives=["absolute"],
-        groupby_trans_primitives=[],
         max_depth=2,
     )
     assert "ABSOLUTE__MEAN__sessions__MEAN__transactions__amount" not in names(got)
@@ -351,8 +339,7 @@ def test_groupby_transform_features(db):
         db,
         "transactions",
         agg_primitives=[],
-        trans_primitives=[],
-        groupby_trans_primitives=["cum_sum"],
+        trans_primitives=["cum_sum"],
         max_depth=1,
     )
     assert "CUM_SUM__amount__by__session_id" in names(got)
@@ -384,7 +371,6 @@ def test_stack_on_self_is_respected():
         "a",
         agg_primitives=["n_unique"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=2,
     )
     n = names(got)
@@ -410,7 +396,6 @@ def test_multi_slot_combinations_dedup_commutative_and_forbid_self_pairs():
         "t",
         agg_primitives=[],
         trans_primitives=["add_numeric", "subtract_numeric"],
-        groupby_trans_primitives=[],
         max_depth=1,
     )
     n = names(got)
@@ -470,7 +455,6 @@ def test_commutative_dedup_collapses_across_heterogeneous_signatures():
         "t",
         agg_primitives=[],
         trans_primitives=["same_either_order"],
-        groupby_trans_primitives=[],
         max_depth=1,
     )
     n = names(got)
@@ -497,7 +481,6 @@ def test_self_referential_schema_terminates():
         "employees",
         agg_primitives=["mean"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=3,
     )
     assert "MEAN__employees__salary" in names(got)
@@ -532,7 +515,6 @@ def test_diamond_schema_terminates():
         "a",
         agg_primitives=["mean"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=3,
     )
     assert "MEAN__b__MEAN__d__v" in names(got)
@@ -544,7 +526,6 @@ def test_features_are_deduplicated(db):
         "customers",
         agg_primitives=["count", "mean"],
         trans_primitives=[],
-        groupby_trans_primitives=[],
         max_depth=2,
     )
     assert len(got) == len(set(got))
@@ -593,7 +574,6 @@ def test_categorical_column_skipped_by_string_primitive_warns():
             "t",
             agg_primitives=[],
             trans_primitives=["shout"],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
     # The String column is still used; only the Categorical one is skipped.
@@ -632,7 +612,6 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
         "t",
         agg_primitives=[],
         trans_primitives=["absolute"],
-        groupby_trans_primitives=[],
         max_depth=1,
     )
     assert not [w for w in recwarn if issubclass(w.category, CategoricalDtypeWarning)]
@@ -658,7 +637,6 @@ def test_requested_primitive_with_no_matching_column_warns():
             "t",
             agg_primitives=[],
             trans_primitives=["month", "absolute"],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
     # The primitive that did match is unaffected.
@@ -700,7 +678,6 @@ def test_no_warning_for_a_primitive_that_matched_somewhere(recwarn):
             "p",
             agg_primitives=["mean"],
             trans_primitives=[],
-            groupby_trans_primitives=[],
             max_depth=2,
         ),
     )
@@ -734,7 +711,6 @@ def test_unmatched_warns_even_when_slots_are_individually_satisfiable():
             "c",
             agg_primitives=[],
             trans_primitives=["add_numeric"],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
     assert not any(name.startswith("ADD_NUMERIC") for name in names(got))
@@ -752,21 +728,135 @@ def test_zero_config_run_warns_about_nothing(db, recwarn):
     assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
 
 
-def test_order_dependent_transform_without_row_creation_time_fails_in_phase_one():
-    db = tusk.Database("x").add_table(
-        "t",
-        pl.LazyFrame({"id": [1], "v": [1.0]}),
-        primary_key="id",
+def test_ordered_transform_without_row_creation_time_fails_in_phase_one():
+    db = (
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "t", pl.LazyFrame({"id": [1], "g": [1], "v": [1.0]}), primary_key="id"
+        )
+        .add_relationship(parent="p", child="t", foreign_key="g")
     )
-    with pytest.raises(tusk.exceptions.PrimitiveError, match="row_creation_time"):
+    with pytest.raises(PrimitiveError, match="row_creation_time"):
         synthesize(
             db,
             "t",
             agg_primitives=[],
             trans_primitives=["cum_sum"],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
+
+
+@dataclass(frozen=True)
+class ShareOfGroupMaximum(GroupTransformPrimitive):
+    """A user-defined group transform: each value divided by its group's maximum."""
+
+    name = "share_of_group_maximum"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Float64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Divide the value by the group's maximum."""
+        return expr / expr.max()
+
+
+@pytest.mark.parametrize("name", ["cum_sum", "percentile"])
+def test_group_transform_in_trans_primitives_runs_only_within_groups(db, name):
+    got = names(
+        synthesize(
+            db,
+            "transactions",
+            agg_primitives=[],
+            trans_primitives=[name],
+            max_depth=1,
+        ),
+    )
+    assert f"{name.upper()}__amount__by__session_id" in got
+    assert f"{name.upper()}__amount" not in got
+
+
+def test_trans_primitives_mixes_row_wise_and_group_transforms(db):
+    got = names(
+        synthesize(
+            db,
+            "transactions",
+            agg_primitives=[],
+            trans_primitives=["absolute", "cum_sum"],
+            max_depth=1,
+        ),
+    )
+    assert "ABSOLUTE__amount" in got
+    assert "CUM_SUM__amount__by__session_id" in got
+
+
+def test_group_transform_on_a_database_without_relationships_warns():
+    db = tusk.Database("x").add_table(
+        "t",
+        pl.LazyFrame({"id": [1], "v": [1.0]}),
+        primary_key="id",
+    )
+    with pytest.warns(UnmatchedPrimitiveWarning, match="'percentile'.*'t'"):
+        got = synthesize(
+            db,
+            "t",
+            agg_primitives=[],
+            trans_primitives=["absolute", "percentile"],
+            max_depth=1,
+        )
+    assert names(got) == {"v", "ABSOLUTE__v"}
+
+
+def test_only_a_parentless_table_is_blamed_for_grouping_nothing(db):
+    """The walk reaches ``sessions`` and ``transactions`` with their parents
+    already on the path, so ``cum_sum`` groups nothing there either. Only
+    ``customers``, which has no parent at all, may be named: telling the user
+    to add a relationship that already exists would be wrong.
+    """
+    with pytest.warns(UnmatchedPrimitiveWarning) as caught:
+        synthesize(
+            db,
+            "customers",
+            agg_primitives=[],
+            trans_primitives=["cum_sum"],
+            max_depth=2,
+        )
+    messages = [str(warning.message) for warning in caught]
+    assert any("table 'customers' has no parent relationship" in m for m in messages)
+    assert not [m for m in messages if "'sessions'" in m or "'transactions'" in m]
+
+
+def test_a_group_transform_that_grouped_somewhere_does_not_warn(db, recwarn):
+    """``cum_sum`` groups ``customers.age`` by ``customer_id`` on ``sessions``.
+
+    ``customers`` itself has no parent and so records nothing groupable, but a
+    primitive that produced a feature anywhere must stay silent.
+    """
+    got = synthesize(
+        db,
+        "sessions",
+        agg_primitives=[],
+        trans_primitives=["cum_sum"],
+        max_depth=2,
+    )
+    assert "CUM_SUM__customers__age__by__customer_id" in names(got)
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedPrimitiveWarning)]
+
+
+def test_custom_group_transform_runs_within_groups(db):
+    features = synthesize(
+        db,
+        "transactions",
+        agg_primitives=[],
+        trans_primitives=[ShareOfGroupMaximum()],
+        max_depth=1,
+    )
+    feature = next(
+        f
+        for f in features
+        if f.name == "SHARE_OF_GROUP_MAXIMUM__amount__by__session_id"
+    )
+    matrix = features.apply(db).collect().sort("id")
+    assert matrix[feature.name].to_list() == [1 / 3, 1.0, 0.5, 1.0]
 
 
 def test_unknown_target_raises(db):
@@ -776,7 +866,6 @@ def test_unknown_target_raises(db):
             "nope",
             agg_primitives=[],
             trans_primitives=[],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
 
@@ -798,7 +887,6 @@ def test_agg_primitives_rejects_a_transform_primitive(db):
             "customers",
             agg_primitives=["year"],
             trans_primitives=[],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
 
@@ -819,7 +907,6 @@ def test_agg_primitives_rejects_a_cutoff_time_transform_primitive(db):
             "customers",
             agg_primitives=["time_since"],
             trans_primitives=[],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
 
@@ -841,7 +928,6 @@ def test_trans_primitives_rejects_an_aggregation_primitive(db):
             "customers",
             agg_primitives=[],
             trans_primitives=["sum"],
-            groupby_trans_primitives=[],
             max_depth=1,
         )
 
@@ -862,29 +948,6 @@ def test_trans_primitives_rejects_a_zero_input_aggregation_primitive(db):
             "customers",
             agg_primitives=[],
             trans_primitives=["count"],
-            groupby_trans_primitives=[],
-            max_depth=1,
-        )
-
-
-def test_groupby_trans_primitives_rejects_an_aggregation_primitive(db):
-    """``sum`` is an AggregationPrimitive; groupby_trans_primitives requires a
-    TransformPrimitive.
-
-    This call site had no test, so a copy-paste error here -- the wrong
-    argument name in the message, or the wrong required type -- would pass
-    the suite unnoticed.
-    """
-    with pytest.raises(
-        tusk.exceptions.PrimitiveError,
-        match="'sum'.*groupby_trans_primitives",
-    ):
-        synthesize(
-            db,
-            "customers",
-            agg_primitives=[],
-            trans_primitives=[],
-            groupby_trans_primitives=["sum"],
             max_depth=1,
         )
 
@@ -913,7 +976,6 @@ def test_agg_primitives_rejects_a_transform_primitive_even_with_no_matching_colu
             "p",
             agg_primitives=["hour"],
             trans_primitives=["absolute"],
-            groupby_trans_primitives=[],
             max_depth=2,
         )
 
@@ -928,7 +990,6 @@ def test_no_frames_are_touched(db, monkeypatch):
         "customers",
         agg_primitives=["count", "mean"],
         trans_primitives=["month"],
-        groupby_trans_primitives=[],
         max_depth=2,
     )
 

@@ -34,11 +34,13 @@ tusk uses `primary_key` and `row_creation_time` rather than featuretools'
 knowable.
 
 `primary_key` is **optional**, but a table without one cannot be a relationship
-parent or a DFS target, and order-dependent primitives on it have
-non-deterministic tiebreaks. Omitting it raises a
+parent or a DFS target, and
+[ordered transform primitives][tusk.primitives.OrderedTransformPrimitive] on it
+have non-deterministic tiebreaks. Omitting it raises a
 [`MissingPrimaryKeyWarning`][tusk.exceptions.MissingPrimaryKeyWarning].
 
-`row_creation_time` is required for order-dependent primitives on that table,
+`row_creation_time` is required for
+[ordered transform primitives][tusk.primitives.OrderedTransformPrimitive] on that table,
 and is what a [cutoff time](deep-feature-synthesis.md#cutoff-times) filters on. A table without
 one is *timeless*: it passes through every cutoff unfiltered.
 
