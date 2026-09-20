@@ -97,9 +97,11 @@ erDiagram
     Int64 customer_id FK "-> customers"
     Int64 product_id FK "-> products"
     Int64 quantity
+    Float64 amount
     Datetime[us] placed_at "row creation time"
     Datetime[us] payed_at "row update time"
     Categorical payment_method "@ payed_at"
+    Datetime[us] closed_at
   }
   "customers" 1 to 0+ "orders" : ""
   "products" 1 to 0+ "orders" : ""

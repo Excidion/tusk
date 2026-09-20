@@ -262,17 +262,17 @@ db.add_table(
 ```
 
 Customer 2 currently owns car 1, which has four repairs on record, spread
-across its whole lifetime — some from before customer 2 owned it. Customer
-1's only car has since been sold, so it is masked out of their group
-entirely. The feature
+across its whole lifetime. Customer 1's only car has since been sold, so it
+is masked out of their group entirely. The feature
 
 ```
 SUM(cars.COUNT(cars.repairs) WHEN current)
 ```
 
 reads as "over the cars this customer currently owns, each car's **lifetime**
-repair count". All four of car 1's repairs count toward customer 2, including
-any performed under a previous owner.
+repair count". All four of car 1's repairs count toward customer 2,
+regardless of when each one happened — the `current` clause masks rows of
+`cars`, and `repairs` is never filtered by it.
 
 No clause can fix this. `repairs` has no `customer_id` and no knowledge of
 ownership windows, so no predicate over its own columns can express "during
