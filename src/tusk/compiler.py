@@ -297,7 +297,11 @@ def _add_aggregations(
     batch: Sequence[AggregationFeature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Fold one child table's aggregations into the parent with a single join.
+    """Fold one child table's aggregations into the parent, one join per clause.
+
+    Unclaused features share a single join over the unfiltered child, exactly
+    as before clauses existed; each distinct clause adds one further join over
+    the child filtered to that clause's mask.
 
     Args:
         frame: The parent frame being built.
@@ -315,6 +319,92 @@ def _add_aggregations(
         child_needed.update(_closure(feature.base_features))
     child = _table_frame(database, relationship.child, child_needed, cutoff_time)
 
+    child_schema = database.schema(relationship.child)
+    for clause, features in _by_clause(batch):
+        mask = _clause_expr(child_schema, clause, cutoff_time)
+        frame = _join_one_clause(
+            frame,
+            child if mask is None else child.filter(mask),
+            database,
+            table,
+            relationship,
+            features,
+            cutoff_time,
+        )
+    return frame
+
+
+def _clause_expr(
+    schema: TableSchema,
+    clause: tuple[str, str] | None,
+    cutoff_time: datetime | None,
+) -> nw.Expr | None:
+    """Build the mask a clause selects on the child's rows.
+
+    Args:
+        schema: The child table's schema, holding the declared clauses.
+        clause: The (kind, key) pair, or None for an unclaused feature.
+        cutoff_time: The cutoff, passed to a ``when`` clause's callable.
+
+    Returns:
+        The mask expression, or None when the feature has no clause.
+
+    Raises:
+        SchemaError: If the key is not declared on the child table.
+    """
+    if clause is None:
+        return None
+
+    kind, key = clause
+    declared = schema.where if kind == "where" else schema.when
+    if key not in declared:
+        raise SchemaError(
+            f"{kind} clause {key!r} is not declared on table {schema.name!r}; "
+            f"declare it in add_table({kind}=...) or drop the feature",
+        )
+    return declared[key] if kind == "where" else declared[key](cutoff_time)
+
+
+def _by_clause(
+    batch: Sequence[AggregationFeature],
+) -> list[tuple[tuple[str, str] | None, list[AggregationFeature]]]:
+    """Group a relationship's aggregations by the clause masking them.
+
+    Args:
+        batch: Every aggregation feature using one relationship.
+
+    Returns:
+        One (clause, features) pair per distinct clause, unclaused first.
+    """
+    grouped: dict[tuple[str, str] | None, list[AggregationFeature]] = {}
+    for feature in batch:
+        grouped.setdefault(feature.clause, []).append(feature)
+    return sorted(grouped.items(), key=lambda item: item[0] is not None)
+
+
+def _join_one_clause(
+    frame: nw.LazyFrame,
+    child: nw.LazyFrame,
+    database: Database,
+    table: str,
+    relationship: Relationship,
+    batch: Sequence[AggregationFeature],
+    cutoff_time: datetime | None,
+) -> nw.LazyFrame:
+    """Fold one clause's aggregations into the parent with a single join.
+
+    Args:
+        frame: The parent frame being built.
+        child: The child frame, already filtered to the clause.
+        database: The database holding the schemas.
+        table: The parent table's name.
+        relationship: The relationship being aggregated across.
+        batch: The aggregation features sharing this clause.
+        cutoff_time: The cutoff, or None.
+
+    Returns:
+        The parent frame with this clause's columns joined on.
+    """
     exprs = []
     for feature in batch:
         inputs = [nw.col(b.name) for b in feature.base_features]

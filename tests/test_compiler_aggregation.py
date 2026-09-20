@@ -4,13 +4,14 @@ from datetime import datetime, timedelta
 import narwhals as nw
 import polars as pl
 import pytest
+from conftest import clause_database
 
 import tusk
 from tusk.compiler import compile_features
 from tusk.database import Relationship
 from tusk.dtypes import DtypeFamily as F
 from tusk.feature_list import FeatureList
-from tusk.features import AggregationFeature, IdentityFeature
+from tusk.features import AggregationFeature, DirectFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
 from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
 from tusk.primitives.registry import resolve
@@ -252,3 +253,77 @@ def test_an_updated_foreign_key_stops_a_child_reaching_its_parent():
     # belonged to nobody. Sum's default_value of 0 covers customer 1's
     # resulting empty group, per the empty-group convention in this file.
     assert got["SUM__orders__amount"].to_list() == [0.0, 2.0]
+
+
+def test_where_clause_masks_the_aggregated_rows():
+    """Only rows passing the clause reach the aggregation."""
+    database = clause_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("sum"),
+                (IdentityFeature("orders", "amount", nw.Float64()),),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("where", "large"),
+            ),
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    values = dict(
+        zip(matrix["id"], matrix["SUM__orders__amount__WHERE__large"], strict=True),
+    )
+    assert values == {1: 30.0, 2: 0.0}
+
+
+def test_clause_reaches_a_direct_feature_from_a_third_table():
+    """A mask on the child's rows masks values joined onto that child."""
+    database = clause_database()
+    price = DirectFeature(
+        IdentityFeature("products", "price", nw.Float64()),
+        Relationship("products", "orders", "product_id"),
+    )
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("sum"),
+                (price,),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("where", "large"),
+            ),
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    column = [c for c in matrix.columns if c.startswith("SUM__orders")][0]
+    assert dict(zip(matrix["id"], matrix[column], strict=True)) == {1: 7.0, 2: 0.0}
+
+
+def test_when_clause_receives_the_cutoff_time():
+    """The same feature gives different values at two cutoffs."""
+    database = clause_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("when", "open"),
+            ),
+        ],
+    )
+    early = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 5, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    late = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 8, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    name = "COUNT__orders__WHEN__open"
+    assert dict(zip(early["id"], early[name], strict=True)) == {1: 2, 2: 1}
+    assert dict(zip(late["id"], late[name], strict=True)) == {1: 1, 2: 1}
