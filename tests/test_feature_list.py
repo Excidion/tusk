@@ -1,11 +1,14 @@
 """FeatureList: the validated, self-applying collection synthesis hands back."""
 
+import datetime as dt
 import pickle
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
+import narwhals as nw
 import polars as pl
 import pytest
+from conftest import clause_database
 
 import tusk
 from tusk.exceptions import SchemaError
@@ -238,3 +241,45 @@ def test_restored_features_deduplicate_against_a_fresh_run(features, db):
     restored = pickle.loads(pickle.dumps(features))
     combined = tusk.FeatureList(dict.fromkeys([*restored, *features]))
     assert len(combined) == len(features)
+
+
+def test_clause_is_resolved_against_the_database_being_applied_to():
+    """Features carry the key; the new database supplies the expression."""
+    features = tusk.deep_feature_synthesis(
+        clause_database(),
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        where_primitives=["count"],
+        max_depth=1,
+        cutoff_time=dt.datetime(2024, 5, 1),
+        features_only=True,
+    )
+    relaxed = clause_database(large_threshold=1.0)
+    matrix = (
+        nw.from_native(
+            features.apply(relaxed, cutoff_time=dt.datetime(2024, 5, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    assert dict(
+        zip(matrix["id"], matrix["COUNT__orders__WHERE__large"], strict=True),
+    ) == {1: 3, 2: 1}
+
+
+def test_missing_clause_on_the_new_database_names_the_key():
+    """Applying to a database that never declared the clause fails loudly."""
+    features = tusk.deep_feature_synthesis(
+        clause_database(),
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        where_primitives=["count"],
+        max_depth=1,
+        cutoff_time=dt.datetime(2024, 5, 1),
+        features_only=True,
+    )
+    without = clause_database(declare_clauses=False)
+    with pytest.raises(SchemaError, match="(large|impossible|open)"):
+        features.apply(without, cutoff_time=dt.datetime(2024, 5, 1))
