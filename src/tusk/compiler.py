@@ -124,15 +124,15 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
 
 
 def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -> None:
-    """Fail if a primitive requires a cutoff time that was not given.
+    """Fail if a primitive or when clause requires a cutoff time that was not given.
 
     Args:
         features: The transitive closure of features to compile.
         cutoff_time: The cutoff, or None.
 
     Raises:
-        ValidationError: If a primitive measures against ``cutoff_time`` and
-            none was given.
+        ValidationError: If a primitive or when clause measures against
+            ``cutoff_time`` and none was given.
     """
     if cutoff_time is not None:
         return
@@ -140,12 +140,28 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         primitive.name
         for feature in features
         if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
-    }
+    } | {name for feature in features if (name := _measuring_clause(feature))}
     if measuring:
         raise ValidationError(
             f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
             "when applying the features",
         )
+
+
+def _measuring_clause(feature: Feature) -> str | None:
+    """Name a feature's clause if that clause measures against the cutoff.
+
+    Args:
+        feature: The feature to inspect.
+
+    Returns:
+        A readable name for the clause, or None when the feature has no
+        clause or its clause is static.
+    """
+    clause = getattr(feature, "clause", None)
+    if clause is None or clause[0] != "when":
+        return None
+    return f"when clause {clause[1]!r}"
 
 
 def base_frame(

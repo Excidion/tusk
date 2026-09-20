@@ -327,3 +327,41 @@ def test_when_clause_receives_the_cutoff_time():
     name = "COUNT__orders__WHEN__open"
     assert dict(zip(early["id"], early[name], strict=True)) == {1: 2, 2: 1}
     assert dict(zip(late["id"], late[name], strict=True)) == {1: 1, 2: 1}
+
+
+def test_when_clause_without_a_cutoff_time_is_rejected():
+    """A cutoff-measuring clause names itself in the error."""
+    from tusk.exceptions import ValidationError
+
+    database = clause_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("when", "open"),
+            ),
+        ],
+    )
+    with pytest.raises(ValidationError, match="open"):
+        features.apply(database)
+
+
+def test_where_clause_without_a_cutoff_time_is_allowed():
+    """A static clause measures nothing, so it needs no cutoff."""
+    database = clause_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("where", "large"),
+            ),
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    assert dict(
+        zip(matrix["id"], matrix["COUNT__orders__WHERE__large"], strict=True),
+    ) == {1: 2, 2: 0}
