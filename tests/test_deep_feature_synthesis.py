@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 import pytest
+from conftest import clause_database
 
 import tusk
 from tusk.primitives import Quantiles
@@ -397,3 +398,21 @@ def test_features_only_ignores_a_mismatched_cutoff(db):
         cutoff_time=date(2026, 1, 1),  # ty: ignore[invalid-argument-type]
         features_only=True,
     )
+
+
+def test_where_primitives_defaults_to_count_and_sum():
+    """The documented default reaches the motivating feature."""
+    database = clause_database()
+    features = tusk.deep_feature_synthesis(
+        database,
+        "customers",
+        agg_primitives=["count", "sum", "mean"],
+        trans_primitives=[],
+        max_depth=1,
+        cutoff_time=datetime(2024, 5, 1),
+        features_only=True,
+    )
+    names = {f.name for f in features}
+    assert "COUNT__orders__WHEN__open" in names
+    assert "SUM__orders__amount__WHEN__open" in names
+    assert not any(n.startswith("MEAN__") and "WHEN" in n for n in names)

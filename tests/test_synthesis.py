@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import narwhals as nw
 import polars as pl
 import pytest
+from conftest import clause_database
 
 import tusk
 from tusk.dtypes import DtypeFamily as F
@@ -1100,3 +1101,67 @@ def test_the_categorical_warning_names_the_primitive_that_handles_labels():
             trans_primitives=["equal"],
             max_depth=1,
         )
+
+
+def test_clause_variants_are_generated_for_where_primitives():
+    """Each selected primitive gains one variant per declared clause."""
+    database = clause_database()
+    features = synthesize(
+        database,
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        where_primitives=["count"],
+        max_depth=1,
+    )
+    names = {f.name for f in features}
+    assert "COUNT__orders" in names
+    assert "COUNT__orders__WHERE__large" in names
+    assert "COUNT__orders__WHEN__open" in names
+
+
+def test_primitives_outside_where_primitives_get_no_variant():
+    """A primitive not selected for clauses stays unclaused."""
+    database = clause_database()
+    features = synthesize(
+        database,
+        "customers",
+        agg_primitives=["count", "sum"],
+        trans_primitives=[],
+        where_primitives=["count"],
+        max_depth=1,
+    )
+    names = {f.name for f in features}
+    assert "COUNT__orders__WHERE__large" in names
+    assert not any(n.startswith("SUM__") and "WHERE" in n for n in names)
+
+
+def test_empty_where_primitives_generates_no_clause_features():
+    """Passing () turns the whole mechanism off."""
+    database = clause_database()
+    features = synthesize(
+        database,
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        where_primitives=(),
+        max_depth=1,
+    )
+    assert not any("WHERE" in f.name or "WHEN" in f.name for f in features)
+
+
+def test_a_clause_does_not_consume_depth():
+    """A clause variant has the same depth as its unclaused twin."""
+    database = clause_database()
+    features = synthesize(
+        database,
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        where_primitives=["count"],
+        max_depth=1,
+    )
+    by_name = {f.name: f for f in features}
+    assert (
+        by_name["COUNT__orders__WHERE__large"].depth == by_name["COUNT__orders"].depth
+    )

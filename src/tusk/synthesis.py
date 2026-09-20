@@ -31,7 +31,7 @@ from tusk.features import (
     TransformFeature,
     _require_kind,
 )
-from tusk.primitives.aggregation import AGG_DEFAULTS
+from tusk.primitives.aggregation import AGG_DEFAULTS, WHERE_DEFAULTS
 from tusk.primitives.base import (
     AggregationPrimitive,
     GroupTransformPrimitive,
@@ -48,6 +48,7 @@ def synthesize(
     target_table: str,
     agg_primitives: Iterable[str | Primitive] | None = None,
     trans_primitives: Iterable[str | Primitive] | None = None,
+    where_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
 ) -> FeatureList:
     """Generate feature definitions for a target table.
@@ -73,6 +74,10 @@ def synthesize(
             :class:`~tusk.primitives.base.GroupTransformPrimitive` is applied
             within each foreign-key group, every other one to each row. None
             selects ``TRANS_DEFAULTS``.
+        where_primitives: Aggregation primitives that additionally get one
+            masked variant per clause declared on the child table, as names
+            or instances. None selects ``WHERE_DEFAULTS``; ``()`` generates
+            no clause features.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
@@ -96,15 +101,21 @@ def synthesize(
     trans = resolve_all(
         TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
     )
+    where_agg = resolve_all(
+        WHERE_DEFAULTS if where_primitives is None else where_primitives,
+    )
     for primitive in agg:
         _require_kind(primitive, AggregationPrimitive, "agg_primitives")
     for primitive in trans:
         _require_kind(primitive, TransformPrimitive, "trans_primitives")
+    for primitive in where_agg:
+        _require_kind(primitive, AggregationPrimitive, "where_primitives")
     context = _Context(
         database=database,
         agg=agg,
         trans=[p for p in trans if not isinstance(p, GroupTransformPrimitive)],
         groupby=[p for p in trans if isinstance(p, GroupTransformPrimitive)],
+        where_agg=where_agg,
     )
     features = context.build(target_table, max_depth, ())
     context.warn_unmatched()
@@ -132,6 +143,7 @@ class _Context:
         agg: Sequence[Primitive],
         trans: Sequence[Primitive],
         groupby: Sequence[Primitive],
+        where_agg: Sequence[Primitive],
     ) -> None:
         """Store the walk's inputs.
 
@@ -141,11 +153,14 @@ class _Context:
             trans: Resolved transform primitives applied to each row.
             groupby: Resolved group transform primitives, applied within
                 each foreign-key group.
+            where_agg: Resolved aggregation primitives that additionally get
+                one masked variant per clause declared on the child table.
         """
         self.database = database
         self.agg = agg
         self.trans = trans
         self.groupby = groupby
+        self.where_agg = where_agg
         self._categorical_warned: set[tuple[str, str, str]] = set()
         self._matched: set[str] = set()
         self._unmatched: dict[tuple[str, str], str] = {}
@@ -205,12 +220,40 @@ class _Context:
             child_features = self.build(rel.child, depth_limit - 1, path + (rel,))
             usable = self._usable(rel.child, child_features)
             for primitive in self.agg:
-                if not primitive.signatures:
-                    out.append(AggregationFeature(primitive, (), rel))
-                    continue
-                for combo in self._combinations(primitive, usable, rel.child):
-                    out.append(AggregationFeature(primitive, combo, rel))
+                out.extend(self._aggregations_for(primitive, rel, usable, None))
+            clauses = self.database.schema(rel.child).clauses
+            for primitive in self.where_agg:
+                for clause in clauses:
+                    out.extend(
+                        self._aggregations_for(primitive, rel, usable, clause),
+                    )
         return out
+
+    def _aggregations_for(
+        self,
+        primitive: Primitive,
+        relationship: Relationship,
+        usable: Sequence[Feature],
+        clause: tuple[str, str] | None,
+    ) -> list[Feature]:
+        """Build every aggregation of one primitive across one relationship.
+
+        Args:
+            primitive: The aggregation primitive to apply.
+            relationship: The parent-child link being aggregated across.
+            usable: Features on the child that may serve as inputs.
+            clause: The (kind, key) pair masking the child's rows, or None.
+
+        Returns:
+            One feature per usable input combination, or a single zero-arity
+            feature when the primitive declares no signatures.
+        """
+        if not primitive.signatures:
+            return [AggregationFeature(primitive, (), relationship, clause)]
+        return [
+            AggregationFeature(primitive, combo, relationship, clause)
+            for combo in self._combinations(primitive, usable, relationship.child)
+        ]
 
     def _directs(
         self,

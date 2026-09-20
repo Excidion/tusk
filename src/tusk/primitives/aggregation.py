@@ -30,6 +30,8 @@ AGG_DEFAULTS: tuple[str, ...] = (
     "percent_true",
 )
 
+WHERE_DEFAULTS: tuple[str, ...] = ("count", "sum")
+
 
 @register
 @dataclass(frozen=True)

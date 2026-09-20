@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tusk.primitives.aggregation import (
     AGG_DEFAULTS,
+    WHERE_DEFAULTS,
     AllTrue,
     AnyTrue,
     Count,
@@ -181,6 +182,7 @@ __all__ = [
     "TimeSincePrevious",
     "TransformPrimitive",
     "Variance",
+    "WHERE_DEFAULTS",
     "Weekday",
     "Year",
     "register",
