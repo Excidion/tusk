@@ -56,10 +56,33 @@ ROWS = pd.DataFrame(
             ["a", None, "b", "a", "b", "a", None, "b"],
             dtype="string",
         ),
+        "text": pd.array(
+            [
+                "Hello, world!",
+                None,
+                "Dog dog cat",
+                "   ",
+                "a-b [c]",
+                "the quick brown fox",
+                "!!!",
+                "word, word",
+            ],
+            dtype="string",
+        ),
     },
 )
 
 EXPECTED = {
+    "N_WORDS__text": (
+        "n_words",
+        nw.Int64,
+        [2, None, 3, 0, 2, 4, 0, 2],
+    ),
+    "N_UNIQUE_WORDS__text": (
+        "n_unique_words",
+        nw.Int64,
+        [2, None, 2, 0, 2, 4, 0, 1],
+    ),
     "IS_NULL__value": (
         "is_null",
         nw.Boolean,
