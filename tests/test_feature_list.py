@@ -280,6 +280,9 @@ def test_missing_clause_on_the_new_database_names_the_key():
         cutoff_time=dt.datetime(2024, 5, 1),
         features_only=True,
     )
+    large_only = FeatureList(
+        [f for f in features if getattr(f, "clause", None) == ("where", "large")]
+    )
     without = clause_database(declare_clauses=False)
-    with pytest.raises(SchemaError, match="(large|impossible|open)"):
-        features.apply(without, cutoff_time=dt.datetime(2024, 5, 1))
+    with pytest.raises(SchemaError, match="large"):
+        large_only.apply(without, cutoff_time=dt.datetime(2024, 5, 1))
