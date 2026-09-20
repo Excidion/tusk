@@ -218,6 +218,12 @@ compile time; applying one without raises
 [`ValidationError`][tusk.exceptions.ValidationError]. A `where` clause needs
 none. A clause key may not contain `__`.
 
+`add_table` only checks a clause's *shape* -- that a `where` value is a
+narwhals expression and a `when` value is callable. The expression body
+itself, such as a reference to a nonexistent column, is only evaluated when
+the query actually runs, so a malformed clause can surface as a raw backend
+error far from the `add_table` call that declared it.
+
 `deep_feature_synthesis` generates one masked variant per declared clause, for
 the primitives named in `where_primitives` (default: `WHERE_DEFAULTS`, i.e.
 `("count", "sum")`):

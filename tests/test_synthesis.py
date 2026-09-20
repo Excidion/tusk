@@ -8,7 +8,11 @@ from conftest import clause_database
 
 import tusk
 from tusk.dtypes import DtypeFamily as F
-from tusk.exceptions import PrimitiveError, UnmatchedPrimitiveWarning
+from tusk.exceptions import (
+    PrimitiveError,
+    UnmatchedClauseWarning,
+    UnmatchedPrimitiveWarning,
+)
 from tusk.primitives.base import GroupTransformPrimitive, TransformPrimitive
 from tusk.synthesis import synthesize
 
@@ -1165,3 +1169,47 @@ def test_a_clause_does_not_consume_depth():
     assert (
         by_name["COUNT__orders__WHERE__large"].depth == by_name["COUNT__orders"].depth
     )
+
+
+def test_where_primitives_warns_when_no_table_declares_a_clause():
+    """Asking for clause features on a database with no clause is a no-op the
+    user gets no explanation for otherwise: it must warn instead."""
+    database = clause_database(declare_clauses=False)
+    with pytest.warns(UnmatchedClauseWarning, match="where=|when="):
+        synthesize(
+            database,
+            "customers",
+            agg_primitives=["count"],
+            trans_primitives=[],
+            where_primitives=["count"],
+            max_depth=1,
+        )
+
+
+def test_default_where_primitives_stays_silent_with_no_clause(recwarn):
+    """None selects WHERE_DEFAULTS; a user who never asked for clause
+    features must not be nagged about a mechanism they did not invoke."""
+    database = clause_database(declare_clauses=False)
+    synthesize(
+        database,
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedClauseWarning)]
+
+
+def test_empty_where_primitives_stays_silent_with_no_clause(recwarn):
+    """() explicitly disables clause features, so it must stay silent even
+    on a database with no declared clause."""
+    database = clause_database(declare_clauses=False)
+    synthesize(
+        database,
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        where_primitives=(),
+        max_depth=1,
+    )
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedClauseWarning)]

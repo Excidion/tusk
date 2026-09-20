@@ -19,6 +19,7 @@ from tusk.exceptions import (
     CategoricalDtypeWarning,
     PrimitiveError,
     SchemaError,
+    UnmatchedClauseWarning,
     UnmatchedPrimitiveWarning,
 )
 from tusk.feature_list import FeatureList
@@ -95,6 +96,9 @@ def synthesize(
             column.
         UnmatchedPrimitiveWarning: If a requested primitive matched no column
             of its input dtypes anywhere in the walk.
+        UnmatchedClauseWarning: If ``where_primitives`` was explicitly
+            requested but no table in the database declares a ``where`` or
+            ``when`` clause.
     """
     database.schema(target_table)
     agg = resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives)
@@ -110,6 +114,7 @@ def synthesize(
         _require_kind(primitive, TransformPrimitive, "trans_primitives")
     for primitive in where_agg:
         _require_kind(primitive, AggregationPrimitive, "where_primitives")
+    _warn_if_where_primitives_are_unusable(database, where_primitives, where_agg)
     context = _Context(
         database=database,
         agg=agg,
@@ -132,6 +137,48 @@ def synthesize(
             "primitives, raise max_depth, or add relationships.",
         )
     return FeatureList(dict.fromkeys(kept))
+
+
+def _warn_if_where_primitives_are_unusable(
+    database: Database,
+    where_primitives: Iterable[str | Primitive] | None,
+    where_agg: Sequence[Primitive],
+) -> None:
+    """Warn when ``where_primitives`` was requested but no clause can use it.
+
+    This cannot route through ``_matched``/``_unmatched``: a clause
+    primitive such as ``count`` or ``sum`` is normally also in
+    ``agg_primitives``, so it is already marked matched there and any warning
+    keyed on the primitive would be suppressed. The check is keyed on the
+    clause dimension instead, independent of primitive matching.
+
+    ``where_primitives=None`` selects ``WHERE_DEFAULTS`` and must stay
+    silent -- a user who never asked for clause features should not be
+    nagged. ``where_primitives=()`` explicitly disables clause features and
+    must stay silent too.
+
+    Args:
+        database: The database to check for declared clauses.
+        where_primitives: The caller's own argument, unresolved, used only to
+            tell an explicit request apart from the ``None`` default.
+        where_agg: ``where_primitives`` resolved to primitive instances.
+
+    Warns:
+        UnmatchedClauseWarning: If ``where_primitives`` is neither None nor
+            empty, and no table in the database declares a ``where`` or
+            ``when`` clause.
+    """
+    if where_primitives is None or not where_agg:
+        return
+    if any(database.schema(name).clauses for name in database.table_names):
+        return
+    warnings.warn(
+        "where_primitives was requested but no table declares a where or "
+        "when clause, so it generated no clause features. Declare where=... "
+        "or when=... on a table's add_table(), or drop where_primitives.",
+        UnmatchedClauseWarning,
+        stacklevel=4,
+    )
 
 
 class _Context:

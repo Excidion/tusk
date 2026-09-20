@@ -10,6 +10,7 @@ import tusk
 from tusk.compiler import compile_features
 from tusk.database import Relationship
 from tusk.dtypes import DtypeFamily as F
+from tusk.exceptions import ValidationError
 from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, DirectFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
@@ -331,8 +332,6 @@ def test_when_clause_receives_the_cutoff_time():
 
 def test_when_clause_without_a_cutoff_time_is_rejected():
     """A cutoff-measuring clause names itself in the error."""
-    from tusk.exceptions import ValidationError
-
     database = clause_database()
     features = FeatureList(
         [
@@ -421,14 +420,15 @@ def test_clause_sees_pre_update_values(updating_db):
     ) == {1: 0, 2: 1}
 
 
-def test_a_clause_does_not_scope_the_tables_below_it():
-    """A clause masks its own table's rows, never its children's.
+def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_rollup():
+    """An empty mask falls back to default_value; a surviving row keeps everything.
 
-    Customer 2 currently owns car 1, which carries four repairs across its
-    lifetime. Customer 1's only car has been sold, so the current clause
-    masks it out of their group. A current clause on cars therefore selects
-    car 1 for customer 2, and that car brings its whole repair history with
-    it -- all four repairs, regardless of when they happened.
+    Customer 1's only car is sold, so the current clause masks their whole
+    group to empty and their sum falls back to 0. Customer 2's car survives
+    the mask and brings its entire repair history with it -- all four
+    repairs, regardless of when they happened. See
+    docs/guide/databases.md#what-a-clause-scopes for what this does and does
+    not say about ownership transfer.
     """
     customers = pl.LazyFrame(
         {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},

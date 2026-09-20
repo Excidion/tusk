@@ -186,6 +186,20 @@ def test_clause_renders_after_the_last_argument():
     assert feature.display_name == "SUM(orders.amount WHEN current)"
 
 
+def test_multi_output_clause_feature_keeps_the_output_index_last():
+    """A clause's name parts are baked into the base name, so __0/__1 stays last."""
+    feature = AggregationFeature(
+        Quantiles(qs=(0.5, 0.9)),
+        (IdentityFeature("orders", "amount", nw.Float64()),),
+        Relationship("customers", "orders", "customer_id"),
+        clause=("where", "large"),
+    )
+    assert feature.output_names == (
+        "QUANTILES__orders__amount__WHERE__large__0",
+        "QUANTILES__orders__amount__WHERE__large__1",
+    )
+
+
 def test_unclaused_aggregation_name_is_unchanged():
     """The existing path keeps its exact name."""
     feature = AggregationFeature(
