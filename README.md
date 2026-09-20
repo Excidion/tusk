@@ -17,6 +17,8 @@ uv add tusk-ml
 ```python
 from datetime import datetime
 
+import narwhals as nw
+
 import tusk
 from tusk.primitives import Quantiles
 
@@ -34,6 +36,9 @@ db.add_table(
     primary_key="id",
     row_creation_time="placed_at",
     row_update_times={"payed_at": {"payed_at": None, "payment_method": None}},
+    where={"large": nw.col("amount") >= 100.0},
+    when={"open": lambda cutoff: nw.col("closed_at").is_null()
+                               | (nw.col("closed_at") > cutoff)},
 )
 
 db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
@@ -45,6 +50,7 @@ feature_matrix, features = tusk.deep_feature_synthesis(
     database=db,
     target_table="customers",
     agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
+    where_primitives=("count", "sum"),
     trans_primitives=["month", "weekday"],
     max_depth=2,
     cutoff_time=datetime(2026, 1, 1),

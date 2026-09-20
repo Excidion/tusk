@@ -424,10 +424,11 @@ def test_clause_sees_pre_update_values(updating_db):
 def test_a_clause_does_not_scope_the_tables_below_it():
     """A clause masks its own table's rows, never its children's.
 
-    Car 1 was owned by customer 1 and is now owned by customer 2, and was
-    repaired twice under each owner. A current clause on cars selects the
-    car for customer 2 only, and that car brings its whole repair history
-    with it -- all four repairs, not the two from customer 2's era.
+    Customer 2 currently owns car 1, which carries four repairs across its
+    lifetime. Customer 1's only car has been sold, so the current clause
+    masks it out of their group. A current clause on cars therefore selects
+    car 1 for customer 2, and that car brings its whole repair history with
+    it -- all four repairs, regardless of when they happened.
     """
     customers = pl.LazyFrame(
         {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},

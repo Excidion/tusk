@@ -193,6 +193,116 @@ keeps only the table names and the lines between them:
 db.plot(columns="structural")
 ```
 
+## Row conditions: `where` and `when`
+
+`where` and `when` declare named row conditions on a table, for masking which
+rows an aggregation groups:
+
+```python
+db.add_table(
+    "orders",
+    orders_lf,
+    primary_key="id",
+    row_creation_time="placed_at",
+    where={"large": nw.col("amount") >= 100.0},
+    when={"open": lambda cutoff: nw.col("closed_at").is_null()
+                               | (nw.col("closed_at") > cutoff)},
+)
+```
+
+`where` takes a static narwhals expression: a condition that does not depend
+on the cutoff. `when` takes a callable that receives the cutoff time and
+returns a narwhals expression, for a condition measured against it, such as
+"still open" or "currently valid". A `when` clause needs a `cutoff_time` at
+compile time; applying one without raises
+[`ValidationError`][tusk.exceptions.ValidationError]. A `where` clause needs
+none. A clause key may not contain `__`.
+
+`deep_feature_synthesis` generates one masked variant per declared clause, for
+the primitives named in `where_primitives` (default: `WHERE_DEFAULTS`, i.e.
+`("count", "sum")`):
+
+```python
+tusk.deep_feature_synthesis(
+    database=db,
+    target_table="customers",
+    agg_primitives=["mean", "count"],
+    where_primitives=("count", "sum"),
+    trans_primitives=[],
+    max_depth=2,
+    cutoff_time=datetime(2026, 1, 1),
+)
+```
+
+A clause named `large` on `orders` synthesizes features like
+`COUNT__orders__WHERE__large`, displayed as `COUNT(orders WHERE large)`; a
+clause named `open` synthesizes `SUM__orders__amount__WHEN__open`, displayed
+as `SUM(orders.amount WHEN open)`.
+
+### What a clause scopes
+
+A clause masks the rows of the table it is declared on, at the moment that
+table is grouped. It does not reach the tables below it.
+
+Consider `customers <- cars <- repairs`, where `cars` carries a `current`
+clause on ownership:
+
+```python
+db.add_table(
+    "cars",
+    cars_lf,
+    primary_key="id",
+    row_creation_time="bought_at",
+    when={
+        "current": lambda cutoff: (
+            nw.col("sold_at").is_null() | (nw.col("sold_at") > cutoff)
+        ),
+    },
+)
+```
+
+Customer 2 currently owns car 1, which has four repairs on record, spread
+across its whole lifetime — some from before customer 2 owned it. Customer
+1's only car has since been sold, so it is masked out of their group
+entirely. The feature
+
+```
+SUM(cars.COUNT(cars.repairs) WHEN current)
+```
+
+reads as "over the cars this customer currently owns, each car's **lifetime**
+repair count". All four of car 1's repairs count toward customer 2, including
+any performed under a previous owner.
+
+No clause can fix this. `repairs` has no `customer_id` and no knowledge of
+ownership windows, so no predicate over its own columns can express "during
+this customer's ownership". Splitting the repairs by owner requires an
+interval join between `repaired_at` and the ownership window, which is a
+different mechanism from masking.
+
+This is not a defect introduced by `where`/`when`. A depth-2 aggregation
+already rolls a child's whole history up to whichever parent its foreign key
+currently points at; clauses make that existing attribution visible rather
+than creating it.
+
+Normalizing ownership into its own table does not fix it either. Modelling
+ownership as `ownerships(car_id, customer_id, valid_from, valid_until)`
+decides *which customer* a car belongs to in a window, but not *which
+repairs*. Reaching repairs from customers still goes: aggregate `repairs`
+onto `cars`, direct-feature onto `ownerships`, aggregate onto `customers` —
+and that middle rollup is still the car's lifetime repair count, so every
+ownership row inherits the car's whole history.
+
+The split falls out of existing machinery in exactly one case: when
+`repairs` already carries an `ownership_id`, so repairs hang off
+`ownerships` directly rather than off `cars`. Deriving that key from
+`repairs(car_id, repaired_at)` is itself an interval join, so this only
+helps when the source data already materializes the link.
+
+The general case — propagating an ancestor's validity window down to filter
+descendant rows by their own timestamps — is tracked as
+[issue #29](https://github.com/Excidion/tusk/issues/29).
+
 ## Row update times
 
 `row_creation_time` decides whether a **row** is visible at a cutoff. It says
