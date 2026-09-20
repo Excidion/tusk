@@ -187,19 +187,35 @@ linearly in the number of clauses declared, which the user controls directly.
 
 ## Compilation
 
-One change, in `_add_aggregations`, where the expression is built:
+`_add_aggregations` batches by `(relationship, clause)` rather than by
+relationship alone, and filters the child frame before grouping:
 
 ```python
-mask = _clause_expr(database.schema(relationship.child), feature.clause, cutoff_time)
-inputs = [nw.col(b.name).filter(mask) for b in feature.base_features]
+for clause, features in _by_clause(batch):
+    mask = _clause_expr(database.schema(relationship.child), clause, cutoff_time)
+    grouped = _masked(child, mask).group_by(relationship.foreign_key).agg(*exprs)
+    frame = frame.join(grouped, ...)
 ```
 
-A zero-arity primitive has no input to mask, so its own expression is filtered
-instead. `_clause_expr` returns `None` for an unclaused feature and the
-existing path is taken unchanged, so features generated today compile exactly
-as they do today.
+**Masking the frame rather than each expression** is deliberate. The obvious
+alternative, `nw.col(x).filter(mask).sum()`, cannot express a zero-arity
+aggregation: `Count` builds `nw.len()`, and polars rejects
+`nw.len().filter(...)` with `InvalidOperationError: Can't apply filtration to
+scalar-like expression`. Filtering the frame needs no per-primitive special
+case and works for any primitive added later.
 
-`_clause_expr` looks the key up in `schema.where` and uses it as-is, or in
+It also makes decision 10 hold by construction rather than by verification. A
+group where no row passes the mask is simply absent from the grouped frame, so
+the existing left join produces a null and the existing
+`fill_null(default_value)` supplies the fallback — the identical code path an
+empty group already takes, on every backend.
+
+The cost is one join per clause per relationship instead of one join per
+relationship. The number of clauses is declared by the user and small.
+
+`_clause_expr` returns `None` for an unclaused feature, whose batch then takes
+the existing unfiltered path, so features generated today compile exactly as
+they do today. It looks the key up in `schema.where` and uses it as-is, or in
 `schema.when` and calls it with `cutoff_time`.
 
 `_table_frame` returns the table's own columns plus the needed features, so
@@ -212,19 +228,15 @@ nothing called.
 
 ### Empty masks
 
-Verified on polars, for a group where no row passes the mask:
+Because the mask filters the frame, a group where no row passes it is absent
+from the grouped frame entirely. The left join yields null and
+`fill_null(default_value)` supplies the primitive's own fallback — `0` for
+`sum` and `n_unique`, null for `mean` and `min`, which declare none.
 
-| primitive  | empty-mask result | `default_value` |
-|------------|-------------------|-----------------|
-| `sum`      | `0`               | `0`             |
-| `n_unique` | `0`               | `0`             |
-| `mean`     | `null`            | none → null     |
-| `min`      | `null`            | none → null     |
-
-Each already matches its `default_value`. On a backend returning NULL for an
-empty `sum`, the existing post-join `fill_null(default_value)` corrects it to
-the same `0`. No new mechanism is required; what is required is the
-cross-backend test matrix below.
+This is the same code path an empty group already takes today, so it needs no
+new mechanism and cannot diverge between backends. The cross-backend test
+below still pins it, because the claim is worth a test even when it is true by
+construction.
 
 ## Clause scope along a join path
 
