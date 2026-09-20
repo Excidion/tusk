@@ -140,3 +140,58 @@ def test_transform_feature_rejects_a_primitive_of_neither_kind():
         ),
     ):
         TransformFeature(Neither(), (amount,))
+
+
+def test_clause_appears_in_aggregation_name():
+    """A where clause becomes a trailing name part."""
+    feature = AggregationFeature(
+        resolve("count"),
+        (),
+        Relationship("customers", "orders", "customer_id"),
+        clause=("where", "enterprise"),
+    )
+    assert feature.name == "COUNT__orders__WHERE__enterprise"
+    assert feature.display_name == "COUNT(orders WHERE enterprise)"
+
+
+def test_when_clause_uses_the_when_token():
+    """A when clause is distinguishable from a where clause of the same key."""
+    relationship = Relationship("customers", "orders", "customer_id")
+    where = AggregationFeature(
+        resolve("count"),
+        (),
+        relationship,
+        clause=("where", "current"),
+    )
+    when = AggregationFeature(
+        resolve("count"),
+        (),
+        relationship,
+        clause=("when", "current"),
+    )
+    assert where.name == "COUNT__orders__WHERE__current"
+    assert when.name == "COUNT__orders__WHEN__current"
+    assert where != when
+
+
+def test_clause_renders_after_the_last_argument():
+    """A clause on a one-input aggregation sits inside the parentheses."""
+    feature = AggregationFeature(
+        resolve("sum"),
+        (IdentityFeature("orders", "amount", nw.Float64()),),
+        Relationship("customers", "orders", "customer_id"),
+        clause=("when", "current"),
+    )
+    assert feature.name == "SUM__orders__amount__WHEN__current"
+    assert feature.display_name == "SUM(orders.amount WHEN current)"
+
+
+def test_unclaused_aggregation_name_is_unchanged():
+    """The existing path keeps its exact name."""
+    feature = AggregationFeature(
+        resolve("count"),
+        (),
+        Relationship("customers", "orders", "customer_id"),
+    )
+    assert feature.name == "COUNT__orders"
+    assert feature.display_name == "COUNT(orders)"
