@@ -126,6 +126,10 @@
 
 ::: tusk.primitives.Cosine
 
+::: tusk.primitives.NWords
+
+::: tusk.primitives.NUniqueWords
+
 ::: tusk.primitives.AddNumeric
 
 ::: tusk.primitives.SubtractNumeric

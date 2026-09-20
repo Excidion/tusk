@@ -32,6 +32,7 @@ LOGICAL_TYPES = {
     "flag": "Boolean",
     "maybe_flag": "BooleanNullable",
     "label": "Categorical",
+    "text": "NaturalLanguage",
 }
 
 

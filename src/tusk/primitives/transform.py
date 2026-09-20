@@ -408,6 +408,53 @@ class Cosine(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class NWords(TransformPrimitive):
+    """Number of whitespace-separated words in a string."""
+
+    name = "n_words"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.Int64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the word-count expression.
+
+        Args:
+            expr: A string expression.
+
+        Returns:
+            A narwhals expression of how many words each value holds.
+        """
+        words = _split_into_words(expr)
+        return _count_unless_empty(words, words.str.split(" ").list.len())
+
+
+@register
+@dataclass(frozen=True)
+class NUniqueWords(TransformPrimitive):
+    """Number of distinct words in a string, ignoring case."""
+
+    name = "n_unique_words"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.Int64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the distinct-word-count expression.
+
+        Args:
+            expr: A string expression.
+
+        Returns:
+            A narwhals expression of how many distinct words each value holds.
+        """
+        words = _split_into_words(expr.str.to_lowercase())
+        return _count_unless_empty(
+            words,
+            words.str.split(" ").list.unique().list.len(),
+        )
+
+
+@register
+@dataclass(frozen=True)
 class Percentile(GroupTransformPrimitive):
     """Rank of the value among the known values of its group, from above 0 to 1.
 
@@ -1137,3 +1184,43 @@ def _time_since_last_match(moment: nw.Expr, is_match: nw.Expr) -> nw.Expr:
     timestamps = moment.cast(nw.Datetime)
     latest_match = nw.when(is_match).then(timestamps).fill_null(strategy="forward")
     return timestamps - latest_match
+
+
+def _split_into_words(expr: nw.Expr) -> nw.Expr:
+    """Reduce a string to its words, separated by one space each.
+
+    Words are whitespace-separated and keep the punctuation inside them, so
+    ``"a-b"`` is one word; punctuation around a word is not part of it, and a
+    run of punctuation alone is not a word.
+
+    Args:
+        expr: A string expression.
+
+    Returns:
+        A narwhals expression of the words, joined by single spaces, empty
+        where the value holds no word at all.
+    """
+    # Codepoint ranges rather than escaped literals: polars' regex engine
+    # rejects a redundant escape such as `\!` inside a character class.
+    punctuation = r"!-/:-@\x5B-\x60{-~"
+    collapsed = expr.str.replace_all(r"\s+", " ")
+    return (
+        collapsed.str.replace_all(f"(^|[ ])[{punctuation}]+", " ")
+        .str.replace_all(f"[{punctuation}]+([ ]|$)", " ")
+        .str.replace_all(r"\s+", " ")
+        .str.strip_chars()
+    )
+
+
+def _count_unless_empty(words: nw.Expr, count: nw.Expr) -> nw.Expr:
+    """Apply a counting expression, answering zero where there is no word.
+
+    Args:
+        words: A string expression of words joined by single spaces.
+        count: A counting expression over ``words``.
+
+    Returns:
+        A narwhals expression of the count, zero where ``words`` is empty,
+        which splits into one empty word rather than into no word.
+    """
+    return nw.when(words == "").then(nw.lit(0)).otherwise(count)
