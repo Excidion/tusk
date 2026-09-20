@@ -213,45 +213,45 @@ db.add_table(
 `where` takes a static narwhals expression: a condition that does not depend
 on the cutoff. `when` takes a callable that receives the cutoff time and
 returns a narwhals expression, for a condition measured against it, such as
-"still open" or "currently valid". A `when` clause needs a `cutoff_time` at
+"still open" or "currently valid". A `when` condition needs a `cutoff_time` at
 compile time; applying one without raises
-[`ValidationError`][tusk.exceptions.ValidationError]. A `where` clause needs
-none. A clause key may not contain `__`.
+[`ValidationError`][tusk.exceptions.ValidationError]. A `where` condition
+needs none. A condition key may not contain `__`.
 
-`add_table` only checks a clause's *shape* -- that a `where` value is a
+`add_table` only checks a condition's *shape* -- that a `where` value is a
 narwhals expression and a `when` value is callable. The expression body
 itself, such as a reference to a nonexistent column, is only evaluated when
-the query actually runs, so a malformed clause can surface as a raw backend
-error far from the `add_table` call that declared it.
+the query actually runs, so a malformed condition can surface as a raw
+backend error far from the `add_table` call that declared it.
 
-`deep_feature_synthesis` generates one masked variant per declared clause, for
-the primitives named in `where_primitives` (default: `WHERE_DEFAULTS`, i.e.
-`("count", "sum")`):
+`deep_feature_synthesis` generates one masked variant per declared condition,
+for the primitives named in `conditional_primitives` (default:
+`CONDITIONAL_DEFAULTS`, i.e. `("count", "sum")`):
 
 ```python
 tusk.deep_feature_synthesis(
     database=db,
     target_table="customers",
     agg_primitives=["mean", "count"],
-    where_primitives=("count", "sum"),
+    conditional_primitives=("count", "sum"),
     trans_primitives=[],
     max_depth=2,
     cutoff_time=datetime(2026, 1, 1),
 )
 ```
 
-A clause named `large` on `orders` synthesizes features like
+A condition named `large` on `orders` synthesizes features like
 `COUNT__orders__WHERE__large`, displayed as `COUNT(orders WHERE large)`; a
-clause named `open` synthesizes `SUM__orders__amount__WHEN__open`, displayed
-as `SUM(orders.amount WHEN open)`.
+condition named `open` synthesizes `SUM__orders__amount__WHEN__open`,
+displayed as `SUM(orders.amount WHEN open)`.
 
-### What a clause scopes
+### What a condition scopes
 
-A clause masks the rows of the table it is declared on, at the moment that
+A condition masks the rows of the table it is declared on, at the moment that
 table is grouped. It does not reach the tables below it.
 
 Consider `customers <- cars <- repairs`, where `cars` carries a `current`
-clause on ownership:
+condition on ownership:
 
 ```python
 db.add_table(
@@ -277,10 +277,10 @@ SUM(cars.COUNT(cars.repairs) WHEN current)
 
 reads as "over the cars this customer currently owns, each car's **lifetime**
 repair count". All four of car 1's repairs count toward customer 2,
-regardless of when each one happened — the `current` clause masks rows of
+regardless of when each one happened — the `current` condition masks rows of
 `cars`, and `repairs` is never filtered by it.
 
-No clause can fix this. `repairs` has no `customer_id` and no knowledge of
+No condition can fix this. `repairs` has no `customer_id` and no knowledge of
 ownership windows, so no predicate over its own columns can express "during
 this customer's ownership". Splitting the repairs by owner requires an
 interval join between `repaired_at` and the ownership window, which is a
@@ -288,7 +288,7 @@ different mechanism from masking.
 
 This is not a defect introduced by `where`/`when`. A depth-2 aggregation
 already rolls a child's whole history up to whichever parent its foreign key
-currently points at; clauses make that existing attribution visible rather
+currently points at; conditions make that existing attribution visible rather
 than creating it.
 
 Normalizing ownership into its own table does not fix it either. Modelling

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import narwhals as nw
 import polars as pl
 import pytest
-from conftest import clause_database
+from conftest import condition_database
 
 import tusk
 from tusk.compiler import compile_features
@@ -256,16 +256,16 @@ def test_an_updated_foreign_key_stops_a_child_reaching_its_parent():
     assert got["SUM__orders__amount"].to_list() == [0.0, 2.0]
 
 
-def test_where_clause_masks_the_aggregated_rows():
-    """Only rows passing the clause reach the aggregation."""
-    database = clause_database()
+def test_where_condition_masks_the_aggregated_rows():
+    """Only rows passing the condition reach the aggregation."""
+    database = condition_database()
     features = FeatureList(
         [
             AggregationFeature(
                 resolve("sum"),
                 (IdentityFeature("orders", "amount", nw.Float64()),),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("where", "large"),
+                condition=("where", "large"),
             ),
         ],
     )
@@ -276,9 +276,9 @@ def test_where_clause_masks_the_aggregated_rows():
     assert values == {1: 30.0, 2: 0.0}
 
 
-def test_clause_reaches_a_direct_feature_from_a_third_table():
+def test_condition_reaches_a_direct_feature_from_a_third_table():
     """A mask on the child's rows masks values joined onto that child."""
-    database = clause_database()
+    database = condition_database()
     price = DirectFeature(
         IdentityFeature("products", "price", nw.Float64()),
         Relationship("products", "orders", "product_id"),
@@ -289,7 +289,7 @@ def test_clause_reaches_a_direct_feature_from_a_third_table():
                 resolve("sum"),
                 (price,),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("where", "large"),
+                condition=("where", "large"),
             ),
         ],
     )
@@ -298,16 +298,16 @@ def test_clause_reaches_a_direct_feature_from_a_third_table():
     assert dict(zip(matrix["id"], matrix[column], strict=True)) == {1: 7.0, 2: 0.0}
 
 
-def test_when_clause_receives_the_cutoff_time():
+def test_when_condition_receives_the_cutoff_time():
     """The same feature gives different values at two cutoffs."""
-    database = clause_database()
+    database = condition_database()
     features = FeatureList(
         [
             AggregationFeature(
                 resolve("count"),
                 (),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("when", "open"),
+                condition=("when", "open"),
             ),
         ],
     )
@@ -330,16 +330,16 @@ def test_when_clause_receives_the_cutoff_time():
     assert dict(zip(late["id"], late[name], strict=True)) == {1: 1, 2: 1}
 
 
-def test_when_clause_without_a_cutoff_time_is_rejected():
-    """A cutoff-measuring clause names itself in the error."""
-    database = clause_database()
+def test_when_condition_without_a_cutoff_time_is_rejected():
+    """A cutoff-measuring condition names itself in the error."""
+    database = condition_database()
     features = FeatureList(
         [
             AggregationFeature(
                 resolve("count"),
                 (),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("when", "open"),
+                condition=("when", "open"),
             ),
         ],
     )
@@ -347,16 +347,16 @@ def test_when_clause_without_a_cutoff_time_is_rejected():
         features.apply(database)
 
 
-def test_where_clause_without_a_cutoff_time_is_allowed():
-    """A static clause measures nothing, so it needs no cutoff."""
-    database = clause_database()
+def test_where_condition_without_a_cutoff_time_is_allowed():
+    """A static condition measures nothing, so it needs no cutoff."""
+    database = condition_database()
     features = FeatureList(
         [
             AggregationFeature(
                 resolve("count"),
                 (),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("where", "large"),
+                condition=("where", "large"),
             ),
         ],
     )
@@ -373,14 +373,14 @@ def test_empty_mask_falls_back_to_the_primitive_default_on_polars():
     ``test_empty_mask_falls_back_to_the_primitive_default`` in
     ``tests/test_backend_duckdb.py``, against identical expected values.
     """
-    database = clause_database()
+    database = condition_database()
     features = FeatureList(
         [
             AggregationFeature(
                 resolve(name),
                 (IdentityFeature("orders", "amount", nw.Float64()),),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("where", "impossible"),
+                condition=("where", "impossible"),
             )
             for name in ("sum", "mean")
         ],
@@ -390,8 +390,8 @@ def test_empty_mask_falls_back_to_the_primitive_default_on_polars():
     assert matrix["MEAN__orders__amount__WHERE__impossible"].to_list() == [None, None]
 
 
-def test_clause_sees_pre_update_values(updating_db):
-    """A clause on an updated column reads the value restored by the cutoff."""
+def test_condition_sees_pre_update_values(updating_db):
+    """A condition on an updated column reads the value restored by the cutoff."""
     database = updating_db
     schema = database.schema("orders")
     database._schemas["orders"] = replace(
@@ -404,7 +404,7 @@ def test_clause_sees_pre_update_values(updating_db):
                 resolve("count"),
                 (),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("where", "delivered"),
+                condition=("where", "delivered"),
             ),
         ],
     )
@@ -423,12 +423,12 @@ def test_clause_sees_pre_update_values(updating_db):
 def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_rollup():
     """An empty mask falls back to default_value; a surviving row keeps everything.
 
-    Customer 1's only car is sold, so the current clause masks their whole
+    Customer 1's only car is sold, so the current condition masks their whole
     group to empty and their sum falls back to 0. Customer 2's car survives
     the mask and brings its entire repair history with it -- all four
     repairs, regardless of when they happened. See
-    docs/guide/databases.md#what-a-clause-scopes for what this does and does
-    not say about ownership transfer.
+    docs/guide/databases.md#what-a-condition-scopes for what this does and
+    does not say about ownership transfer.
     """
     customers = pl.LazyFrame(
         {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},
@@ -496,7 +496,7 @@ def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_ro
         resolve("sum"),
         (repair_count,),
         Relationship("customers", "cars", "customer_id"),
-        clause=("when", "current"),
+        condition=("when", "current"),
     )
     features = FeatureList([feature])
     matrix = (

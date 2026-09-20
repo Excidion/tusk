@@ -58,16 +58,16 @@ class UnmatchedPrimitiveWarning(UserWarning):
     """
 
 
-class UnmatchedClauseWarning(UserWarning):
-    """Warns that ``where_primitives`` was requested but no table declares a clause.
+class UnmatchedConditionWarning(UserWarning):
+    """Warns that no table declares a condition for ``conditional_primitives``.
 
     Distinct from :class:`UnmatchedPrimitiveWarning`, which is keyed on
-    dtype-matching a primitive to a column. A clause primitive such as
+    dtype-matching a primitive to a column. A conditional primitive such as
     ``count`` or ``sum`` is ordinarily also in ``agg_primitives`` and so is
     already marked matched there, which would suppress that warning even
-    though it produced zero clause features. This warns on the clause
+    though it produced zero conditional features. This warns on the condition
     dimension instead: no table declared a ``where`` or ``when`` at all, so
-    ``where_primitives`` had nothing to mask. Its own class, so it can be
+    ``conditional_primitives`` had nothing to mask. Its own class, so it can be
     filtered independently.
     """
 

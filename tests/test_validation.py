@@ -1271,41 +1271,41 @@ def test_add_table_reports_a_chain_as_a_chain():
     assert "give it one row_update_time" not in str(excinfo.value)
 
 
-def test_where_clause_must_be_an_expression():
+def test_where_condition_must_be_an_expression():
     """A callable in where names the parameter it belongs in."""
     with pytest.raises(ValidationError, match="when"):
         tusk.Database("shop").add_table(
             "transactions",
-            _clause_frame(),
+            _condition_frame(),
             primary_key="id",
             where={"current": lambda cutoff: nw.col("occurred_at") <= cutoff},
         )
 
 
-def test_when_clause_must_be_callable():
+def test_when_condition_must_be_callable():
     """An expression in when names the parameter it belongs in."""
     with pytest.raises(ValidationError, match="where"):
         tusk.Database("shop").add_table(
             "transactions",
-            _clause_frame(),
+            _condition_frame(),
             primary_key="id",
             when={"verified": nw.col("verified")},
         )
 
 
-def test_clause_key_rejects_the_name_separator():
+def test_condition_key_rejects_the_name_separator():
     """A key holding __ would break feature name parsing."""
     with pytest.raises(ValidationError, match="__"):
         tusk.Database("shop").add_table(
             "transactions",
-            _clause_frame(),
+            _condition_frame(),
             primary_key="id",
             where={"is__verified": nw.col("verified")},
         )
 
 
-def _clause_frame():
-    """A minimal frame for clause validation tests."""
+def _condition_frame():
+    """A minimal frame for condition validation tests."""
     return pl.LazyFrame(
         {
             "id": [100, 101],

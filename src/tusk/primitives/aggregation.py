@@ -30,7 +30,7 @@ AGG_DEFAULTS: tuple[str, ...] = (
     "percent_true",
 )
 
-WHERE_DEFAULTS: tuple[str, ...] = ("count", "sum")
+CONDITIONAL_DEFAULTS: tuple[str, ...] = ("count", "sum")
 
 
 @register

@@ -108,10 +108,10 @@ def duck_db():
 
 @pytest.fixture
 def duckdb_database():
-    """A shop database whose orders carry an always-false ``where`` clause.
+    """A shop database whose orders carry an always-false ``where`` condition.
 
     Mirrors ``duck_db``'s shape: two customers, each owning one order, so
-    without the clause the aggregation would see rows -- the point is that
+    without the condition the aggregation would see rows -- the point is that
     ``impossible`` empties both groups anyway.
 
     Returns:
@@ -156,7 +156,7 @@ def test_empty_mask_falls_back_to_the_primitive_default(duckdb_database):
                 resolve(name),
                 (IdentityFeature("orders", "amount", nw.Float64()),),
                 Relationship("customers", "orders", "customer_id"),
-                clause=("where", "impossible"),
+                condition=("where", "impossible"),
             )
             for name in ("sum", "mean")
         ],

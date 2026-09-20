@@ -279,56 +279,56 @@ def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
         )
 
 
-def check_where_clauses_are_expressions(
+def check_where_conditions_are_expressions(
     frame: nw.LazyFrame,
     schema: TableSchema,
 ) -> None:
-    """Confirm every ``where`` clause is a narwhals expression.
+    """Confirm every ``where`` condition is a narwhals expression.
 
     Reads the schema only.
 
     Args:
         frame: The table's lazy frame. Unused.
-        schema: The table's schema, holding the clauses to check.
+        schema: The table's schema, holding the conditions to check.
 
     Raises:
-        ValidationError: If a ``where`` clause is not an ``nw.Expr``.
+        ValidationError: If a ``where`` condition is not an ``nw.Expr``.
     """
-    for key, clause in schema.where.items():
-        if isinstance(clause, nw.Expr):
+    for key, condition in schema.where.items():
+        if isinstance(condition, nw.Expr):
             continue
         raise ValidationError(
-            f"where clause {key!r} of {schema.name!r} is not a narwhals "
-            f"expression; a clause that needs the cutoff time belongs in when",
+            f"where condition {key!r} of {schema.name!r} is not a narwhals "
+            f"expression; a condition that needs the cutoff time belongs in when",
         )
 
 
-def check_when_clauses_are_callable(
+def check_when_conditions_are_callable(
     frame: nw.LazyFrame,
     schema: TableSchema,
 ) -> None:
-    """Confirm every ``when`` clause is callable.
+    """Confirm every ``when`` condition is callable.
 
     Reads the schema only.
 
     Args:
         frame: The table's lazy frame. Unused.
-        schema: The table's schema, holding the clauses to check.
+        schema: The table's schema, holding the conditions to check.
 
     Raises:
-        ValidationError: If a ``when`` clause is not callable.
+        ValidationError: If a ``when`` condition is not callable.
     """
-    for key, clause in schema.when.items():
-        if callable(clause):
+    for key, condition in schema.when.items():
+        if callable(condition):
             continue
         raise ValidationError(
-            f"when clause {key!r} of {schema.name!r} is not callable; a clause "
-            f"that does not need the cutoff time belongs in where",
+            f"when condition {key!r} of {schema.name!r} is not callable; a "
+            f"condition that does not need the cutoff time belongs in where",
         )
 
 
-def check_clause_keys(frame: nw.LazyFrame, schema: TableSchema) -> None:
-    """Confirm no clause key holds the feature name separator.
+def check_condition_keys(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no condition key holds the feature name separator.
 
     Reads the schema only.
 
@@ -337,13 +337,13 @@ def check_clause_keys(frame: nw.LazyFrame, schema: TableSchema) -> None:
         schema: The table's schema, holding the keys to check.
 
     Raises:
-        ValidationError: If a clause key contains ``__``.
+        ValidationError: If a condition key contains ``__``.
     """
-    for _, key in schema.clauses:
+    for _, key in schema.conditions:
         if "__" not in key:
             continue
         raise ValidationError(
-            f"clause key {key!r} of {schema.name!r} contains '__', which "
+            f"condition key {key!r} of {schema.name!r} contains '__', which "
             f"separates the parts of a feature name; rename it",
         )
 
@@ -559,9 +559,9 @@ TABLE_CHECKS = {
     "singly_updated_columns": check_singly_updated_columns,
     "matching_earlier_value_dtypes": check_matching_earlier_value_dtypes,
     "ordered_row_times": check_ordered_row_times,
-    "where_clauses_are_expressions": check_where_clauses_are_expressions,
-    "when_clauses_are_callable": check_when_clauses_are_callable,
-    "clause_keys": check_clause_keys,
+    "where_conditions_are_expressions": check_where_conditions_are_expressions,
+    "when_conditions_are_callable": check_when_conditions_are_callable,
+    "condition_keys": check_condition_keys,
 }
 
 # Every check here answers from the declared schema, so add_table can run all
@@ -575,9 +575,9 @@ DEFAULT_TABLE_CHECKS = (
     "never_updated_primary_key",
     "never_updated_row_creation_time",
     "matching_earlier_value_dtypes",
-    "where_clauses_are_expressions",
-    "when_clauses_are_callable",
-    "clause_keys",
+    "where_conditions_are_expressions",
+    "when_conditions_are_callable",
+    "condition_keys",
 )
 
 RELATIONSHIP_CHECKS = {

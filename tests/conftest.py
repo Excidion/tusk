@@ -144,8 +144,10 @@ def updating_db():
     )
 
 
-def clause_database(*, large_threshold: float = 10.0, declare_clauses: bool = True):
-    """A shop database whose orders carry declared where/when clauses.
+def condition_database(
+    *, large_threshold: float = 10.0, declare_conditions: bool = True
+):
+    """A shop database whose orders carry declared where/when conditions.
 
     Customer 1 has orders of 10.0 and 20.0 (both large) and one of 1.0;
     customer 2 has a single order of 2.0. Order 10 closes 2024-06-01, so it
@@ -154,9 +156,9 @@ def clause_database(*, large_threshold: float = 10.0, declare_clauses: bool = Tr
 
     Args:
         large_threshold: The amount an order must meet to satisfy the
-            ``"large"`` where clause.
-        declare_clauses: When False, ``orders`` is added with no ``where``
-            and no ``when`` at all, for tests of the undeclared-clause path.
+            ``"large"`` where condition.
+        declare_conditions: When False, ``orders`` is added with no ``where``
+            and no ``when`` at all, for tests of the undeclared-condition path.
 
     Returns:
         A database with ``customers``, ``orders`` and ``products`` tables,
@@ -187,7 +189,7 @@ def clause_database(*, large_threshold: float = 10.0, declare_clauses: bool = Tr
             "large": nw.col("amount") >= large_threshold,
             "impossible": nw.col("amount") < 0.0,
         }
-        if declare_clauses
+        if declare_conditions
         else None
     )
     when = (
@@ -196,7 +198,7 @@ def clause_database(*, large_threshold: float = 10.0, declare_clauses: bool = Tr
                 nw.col("closed_at").is_null() | (nw.col("closed_at") > cutoff)
             ),
         }
-        if declare_clauses
+        if declare_conditions
         else None
     )
 

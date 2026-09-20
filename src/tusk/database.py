@@ -58,7 +58,7 @@ class TableSchema:
         )
 
     @property
-    def clauses(self) -> tuple[tuple[str, str], ...]:
+    def conditions(self) -> tuple[tuple[str, str], ...]:
         """Every declared condition as a (kind, key) pair, where first."""
         return tuple(
             [("where", key) for key in self.where]

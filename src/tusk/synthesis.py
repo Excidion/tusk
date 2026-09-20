@@ -19,7 +19,7 @@ from tusk.exceptions import (
     CategoricalDtypeWarning,
     PrimitiveError,
     SchemaError,
-    UnmatchedClauseWarning,
+    UnmatchedConditionWarning,
     UnmatchedPrimitiveWarning,
 )
 from tusk.feature_list import FeatureList
@@ -32,7 +32,7 @@ from tusk.features import (
     TransformFeature,
     _require_kind,
 )
-from tusk.primitives.aggregation import AGG_DEFAULTS, WHERE_DEFAULTS
+from tusk.primitives.aggregation import AGG_DEFAULTS, CONDITIONAL_DEFAULTS
 from tusk.primitives.base import (
     AggregationPrimitive,
     GroupTransformPrimitive,
@@ -49,7 +49,7 @@ def synthesize(
     target_table: str,
     agg_primitives: Iterable[str | Primitive] | None = None,
     trans_primitives: Iterable[str | Primitive] | None = None,
-    where_primitives: Iterable[str | Primitive] | None = None,
+    conditional_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
 ) -> FeatureList:
     """Generate feature definitions for a target table.
@@ -75,10 +75,10 @@ def synthesize(
             :class:`~tusk.primitives.base.GroupTransformPrimitive` is applied
             within each foreign-key group, every other one to each row. None
             selects ``TRANS_DEFAULTS``.
-        where_primitives: Aggregation primitives that additionally get one
-            masked variant per clause declared on the child table, as names
-            or instances. None selects ``WHERE_DEFAULTS``; ``()`` generates
-            no clause features.
+        conditional_primitives: Aggregation primitives that additionally get
+            one masked variant per condition declared on the child table, as
+            names or instances. None selects ``CONDITIONAL_DEFAULTS``; ``()``
+            generates no conditional features.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
@@ -96,31 +96,37 @@ def synthesize(
             column.
         UnmatchedPrimitiveWarning: If a requested primitive matched no column
             of its input dtypes anywhere in the walk.
-        UnmatchedClauseWarning: If ``where_primitives`` was explicitly
+        UnmatchedConditionWarning: If ``conditional_primitives`` was explicitly
             requested but no table in the database declares a ``where`` or
-            ``when`` clause.
+            ``when`` condition.
     """
     database.schema(target_table)
     agg = resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives)
     trans = resolve_all(
         TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
     )
-    where_agg = resolve_all(
-        WHERE_DEFAULTS if where_primitives is None else where_primitives,
+    conditional_agg = resolve_all(
+        CONDITIONAL_DEFAULTS
+        if conditional_primitives is None
+        else conditional_primitives,
     )
     for primitive in agg:
         _require_kind(primitive, AggregationPrimitive, "agg_primitives")
     for primitive in trans:
         _require_kind(primitive, TransformPrimitive, "trans_primitives")
-    for primitive in where_agg:
-        _require_kind(primitive, AggregationPrimitive, "where_primitives")
-    _warn_if_where_primitives_are_unusable(database, where_primitives, where_agg)
+    for primitive in conditional_agg:
+        _require_kind(primitive, AggregationPrimitive, "conditional_primitives")
+    _warn_if_conditional_primitives_are_unusable(
+        database,
+        conditional_primitives,
+        conditional_agg,
+    )
     context = _Context(
         database=database,
         agg=agg,
         trans=[p for p in trans if not isinstance(p, GroupTransformPrimitive)],
         groupby=[p for p in trans if isinstance(p, GroupTransformPrimitive)],
-        where_agg=where_agg,
+        conditional_agg=conditional_agg,
     )
     features = context.build(target_table, max_depth, ())
     context.warn_unmatched()
@@ -139,44 +145,46 @@ def synthesize(
     return FeatureList(dict.fromkeys(kept))
 
 
-def _warn_if_where_primitives_are_unusable(
+def _warn_if_conditional_primitives_are_unusable(
     database: Database,
-    where_primitives: Iterable[str | Primitive] | None,
-    where_agg: Sequence[Primitive],
+    conditional_primitives: Iterable[str | Primitive] | None,
+    conditional_agg: Sequence[Primitive],
 ) -> None:
-    """Warn when ``where_primitives`` was requested but no clause can use it.
+    """Warn when ``conditional_primitives`` was requested but no condition can use it.
 
-    This cannot route through ``_matched``/``_unmatched``: a clause
+    This cannot route through ``_matched``/``_unmatched``: a conditional
     primitive such as ``count`` or ``sum`` is normally also in
     ``agg_primitives``, so it is already marked matched there and any warning
     keyed on the primitive would be suppressed. The check is keyed on the
-    clause dimension instead, independent of primitive matching.
+    condition dimension instead, independent of primitive matching.
 
-    ``where_primitives=None`` selects ``WHERE_DEFAULTS`` and must stay
-    silent -- a user who never asked for clause features should not be
-    nagged. ``where_primitives=()`` explicitly disables clause features and
-    must stay silent too.
+    ``conditional_primitives=None`` selects ``CONDITIONAL_DEFAULTS`` and must
+    stay silent -- a user who never asked for conditional features should not
+    be nagged. ``conditional_primitives=()`` explicitly disables conditional
+    features and must stay silent too.
 
     Args:
-        database: The database to check for declared clauses.
-        where_primitives: The caller's own argument, unresolved, used only to
-            tell an explicit request apart from the ``None`` default.
-        where_agg: ``where_primitives`` resolved to primitive instances.
+        database: The database to check for declared conditions.
+        conditional_primitives: The caller's own argument, unresolved, used
+            only to tell an explicit request apart from the ``None`` default.
+        conditional_agg: ``conditional_primitives`` resolved to primitive
+            instances.
 
     Warns:
-        UnmatchedClauseWarning: If ``where_primitives`` is neither None nor
-            empty, and no table in the database declares a ``where`` or
-            ``when`` clause.
+        UnmatchedConditionWarning: If ``conditional_primitives`` is neither
+            None nor empty, and no table in the database declares a
+            ``where`` or ``when`` condition.
     """
-    if where_primitives is None or not where_agg:
+    if conditional_primitives is None or not conditional_agg:
         return
-    if any(database.schema(name).clauses for name in database.table_names):
+    if any(database.schema(name).conditions for name in database.table_names):
         return
     warnings.warn(
-        "where_primitives was requested but no table declares a where or "
-        "when clause, so it generated no clause features. Declare where=... "
-        "or when=... on a table's add_table(), or drop where_primitives.",
-        UnmatchedClauseWarning,
+        "conditional_primitives was requested but no table declares a where "
+        "or when condition, so it generated no conditional features. Declare "
+        "where=... or when=... on a table's add_table(), or drop "
+        "conditional_primitives.",
+        UnmatchedConditionWarning,
         stacklevel=4,
     )
 
@@ -190,7 +198,7 @@ class _Context:
         agg: Sequence[Primitive],
         trans: Sequence[Primitive],
         groupby: Sequence[Primitive],
-        where_agg: Sequence[Primitive],
+        conditional_agg: Sequence[Primitive],
     ) -> None:
         """Store the walk's inputs.
 
@@ -200,14 +208,15 @@ class _Context:
             trans: Resolved transform primitives applied to each row.
             groupby: Resolved group transform primitives, applied within
                 each foreign-key group.
-            where_agg: Resolved aggregation primitives that additionally get
-                one masked variant per clause declared on the child table.
+            conditional_agg: Resolved aggregation primitives that
+                additionally get one masked variant per condition declared on
+                the child table.
         """
         self.database = database
         self.agg = agg
         self.trans = trans
         self.groupby = groupby
-        self.where_agg = where_agg
+        self.conditional_agg = conditional_agg
         self._categorical_warned: set[tuple[str, str, str]] = set()
         self._matched: set[str] = set()
         self._unmatched: dict[tuple[str, str], str] = {}
@@ -268,11 +277,11 @@ class _Context:
             usable = self._usable(rel.child, child_features)
             for primitive in self.agg:
                 out.extend(self._aggregations_for(primitive, rel, usable, None))
-            clauses = self.database.schema(rel.child).clauses
-            for primitive in self.where_agg:
-                for clause in clauses:
+            conditions = self.database.schema(rel.child).conditions
+            for primitive in self.conditional_agg:
+                for condition in conditions:
                     out.extend(
-                        self._aggregations_for(primitive, rel, usable, clause),
+                        self._aggregations_for(primitive, rel, usable, condition),
                     )
         return out
 
@@ -281,7 +290,7 @@ class _Context:
         primitive: Primitive,
         relationship: Relationship,
         usable: Sequence[Feature],
-        clause: tuple[str, str] | None,
+        condition: tuple[str, str] | None,
     ) -> list[Feature]:
         """Build every aggregation of one primitive across one relationship.
 
@@ -289,16 +298,16 @@ class _Context:
             primitive: The aggregation primitive to apply.
             relationship: The parent-child link being aggregated across.
             usable: Features on the child that may serve as inputs.
-            clause: The (kind, key) pair masking the child's rows, or None.
+            condition: The (kind, key) pair masking the child's rows, or None.
 
         Returns:
             One feature per usable input combination, or a single zero-arity
             feature when the primitive declares no signatures.
         """
         if not primitive.signatures:
-            return [AggregationFeature(primitive, (), relationship, clause)]
+            return [AggregationFeature(primitive, (), relationship, condition)]
         return [
-            AggregationFeature(primitive, combo, relationship, clause)
+            AggregationFeature(primitive, combo, relationship, condition)
             for combo in self._combinations(primitive, usable, relationship.child)
         ]
 

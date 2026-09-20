@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 import narwhals as nw
 import polars as pl
 import pytest
-from conftest import clause_database
+from conftest import condition_database
 
 import tusk
 from tusk.exceptions import SchemaError
@@ -243,19 +243,19 @@ def test_restored_features_deduplicate_against_a_fresh_run(features, db):
     assert len(combined) == len(features)
 
 
-def test_clause_is_resolved_against_the_database_being_applied_to():
+def test_condition_is_resolved_against_the_database_being_applied_to():
     """Features carry the key; the new database supplies the expression."""
     features = tusk.deep_feature_synthesis(
-        clause_database(),
+        condition_database(),
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        where_primitives=["count"],
+        conditional_primitives=["count"],
         max_depth=1,
         cutoff_time=dt.datetime(2024, 5, 1),
         features_only=True,
     )
-    relaxed = clause_database(large_threshold=1.0)
+    relaxed = condition_database(large_threshold=1.0)
     matrix = (
         nw.from_native(
             features.apply(relaxed, cutoff_time=dt.datetime(2024, 5, 1)),
@@ -268,21 +268,21 @@ def test_clause_is_resolved_against_the_database_being_applied_to():
     ) == {1: 3, 2: 1}
 
 
-def test_missing_clause_on_the_new_database_names_the_key():
-    """Applying to a database that never declared the clause fails loudly."""
+def test_missing_condition_on_the_new_database_names_the_key():
+    """Applying to a database that never declared the condition fails loudly."""
     features = tusk.deep_feature_synthesis(
-        clause_database(),
+        condition_database(),
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        where_primitives=["count"],
+        conditional_primitives=["count"],
         max_depth=1,
         cutoff_time=dt.datetime(2024, 5, 1),
         features_only=True,
     )
     large_only = FeatureList(
-        [f for f in features if getattr(f, "clause", None) == ("where", "large")]
+        [f for f in features if getattr(f, "condition", None) == ("where", "large")]
     )
-    without = clause_database(declare_clauses=False)
+    without = condition_database(declare_conditions=False)
     with pytest.raises(SchemaError, match="large"):
         large_only.apply(without, cutoff_time=dt.datetime(2024, 5, 1))

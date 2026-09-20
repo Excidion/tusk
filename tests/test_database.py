@@ -360,8 +360,8 @@ def test_add_table_still_does_not_scan_by_default():
     )
 
 
-def test_add_table_stores_where_and_when_clauses(db):
-    """Declared clauses reach the schema unchanged."""
+def test_add_table_stores_where_and_when_conditions(db):
+    """Declared conditions reach the schema unchanged."""
     current = lambda cutoff: nw.col("occurred_at") <= cutoff  # noqa: E731
     verified = nw.col("verified")
     database = tusk.Database("shop").add_table(
@@ -378,8 +378,8 @@ def test_add_table_stores_where_and_when_clauses(db):
     assert schema.when["current"] is current
 
 
-def test_add_table_defaults_clauses_to_empty_mappings(db):
-    """A table declaring no clause has two empty mappings, never None."""
+def test_add_table_defaults_conditions_to_empty_mappings(db):
+    """A table declaring no condition has two empty mappings, never None."""
     schema = db.schema("transactions")
     assert schema.where == {}
     assert schema.when == {}

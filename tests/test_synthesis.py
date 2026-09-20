@@ -4,13 +4,13 @@ from dataclasses import dataclass
 import narwhals as nw
 import polars as pl
 import pytest
-from conftest import clause_database
+from conftest import condition_database
 
 import tusk
 from tusk.dtypes import DtypeFamily as F
 from tusk.exceptions import (
     PrimitiveError,
-    UnmatchedClauseWarning,
+    UnmatchedConditionWarning,
     UnmatchedPrimitiveWarning,
 )
 from tusk.primitives.base import GroupTransformPrimitive, TransformPrimitive
@@ -1107,15 +1107,15 @@ def test_the_categorical_warning_names_the_primitive_that_handles_labels():
         )
 
 
-def test_clause_variants_are_generated_for_where_primitives():
-    """Each selected primitive gains one variant per declared clause."""
-    database = clause_database()
+def test_condition_variants_are_generated_for_conditional_primitives():
+    """Each selected primitive gains one variant per declared condition."""
+    database = condition_database()
     features = synthesize(
         database,
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        where_primitives=["count"],
+        conditional_primitives=["count"],
         max_depth=1,
     )
     names = {f.name for f in features}
@@ -1124,15 +1124,15 @@ def test_clause_variants_are_generated_for_where_primitives():
     assert "COUNT__orders__WHEN__open" in names
 
 
-def test_primitives_outside_where_primitives_get_no_variant():
-    """A primitive not selected for clauses stays unclaused."""
-    database = clause_database()
+def test_primitives_outside_conditional_primitives_get_no_variant():
+    """A primitive not selected for conditions stays unconditioned."""
+    database = condition_database()
     features = synthesize(
         database,
         "customers",
         agg_primitives=["count", "sum"],
         trans_primitives=[],
-        where_primitives=["count"],
+        conditional_primitives=["count"],
         max_depth=1,
     )
     names = {f.name for f in features}
@@ -1140,29 +1140,29 @@ def test_primitives_outside_where_primitives_get_no_variant():
     assert not any(n.startswith("SUM__") and "WHERE" in n for n in names)
 
 
-def test_empty_where_primitives_generates_no_clause_features():
+def test_empty_conditional_primitives_generates_no_conditional_features():
     """Passing () turns the whole mechanism off."""
-    database = clause_database()
+    database = condition_database()
     features = synthesize(
         database,
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        where_primitives=(),
+        conditional_primitives=(),
         max_depth=1,
     )
     assert not any("WHERE" in f.name or "WHEN" in f.name for f in features)
 
 
-def test_a_clause_does_not_consume_depth():
-    """A clause variant has the same depth as its unclaused twin."""
-    database = clause_database()
+def test_a_condition_does_not_consume_depth():
+    """A condition variant has the same depth as its unconditioned twin."""
+    database = condition_database()
     features = synthesize(
         database,
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        where_primitives=["count"],
+        conditional_primitives=["count"],
         max_depth=1,
     )
     by_name = {f.name: f for f in features}
@@ -1171,25 +1171,26 @@ def test_a_clause_does_not_consume_depth():
     )
 
 
-def test_where_primitives_warns_when_no_table_declares_a_clause():
-    """Asking for clause features on a database with no clause is a no-op the
-    user gets no explanation for otherwise: it must warn instead."""
-    database = clause_database(declare_clauses=False)
-    with pytest.warns(UnmatchedClauseWarning, match="where=|when="):
+def test_conditional_primitives_warns_when_no_table_declares_a_condition():
+    """Asking for conditional features on a database with no condition is a
+    no-op the user gets no explanation for otherwise: it must warn instead."""
+    database = condition_database(declare_conditions=False)
+    with pytest.warns(UnmatchedConditionWarning, match="where=|when="):
         synthesize(
             database,
             "customers",
             agg_primitives=["count"],
             trans_primitives=[],
-            where_primitives=["count"],
+            conditional_primitives=["count"],
             max_depth=1,
         )
 
 
-def test_default_where_primitives_stays_silent_with_no_clause(recwarn):
-    """None selects WHERE_DEFAULTS; a user who never asked for clause
-    features must not be nagged about a mechanism they did not invoke."""
-    database = clause_database(declare_clauses=False)
+def test_default_conditional_primitives_stays_silent_with_no_condition(recwarn):
+    """None selects CONDITIONAL_DEFAULTS; a user who never asked for
+    conditional features must not be nagged about a mechanism they did not
+    invoke."""
+    database = condition_database(declare_conditions=False)
     synthesize(
         database,
         "customers",
@@ -1197,19 +1198,19 @@ def test_default_where_primitives_stays_silent_with_no_clause(recwarn):
         trans_primitives=[],
         max_depth=1,
     )
-    assert not [w for w in recwarn if issubclass(w.category, UnmatchedClauseWarning)]
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedConditionWarning)]
 
 
-def test_empty_where_primitives_stays_silent_with_no_clause(recwarn):
-    """() explicitly disables clause features, so it must stay silent even
-    on a database with no declared clause."""
-    database = clause_database(declare_clauses=False)
+def test_empty_conditional_primitives_stays_silent_with_no_condition(recwarn):
+    """() explicitly disables conditional features, so it must stay silent
+    even on a database with no declared condition."""
+    database = condition_database(declare_conditions=False)
     synthesize(
         database,
         "customers",
         agg_primitives=["count"],
         trans_primitives=[],
-        where_primitives=(),
+        conditional_primitives=(),
         max_depth=1,
     )
-    assert not [w for w in recwarn if issubclass(w.category, UnmatchedClauseWarning)]
+    assert not [w for w in recwarn if issubclass(w.category, UnmatchedConditionWarning)]

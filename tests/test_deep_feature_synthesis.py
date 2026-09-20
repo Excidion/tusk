@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 import pytest
-from conftest import clause_database
+from conftest import condition_database
 
 import tusk
 from tusk.primitives import Quantiles
@@ -400,9 +400,9 @@ def test_features_only_ignores_a_mismatched_cutoff(db):
     )
 
 
-def test_where_primitives_defaults_to_count_and_sum():
+def test_conditional_primitives_defaults_to_count_and_sum():
     """The documented default reaches the motivating feature."""
-    database = clause_database()
+    database = condition_database()
     features = tusk.deep_feature_synthesis(
         database,
         "customers",

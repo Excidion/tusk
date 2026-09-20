@@ -50,7 +50,7 @@ feature_matrix, features = tusk.deep_feature_synthesis(
     database=db,
     target_table="customers",
     agg_primitives=["mean", "count", Quantiles(qs=(0.25, 0.5, 0.75))],
-    where_primitives=("count", "sum"),
+    conditional_primitives=("count", "sum"),
     trans_primitives=["month", "weekday"],
     max_depth=2,
     cutoff_time=datetime(2026, 1, 1),

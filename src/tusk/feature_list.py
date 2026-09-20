@@ -59,7 +59,7 @@ class FeatureList(Sequence[Feature]):
 
         Raises :class:`~tusk.exceptions.SchemaError` if the target table has
         no ``primary_key`` or two features compile to the same column name,
-        or a feature's clause key is not declared on the table it masks in
+        or a feature's condition key is not declared on the table it masks in
         ``database``, :class:`~tusk.exceptions.PrimitiveError` if an
         order-dependent primitive lands on a table with no ``row_creation_time``,
         and :class:`~tusk.exceptions.ValidationError` if ``cutoff_time``

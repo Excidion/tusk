@@ -124,14 +124,14 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
 
 
 def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -> None:
-    """Fail if a primitive or when clause requires a cutoff time that was not given.
+    """Fail if a primitive or when condition requires a cutoff time that was not given.
 
     Args:
         features: The transitive closure of features to compile.
         cutoff_time: The cutoff, or None.
 
     Raises:
-        ValidationError: If a primitive or when clause measures against
+        ValidationError: If a primitive or when condition measures against
             ``cutoff_time`` and none was given.
     """
     if cutoff_time is not None:
@@ -140,7 +140,7 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         primitive.name
         for feature in features
         if isinstance(primitive := getattr(feature, "primitive", None), NeedsCutoffTime)
-    } | {name for feature in features if (name := _measuring_clause(feature))}
+    } | {name for feature in features if (name := _measuring_condition(feature))}
     if measuring:
         raise ValidationError(
             f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
@@ -148,20 +148,20 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         )
 
 
-def _measuring_clause(feature: Feature) -> str | None:
-    """Name a feature's clause if that clause measures against the cutoff.
+def _measuring_condition(feature: Feature) -> str | None:
+    """Name a feature's condition if that condition measures against the cutoff.
 
     Args:
         feature: The feature to inspect.
 
     Returns:
-        A readable name for the clause, or None when the feature has no
-        clause or its clause is static.
+        A readable name for the condition, or None when the feature has no
+        condition or its condition is static.
     """
-    clause = getattr(feature, "clause", None)
-    if clause is None or clause[0] != "when":
+    condition = getattr(feature, "condition", None)
+    if condition is None or condition[0] != "when":
         return None
-    return f"when clause {clause[1]!r}"
+    return f"when condition {condition[1]!r}"
 
 
 def base_frame(
@@ -313,11 +313,11 @@ def _add_aggregations(
     batch: Sequence[AggregationFeature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Fold one child table's aggregations into the parent, one join per clause.
+    """Fold one child table's aggregations into the parent, one join per condition.
 
-    Unclaused features share a single join over the unfiltered child, exactly
-    as before clauses existed; each distinct clause adds one further join over
-    the child filtered to that clause's mask.
+    Unconditioned features share a single join over the unfiltered child,
+    exactly as before conditions existed; each distinct condition adds one
+    further join over the child filtered to that condition's mask.
 
     Args:
         frame: The parent frame being built.
@@ -336,9 +336,9 @@ def _add_aggregations(
     child = _table_frame(database, relationship.child, child_needed, cutoff_time)
 
     child_schema = database.schema(relationship.child)
-    for clause, features in _by_clause(batch):
-        mask = _clause_expr(child_schema, clause, cutoff_time)
-        frame = _join_one_clause(
+    for condition, features in _by_condition(batch):
+        mask = _condition_expr(child_schema, condition, cutoff_time)
+        frame = _join_one_condition(
             frame,
             child if mask is None else child.filter(mask),
             database,
@@ -350,55 +350,56 @@ def _add_aggregations(
     return frame
 
 
-def _clause_expr(
+def _condition_expr(
     schema: TableSchema,
-    clause: tuple[str, str] | None,
+    condition: tuple[str, str] | None,
     cutoff_time: datetime | None,
 ) -> nw.Expr | None:
-    """Build the mask a clause selects on the child's rows.
+    """Build the mask a condition selects on the child's rows.
 
     Args:
-        schema: The child table's schema, holding the declared clauses.
-        clause: The (kind, key) pair, or None for an unclaused feature.
-        cutoff_time: The cutoff, passed to a ``when`` clause's callable.
+        schema: The child table's schema, holding the declared conditions.
+        condition: The (kind, key) pair, or None for an unconditioned feature.
+        cutoff_time: The cutoff, passed to a ``when`` condition's callable.
 
     Returns:
-        The mask expression, or None when the feature has no clause.
+        The mask expression, or None when the feature has no condition.
 
     Raises:
         SchemaError: If the key is not declared on the child table.
     """
-    if clause is None:
+    if condition is None:
         return None
 
-    kind, key = clause
+    kind, key = condition
     declared = schema.where if kind == "where" else schema.when
     if key not in declared:
         raise SchemaError(
-            f"{kind} clause {key!r} is not declared on table {schema.name!r}; "
+            f"{kind} condition {key!r} is not declared on table {schema.name!r}; "
             f"declare it in add_table({kind}=...) or drop the feature",
         )
     return declared[key] if kind == "where" else declared[key](cutoff_time)
 
 
-def _by_clause(
+def _by_condition(
     batch: Sequence[AggregationFeature],
 ) -> list[tuple[tuple[str, str] | None, list[AggregationFeature]]]:
-    """Group a relationship's aggregations by the clause masking them.
+    """Group a relationship's aggregations by the condition masking them.
 
     Args:
         batch: Every aggregation feature using one relationship.
 
     Returns:
-        One (clause, features) pair per distinct clause, unclaused first.
+        One (condition, features) pair per distinct condition, unconditioned
+        first.
     """
     grouped: dict[tuple[str, str] | None, list[AggregationFeature]] = {}
     for feature in batch:
-        grouped.setdefault(feature.clause, []).append(feature)
+        grouped.setdefault(feature.condition, []).append(feature)
     return sorted(grouped.items(), key=lambda item: item[0] is not None)
 
 
-def _join_one_clause(
+def _join_one_condition(
     frame: nw.LazyFrame,
     child: nw.LazyFrame,
     database: Database,
@@ -407,19 +408,19 @@ def _join_one_clause(
     batch: Sequence[AggregationFeature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Fold one clause's aggregations into the parent with a single join.
+    """Fold one condition's aggregations into the parent with a single join.
 
     Args:
         frame: The parent frame being built.
-        child: The child frame, already filtered to the clause.
+        child: The child frame, already filtered to the condition.
         database: The database holding the schemas.
         table: The parent table's name.
         relationship: The relationship being aggregated across.
-        batch: The aggregation features sharing this clause.
+        batch: The aggregation features sharing this condition.
         cutoff_time: The cutoff, or None.
 
     Returns:
-        The parent frame with this clause's columns joined on.
+        The parent frame with this condition's columns joined on.
     """
     exprs = []
     for feature in batch:
