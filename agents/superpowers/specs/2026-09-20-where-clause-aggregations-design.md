@@ -257,19 +257,26 @@ aggregation today already rolls a car's whole history up to whichever customer
 its foreign key points at. Clauses make the existing behaviour visible rather
 than creating it.
 
-Second, the situation is usually an under-normalized schema. Modelling
-ownership as its own table — `ownerships(car_id, customer_id, valid_from,
-valid_until)`, with repairs linked so each falls under one ownership — makes
-the question disappear: every repair belongs to exactly one ownership row, and
-the correct split falls out of the existing machinery with no new features.
-The docs should show this.
+Second, **normalizing the schema does not fix it either.** Modelling ownership
+as its own table — `ownerships(car_id, customer_id, valid_from, valid_until)`
+— decides *which customer* a car belongs to in a given window, but not *which
+repairs*. Reaching repairs from customers still goes: aggregate `repairs` onto
+`cars`, direct-feature onto `ownerships`, aggregate onto `customers`. That
+middle rollup is the car's lifetime repair count, so every ownership row
+inherits the car's whole history and A's repairs still land on B.
 
-Propagating an ancestor's validity window down to filter descendant rows by
-their own timestamps is a real and feasible feature — join the window onto
-`repairs` and filter `repaired_at` within it — but it makes a child's
+The split falls out of existing machinery in exactly one case: when `repairs`
+carries an `ownership_id`, so repairs hang off `ownerships` directly. Deriving
+that key from `repairs(car_id, repaired_at)` is itself the interval join, so
+this only helps when the source data already materializes the link. Where it
+does, the docs should show it.
+
+Otherwise the missing mechanism is propagating an ancestor's validity window
+down to filter descendant rows by their own timestamps — join the window onto
+`repairs` and filter `repaired_at` within it. Feasible, but it makes a child's
 aggregation depend on which parent it is rolling toward, which breaks the
-current batch-per-relationship compilation. It is its own design. See "Out of
-scope".
+current batch-per-relationship compilation. Tracked as issue #29; this spec's
+masking seam in `_add_aggregations` is where it would attach.
 
 ## Validation
 
@@ -319,9 +326,10 @@ The parts that carry real risk:
 - **`row_deletion_time`** — the missing half of knowledge time. It is a hard
   filter at every depth, not an opt-in mask, so it does not belong to this
   mechanism. Separate issue.
-- **Interval-scoped join paths** — propagating an ancestor's validity window
-  down to descendants, per the join-path section. Separate issue; this spec's
-  masking seam in `_add_aggregations` is where it would attach.
+- **Interval-scoped join paths** (#29) — propagating an ancestor's validity
+  window down to descendants, per the join-path section. Required whenever a
+  descendant is linked to the interval-bearing table only transitively, which
+  normalization alone does not resolve.
 - **Discovered interesting values** — decision 2 removes the need. If ever
   wanted, it would be a `db.add_interesting_values()` that queries once and
   writes clauses into the schema *before* synthesis, preserving the
