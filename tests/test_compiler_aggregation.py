@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 import narwhals as nw
@@ -365,3 +365,146 @@ def test_where_clause_without_a_cutoff_time_is_allowed():
     assert dict(
         zip(matrix["id"], matrix["COUNT__orders__WHERE__large"], strict=True),
     ) == {1: 2, 2: 0}
+
+
+def test_empty_mask_falls_back_to_the_primitive_default_on_polars():
+    """No matching rows gives the same value as no rows at all.
+
+    The duckdb twin of this test is
+    ``test_empty_mask_falls_back_to_the_primitive_default`` in
+    ``tests/test_backend_duckdb.py``, against identical expected values.
+    """
+    database = clause_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve(name),
+                (IdentityFeature("orders", "amount", nw.Float64()),),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("where", "impossible"),
+            )
+            for name in ("sum", "mean")
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    assert matrix["SUM__orders__amount__WHERE__impossible"].to_list() == [0.0, 0.0]
+    assert matrix["MEAN__orders__amount__WHERE__impossible"].to_list() == [None, None]
+
+
+def test_clause_sees_pre_update_values(updating_db):
+    """A clause on an updated column reads the value restored by the cutoff."""
+    database = updating_db
+    schema = database.schema("orders")
+    database._schemas["orders"] = replace(
+        schema,
+        where={"delivered": nw.col("status") == "delivered"},
+    )
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("where", "delivered"),
+            ),
+        ],
+    )
+    matrix = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 6, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    assert dict(
+        zip(matrix["id"], matrix["COUNT__orders__WHERE__delivered"], strict=True),
+    ) == {1: 0, 2: 1}
+
+
+def test_a_clause_does_not_scope_the_tables_below_it():
+    """A clause masks its own table's rows, never its children's.
+
+    Car 1 was owned by customer 1 and is now owned by customer 2, and was
+    repaired twice under each owner. A current clause on cars selects the
+    car for customer 2 only, and that car brings its whole repair history
+    with it -- all four repairs, not the two from customer 2's era.
+    """
+    customers = pl.LazyFrame(
+        {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},
+    )
+    # Car 1 carries every repair (see ``repairs`` below), so it is the row
+    # that must currently belong to customer 2 for that history to reach
+    # them; car 2 is a decoy, sold, so customer 1's "current" group is
+    # masked to empty rather than simply absent.
+    cars = pl.LazyFrame(
+        {
+            "id": [1, 2],
+            "customer_id": [2, 1],
+            "bought_at": [datetime(2024, 1, 1)] * 2,
+            "sold_at": [None, datetime(2024, 6, 1)],
+        },
+    )
+    repairs = pl.LazyFrame(
+        {
+            "id": [100, 101, 102, 103],
+            "car_id": [1, 1, 1, 1],
+            "cost": [1.0, 2.0, 4.0, 8.0],
+            "repaired_at": [
+                datetime(2024, 3, 1),
+                datetime(2024, 4, 1),
+                datetime(2024, 8, 1),
+                datetime(2024, 9, 1),
+            ],
+        },
+    )
+    database = (
+        tusk.Database("garage")
+        .add_table(
+            "customers",
+            customers,
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "cars",
+            cars,
+            primary_key="id",
+            row_creation_time="bought_at",
+            when={
+                "current": lambda cutoff: (
+                    nw.col("sold_at").is_null() | (nw.col("sold_at") > cutoff)
+                ),
+            },
+        )
+        .add_table(
+            "repairs",
+            repairs,
+            primary_key="id",
+            row_creation_time="repaired_at",
+        )
+        .add_relationship(parent="customers", child="cars", foreign_key="customer_id")
+        .add_relationship(parent="cars", child="repairs", foreign_key="car_id")
+    )
+
+    repair_count = AggregationFeature(
+        resolve("count"),
+        (),
+        Relationship("cars", "repairs", "car_id"),
+    )
+    feature = AggregationFeature(
+        resolve("sum"),
+        (repair_count,),
+        Relationship("customers", "cars", "customer_id"),
+        clause=("when", "current"),
+    )
+    features = FeatureList([feature])
+    matrix = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 12, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+
+    values = dict(zip(matrix["id"], matrix[feature.name], strict=True))
+    assert values == {1: 0, 2: 4}

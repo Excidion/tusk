@@ -31,6 +31,9 @@ from transform_cases import (
 )
 
 import tusk
+from tusk.database import Relationship
+from tusk.feature_list import FeatureList
+from tusk.features import AggregationFeature, IdentityFeature
 from tusk.primitives import Negate, resolve
 
 duckdb = pytest.importorskip("duckdb")
@@ -101,6 +104,66 @@ def duck_db():
         )
     )
     return database, con
+
+
+@pytest.fixture
+def duckdb_database():
+    """A shop database whose orders carry an always-false ``where`` clause.
+
+    Mirrors ``duck_db``'s shape: two customers, each owning one order, so
+    without the clause the aggregation would see rows -- the point is that
+    ``impossible`` empties both groups anyway.
+
+    Returns:
+        A duckdb-backed database with customers and orders, related by
+        ``customer_id``.
+    """
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE customers AS SELECT * FROM (VALUES "
+        "(1, TIMESTAMP '2024-01-01'), (2, TIMESTAMP '2024-01-01')) "
+        "t(id, signed_up_at)",
+    )
+    con.execute(
+        "CREATE TABLE orders AS SELECT * FROM (VALUES "
+        "(10, 1, 5.0, TIMESTAMP '2024-03-01'), (11, 2, 7.0, TIMESTAMP '2024-03-01')) "
+        "t(id, customer_id, amount, placed_at)",
+    )
+    return (
+        tusk.Database("shop")
+        .add_table(
+            "customers",
+            nw.from_native(con.sql("SELECT * FROM customers")),
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "orders",
+            nw.from_native(con.sql("SELECT * FROM orders")),
+            primary_key="id",
+            row_creation_time="placed_at",
+            where={"impossible": nw.col("amount") < 0.0},
+        )
+        .add_relationship(parent="customers", child="orders", foreign_key="customer_id")
+    )
+
+
+def test_empty_mask_falls_back_to_the_primitive_default(duckdb_database):
+    """No matching rows gives the same value as no rows at all."""
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve(name),
+                (IdentityFeature("orders", "amount", nw.Float64()),),
+                Relationship("customers", "orders", "customer_id"),
+                clause=("where", "impossible"),
+            )
+            for name in ("sum", "mean")
+        ],
+    )
+    matrix = nw.from_native(features.apply(duckdb_database)).lazy().collect()
+    assert matrix["SUM__orders__amount__WHERE__impossible"].to_list() == [0.0, 0.0]
+    assert matrix["MEAN__orders__amount__WHERE__impossible"].to_list() == [None, None]
 
 
 @pytest.mark.parametrize("target", ["customers", "sessions", "transactions"])
