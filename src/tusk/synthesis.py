@@ -75,10 +75,12 @@ def synthesize(
             :class:`~tusk.primitives.base.GroupTransformPrimitive` is applied
             within each foreign-key group, every other one to each row. None
             selects ``TRANS_DEFAULTS``.
-        conditional_primitives: Aggregation primitives to compute a second
-            time over only the rows each declared condition keeps, as names
-            or instances. None selects ``CONDITIONAL_DEFAULTS``; ``()``
-            computes no conditional features.
+        conditional_primitives: Aggregation primitives to compute over only
+            the rows each declared condition keeps, as names or instances. A
+            separate list from ``agg_primitives``: a primitive named here
+            yields the conditional features alone, so name it in both to get
+            the unconditional ones too. None selects ``CONDITIONAL_DEFAULTS``;
+            ``()`` computes no conditional features.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:

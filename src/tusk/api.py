@@ -50,10 +50,12 @@ def deep_feature_synthesis(
             group or ordered transform primitive is applied within each
             foreign-key group, every other one to each row. None selects the
             defaults.
-        conditional_primitives: Aggregation primitives to compute a second
-            time over only the rows each declared condition keeps, as names
-            or instances. None selects ``CONDITIONAL_DEFAULTS``; ``()``
-            computes no conditional features.
+        conditional_primitives: Aggregation primitives to compute over only
+            the rows each declared condition keeps, as names or instances. A
+            separate list from ``agg_primitives``: a primitive named here
+            yields the conditional features alone, so name it in both to get
+            the unconditional ones too. None selects ``CONDITIONAL_DEFAULTS``;
+            ``()`` computes no conditional features.
         max_depth: Maximum number of stacked primitive applications.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible, on the target table as well as its relatives.

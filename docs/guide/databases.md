@@ -226,9 +226,12 @@ referring to a column that does not exist is therefore not caught here — it
 surfaces later, as an error from the dataframe backend, when the feature
 matrix is computed.
 
-Every primitive listed in `conditional_primitives` is then computed twice:
-once over all the rows, and once over only the rows each condition keeps. The
-default is `("count", "sum")`:
+`conditional_primitives` names the primitives computed over only the rows each
+condition keeps. It is a separate list from `agg_primitives`, not a subset of
+it: a primitive listed here gives you the conditional features alone, and you
+list it in both to get the unconditional ones too. The default is
+`("count", "sum")`, so a table that declares a condition gets conditional
+counts and sums even when `agg_primitives` never mentions them:
 
 ```python
 feature_matrix, features = tusk.deep_feature_synthesis(
@@ -238,8 +241,9 @@ feature_matrix, features = tusk.deep_feature_synthesis(
     cutoff_time=datetime(2026, 1, 1),
 )
 
-# COUNT(orders WHERE large)
-# SUM(orders.amount WHEN open)
+# adds, alongside the unconditional features:
+#   COUNT(orders WHERE large)
+#   SUM(orders.amount WHEN open)
 ```
 
 ### A condition only filters its own table
