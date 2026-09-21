@@ -261,6 +261,7 @@ erDiagram
     Int64 id PK
     Int64 customer_id FK "-> customers"
     Datetime[us] bought_at "row creation time"
+    Datetime[us] sold_at
   }
   "repairs" {
     Int64 id PK
@@ -286,8 +287,8 @@ db.add_table(
 ```
 
 Customer 2 currently owns car 1, which has four repairs on record, spread
-across its whole lifetime. Customer 1's only car has since been sold, so it
-is masked out of their group entirely. The feature
+across its whole lifetime. Customer 1's only car has since been sold, so none
+of their cars count at all. The feature
 
 ```
 SUM(cars.COUNT(cars.repairs) WHEN current)
