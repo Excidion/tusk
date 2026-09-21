@@ -217,11 +217,15 @@ class AggregationFeature(Feature):
         bases: Input features on the child table. Empty for zero-arity
             primitives such as ``count``.
         relationship: The parent-child link being aggregated across.
+        condition: The condition masking the child's rows, as a (kind, key)
+            pair where kind is ``"where"`` or ``"when"``. None aggregates
+            every row.
     """
 
     primitive: Primitive
     bases: tuple[Feature, ...]
     relationship: Relationship
+    condition: tuple[str, str] | None = None
 
     def __post_init__(self) -> None:
         """Confirm the primitive aggregates rather than transforms.
@@ -240,22 +244,45 @@ class AggregationFeature(Feature):
         """Generated name, e.g. ``MEAN__transactions__amount``.
 
         Zero-arity primitives name the child table instead of a column, giving
-        ``COUNT__transactions``.
+        ``COUNT__transactions``. A condition adds two trailing parts, giving
+        ``COUNT__transactions__WHEN__current``.
         """
         child = self.relationship.child
         if not self.bases:
-            return self.primitive.generate_name([child])
-        return self.primitive.generate_name([f"{child}__{b.name}" for b in self.bases])
+            return self.primitive.generate_name([child, *self._condition_parts])
+        names = [f"{child}__{b.name}" for b in self.bases]
+        return self.primitive.generate_name([*names, *self._condition_parts])
 
     @property
     def display_name(self) -> str:
-        """Readable name, e.g. ``MEAN(transactions.amount)``."""
+        """Readable name, e.g. ``MEAN(transactions.amount)``.
+
+        A condition is appended to the final argument, giving
+        ``COUNT(transactions WHEN current)``.
+        """
         child = self.relationship.child
         if not self.bases:
-            return self.primitive.generate_display_name([child])
-        return self.primitive.generate_display_name(
-            [f"{child}.{b.display_name}" for b in self.bases],
-        )
+            arguments = [child]
+        else:
+            arguments = [f"{child}.{b.display_name}" for b in self.bases]
+        arguments[-1] += self._condition_display
+        return self.primitive.generate_display_name(arguments)
+
+    @property
+    def _condition_parts(self) -> tuple[str, ...]:
+        """The condition's name parts, empty when the feature has no condition."""
+        if self.condition is None:
+            return ()
+        kind, key = self.condition
+        return (kind.upper(), key)
+
+    @property
+    def _condition_display(self) -> str:
+        """The condition's readable suffix, empty when the feature has no condition."""
+        if self.condition is None:
+            return ""
+        kind, key = self.condition
+        return f" {kind.upper()} {key}"
 
     @property
     def dtype(self) -> Any:

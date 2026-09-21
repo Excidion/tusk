@@ -35,6 +35,9 @@ class TableSchema:
         row_update_times: Mapping of each column recording an update time to
             the columns that update rewrote, each mapped to the value it held
             before the update.
+        where: Named row conditions as narwhals expressions.
+        when: Named row conditions as callables taking the cutoff time and
+            returning a narwhals expression.
     """
 
     name: str
@@ -42,6 +45,8 @@ class TableSchema:
     row_creation_time: str | None
     dtypes: Mapping[str, Any]
     row_update_times: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    where: Mapping[str, Any] = field(default_factory=dict)
+    when: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def column_updates(self) -> tuple[tuple[str, str, Any], ...]:
@@ -50,6 +55,14 @@ class TableSchema:
             (update_time, column, value)
             for update_time, updated in self.row_update_times.items()
             for column, value in updated.items()
+        )
+
+    @property
+    def conditions(self) -> tuple[tuple[str, str], ...]:
+        """Every declared condition as a (kind, key) pair, where first."""
+        return tuple(
+            [("where", key) for key in self.where]
+            + [("when", key) for key in self.when],
         )
 
 
@@ -103,6 +116,8 @@ class Database:
         primary_key: str | None = None,
         row_creation_time: str | None = None,
         row_update_times: Mapping[str, Mapping[str, Any]] | None = None,
+        where: Mapping[str, Any] | None = None,
+        when: Mapping[str, Any] | None = None,
         *,
         validate: bool | str | Iterable[str] = DEFAULT_TABLE_CHECKS,
     ) -> Database:
@@ -127,6 +142,12 @@ class Database:
                 every row updated after the cutoff. An update time column that
                 does not list itself is added to its own mapping with a null
                 value.
+            where: Named row conditions as narwhals expressions, used to mask
+                a child table's rows before an aggregation groups them. Each
+                key becomes a feature name part.
+            when: Named row conditions as callables receiving the cutoff time
+                and returning a narwhals expression. Use this for a condition
+                measured against the cutoff, such as a validity interval.
             validate: Pick a string or list of strings from
                 [here](validation/#tusk.validation.TABLE_CHECKS)
                 to enable specific checks.
@@ -191,12 +212,17 @@ class Database:
                 stacklevel=2,
             )
 
+        where = dict(where or {})
+        when = dict(when or {})
+
         schema = TableSchema(
             name=name,
             primary_key=primary_key,
             row_creation_time=row_creation_time,
             dtypes=dtypes,
             row_update_times=row_update_times,
+            where=where,
+            when=when,
         )
         validate_table(lazy, schema, validate)
 

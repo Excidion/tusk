@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tusk.primitives.aggregation import (
     AGG_DEFAULTS,
+    CONDITIONAL_DEFAULTS,
     AllTrue,
     AnyTrue,
     Count,
@@ -105,6 +106,7 @@ __all__ = [
     "AllTrue",
     "And",
     "AnyTrue",
+    "CONDITIONAL_DEFAULTS",
     "Cosine",
     "Count",
     "CumCount",

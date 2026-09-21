@@ -193,6 +193,145 @@ keeps only the table names and the lines between them:
 db.plot(columns="structural")
 ```
 
+## Row conditions: `where` and `when`
+
+Sometimes only some of a table's rows should count. A customer's *open*
+orders, or only their *large* ones, make a different feature than all their
+orders put together. `where` and `when` name those conditions on the table
+itself, so synthesis can build both:
+
+```python
+db.add_table(
+    "orders",
+    orders_lf,
+    primary_key="id",
+    row_creation_time="placed_at",
+    where={"large": nw.col("amount") >= 100.0},
+    when={"open": lambda cutoff: nw.col("closed_at").is_null()
+                               | (nw.col("closed_at") > cutoff)},
+)
+```
+
+`where` takes a static narwhals expression: a condition that does not depend
+on the cutoff. `when` takes a callable that receives the cutoff time and
+returns a narwhals expression, for a condition measured against it, such as
+"still open" or "currently valid". A `when` condition needs a `cutoff_time` at
+compile time; applying one without raises
+[`ValidationError`][tusk.exceptions.ValidationError]. A condition key may not
+contain `__`.
+
+`add_table` only checks that a `where` value is a narwhals expression and a
+`when` value is callable. It does not run the expression. A condition
+referring to a column that does not exist is therefore not caught here — it
+surfaces later, as an error from the dataframe backend, when the feature
+matrix is computed.
+
+`conditional_primitives` names the primitives computed over only the rows each
+condition keeps. It is a separate list from `agg_primitives`, not a subset of
+it: a primitive listed here gives you the conditional features alone, and you
+list it in both to get the unconditional ones too. The default is
+`("count", "sum")`, so a table that declares a condition gets conditional
+counts and sums even when `agg_primitives` never mentions them:
+
+```python
+feature_matrix, features = tusk.deep_feature_synthesis(
+    database=db,
+    target_table="customers",
+    conditional_primitives=("count", "sum"),
+    cutoff_time=datetime(2026, 1, 1),
+)
+
+# adds, alongside the unconditional features:
+#   COUNT(orders WHERE large)
+#   SUM(orders.amount WHEN open)
+```
+
+### A condition only filters its own table
+
+A condition on `cars` decides which cars count. It does not reach `repairs`:
+by the time the condition applies, each car's repairs have already been
+counted up.
+
+Consider a garage database, where `cars` carries a `current` condition on
+ownership:
+
+```mermaid
+erDiagram
+  "customers" {
+    Int64 id PK
+    Datetime[us] signed_up_at "row creation time"
+  }
+  "cars" {
+    Int64 id PK
+    Int64 customer_id FK "-> customers"
+    Datetime[us] bought_at "row creation time"
+    Datetime[us] sold_at
+  }
+  "repairs" {
+    Int64 id PK
+    Int64 car_id FK "-> cars"
+    Datetime[us] repaired_at "row creation time"
+  }
+  "customers" 1 to 0+ "cars" : ""
+  "cars" 1 to 0+ "repairs" : ""
+```
+
+```python
+db.add_table(
+    "cars",
+    cars_lf,
+    primary_key="id",
+    row_creation_time="bought_at",
+    when={
+        "current": lambda cutoff: (
+            nw.col("sold_at").is_null() | (nw.col("sold_at") > cutoff)
+        ),
+    },
+)
+```
+
+Customer 2 currently owns car 1, which has four repairs on record, spread
+across its whole lifetime. Customer 1's only car has since been sold, so none
+of their cars count at all. The feature
+
+```
+SUM(cars.COUNT(cars.repairs) WHEN current)
+```
+
+reads as "over the cars this customer currently owns, each car's **lifetime**
+repair count". All four of car 1's repairs count toward customer 2,
+regardless of when each one happened — the `current` condition masks rows of
+`cars`, and `repairs` is never filtered by it.
+
+No condition can fix this. `repairs` has no `customer_id` and no knowledge of
+ownership windows, so no predicate over its own columns can express "during
+this customer's ownership". Splitting the repairs by owner requires an
+interval join between `repaired_at` and the ownership window, which is a
+different mechanism from masking.
+
+This is not a defect introduced by `where`/`when`. A depth-2 aggregation
+already rolls a child's whole history up to whichever parent its foreign key
+currently points at; conditions make that existing attribution visible rather
+than creating it.
+
+Normalizing ownership into its own table does not fix it either. Modelling
+ownership as `ownerships(car_id, customer_id, valid_from, valid_until)`
+decides *which customer* a car belongs to in a window, but not *which
+repairs*. Reaching repairs from customers still goes: aggregate `repairs`
+onto `cars`, direct-feature onto `ownerships`, aggregate onto `customers` —
+and that middle rollup is still the car's lifetime repair count, so every
+ownership row inherits the car's whole history.
+
+The split falls out of existing machinery in exactly one case: when
+`repairs` already carries an `ownership_id`, so repairs hang off
+`ownerships` directly rather than off `cars`. Deriving that key from
+`repairs(car_id, repaired_at)` is itself an interval join, so this only
+helps when the source data already materializes the link.
+
+The general case — propagating an ancestor's validity window down to filter
+descendant rows by their own timestamps — is tracked as
+[issue #29](https://github.com/Excidion/tusk/issues/29).
+
 ## Row update times
 
 `row_creation_time` decides whether a **row** is visible at a cutoff. It says

@@ -279,6 +279,75 @@ def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
         )
 
 
+def check_where_conditions_are_expressions(
+    frame: nw.LazyFrame,
+    schema: TableSchema,
+) -> None:
+    """Confirm every ``where`` condition is a narwhals expression.
+
+    Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, holding the conditions to check.
+
+    Raises:
+        ValidationError: If a ``where`` condition is not an ``nw.Expr``.
+    """
+    for key, condition in schema.where.items():
+        if isinstance(condition, nw.Expr):
+            continue
+        raise ValidationError(
+            f"where condition {key!r} of {schema.name!r} is not a narwhals "
+            f"expression; a condition that needs the cutoff time belongs in when",
+        )
+
+
+def check_when_conditions_are_callable(
+    frame: nw.LazyFrame,
+    schema: TableSchema,
+) -> None:
+    """Confirm every ``when`` condition is callable.
+
+    Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, holding the conditions to check.
+
+    Raises:
+        ValidationError: If a ``when`` condition is not callable.
+    """
+    for key, condition in schema.when.items():
+        if callable(condition):
+            continue
+        raise ValidationError(
+            f"when condition {key!r} of {schema.name!r} is not callable; a "
+            f"condition that does not need the cutoff time belongs in where",
+        )
+
+
+def check_condition_keys(frame: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no condition key holds the feature name separator.
+
+    Reads the schema only.
+
+    Args:
+        frame: The table's lazy frame. Unused.
+        schema: The table's schema, holding the keys to check.
+
+    Raises:
+        ValidationError: If a condition key contains ``__``.
+    """
+    for _, key in schema.conditions:
+        if "__" not in key:
+            continue
+        raise ValidationError(
+            f"condition key {key!r} of {schema.name!r} contains '__', which "
+            f"separates the parts of a feature name; rename it",
+        )
+
+
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
     """Confirm a cutoff matches the tz awareness of the database's Datetime columns.
 
@@ -490,6 +559,9 @@ TABLE_CHECKS = {
     "singly_updated_columns": check_singly_updated_columns,
     "matching_earlier_value_dtypes": check_matching_earlier_value_dtypes,
     "ordered_row_times": check_ordered_row_times,
+    "where_conditions_are_expressions": check_where_conditions_are_expressions,
+    "when_conditions_are_callable": check_when_conditions_are_callable,
+    "condition_keys": check_condition_keys,
 }
 
 # Every check here answers from the declared schema, so add_table can run all
@@ -503,6 +575,9 @@ DEFAULT_TABLE_CHECKS = (
     "never_updated_primary_key",
     "never_updated_row_creation_time",
     "matching_earlier_value_dtypes",
+    "where_conditions_are_expressions",
+    "when_conditions_are_callable",
+    "condition_keys",
 )
 
 RELATIONSHIP_CHECKS = {

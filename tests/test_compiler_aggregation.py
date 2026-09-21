@@ -1,16 +1,18 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 import narwhals as nw
 import polars as pl
 import pytest
+from conftest import condition_database
 
 import tusk
 from tusk.compiler import compile_features
 from tusk.database import Relationship
 from tusk.dtypes import DtypeFamily as F
+from tusk.exceptions import ValidationError
 from tusk.feature_list import FeatureList
-from tusk.features import AggregationFeature, IdentityFeature
+from tusk.features import AggregationFeature, DirectFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
 from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
 from tusk.primitives.registry import resolve
@@ -252,3 +254,258 @@ def test_an_updated_foreign_key_stops_a_child_reaching_its_parent():
     # belonged to nobody. Sum's default_value of 0 covers customer 1's
     # resulting empty group, per the empty-group convention in this file.
     assert got["SUM__orders__amount"].to_list() == [0.0, 2.0]
+
+
+def test_where_condition_masks_the_aggregated_rows():
+    """Only rows passing the condition reach the aggregation."""
+    database = condition_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("sum"),
+                (IdentityFeature("orders", "amount", nw.Float64()),),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("where", "large"),
+            ),
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    values = dict(
+        zip(matrix["id"], matrix["SUM__orders__amount__WHERE__large"], strict=True),
+    )
+    assert values == {1: 30.0, 2: 0.0}
+
+
+def test_condition_reaches_a_direct_feature_from_a_third_table():
+    """A mask on the child's rows masks values joined onto that child."""
+    database = condition_database()
+    price = DirectFeature(
+        IdentityFeature("products", "price", nw.Float64()),
+        Relationship("products", "orders", "product_id"),
+    )
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("sum"),
+                (price,),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("where", "large"),
+            ),
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    column = [c for c in matrix.columns if c.startswith("SUM__orders")][0]
+    assert dict(zip(matrix["id"], matrix[column], strict=True)) == {1: 7.0, 2: 0.0}
+
+
+def test_when_condition_receives_the_cutoff_time():
+    """The same feature gives different values at two cutoffs."""
+    database = condition_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("when", "open"),
+            ),
+        ],
+    )
+    early = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 5, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    late = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 8, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    name = "COUNT__orders__WHEN__open"
+    assert dict(zip(early["id"], early[name], strict=True)) == {1: 2, 2: 1}
+    assert dict(zip(late["id"], late[name], strict=True)) == {1: 1, 2: 1}
+
+
+def test_when_condition_without_a_cutoff_time_is_rejected():
+    """A cutoff-measuring condition names itself in the error."""
+    database = condition_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("when", "open"),
+            ),
+        ],
+    )
+    with pytest.raises(ValidationError, match="open"):
+        features.apply(database)
+
+
+def test_where_condition_without_a_cutoff_time_is_allowed():
+    """A static condition measures nothing, so it needs no cutoff."""
+    database = condition_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("where", "large"),
+            ),
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    assert dict(
+        zip(matrix["id"], matrix["COUNT__orders__WHERE__large"], strict=True),
+    ) == {1: 2, 2: 0}
+
+
+def test_empty_mask_falls_back_to_the_primitive_default_on_polars():
+    """No matching rows gives the same value as no rows at all.
+
+    The duckdb twin of this test is
+    ``test_empty_mask_falls_back_to_the_primitive_default`` in
+    ``tests/test_backend_duckdb.py``, against identical expected values.
+    """
+    database = condition_database()
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve(name),
+                (IdentityFeature("orders", "amount", nw.Float64()),),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("where", "impossible"),
+            )
+            for name in ("sum", "mean")
+        ],
+    )
+    matrix = nw.from_native(features.apply(database)).lazy().collect()
+    assert matrix["SUM__orders__amount__WHERE__impossible"].to_list() == [0.0, 0.0]
+    assert matrix["MEAN__orders__amount__WHERE__impossible"].to_list() == [None, None]
+
+
+def test_condition_sees_pre_update_values(updating_db):
+    """A condition on an updated column reads the value restored by the cutoff."""
+    database = updating_db
+    schema = database.schema("orders")
+    database._schemas["orders"] = replace(
+        schema,
+        where={"delivered": nw.col("status") == "delivered"},
+    )
+    features = FeatureList(
+        [
+            AggregationFeature(
+                resolve("count"),
+                (),
+                Relationship("customers", "orders", "customer_id"),
+                condition=("where", "delivered"),
+            ),
+        ],
+    )
+    matrix = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 6, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    assert dict(
+        zip(matrix["id"], matrix["COUNT__orders__WHERE__delivered"], strict=True),
+    ) == {1: 0, 2: 1}
+
+
+def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_rollup():
+    """An empty mask falls back to default_value; a surviving row keeps everything.
+
+    Customer 1's only car is sold, so the current condition masks their whole
+    group to empty and their sum falls back to 0. Customer 2's car survives
+    the mask and brings its entire repair history with it -- all four
+    repairs, regardless of when they happened. See
+    docs/guide/databases.md#a-condition-only-filters-its-own-table for what
+    this does and does not say about ownership transfer.
+    """
+    customers = pl.LazyFrame(
+        {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},
+    )
+    # Car 1 carries every repair (see ``repairs`` below), so it is the row
+    # that must currently belong to customer 2 for that history to reach
+    # them; car 2 is a decoy, sold, so customer 1's "current" group is
+    # masked to empty rather than simply absent.
+    cars = pl.LazyFrame(
+        {
+            "id": [1, 2],
+            "customer_id": [2, 1],
+            "bought_at": [datetime(2024, 1, 1)] * 2,
+            "sold_at": [None, datetime(2024, 6, 1)],
+        },
+    )
+    repairs = pl.LazyFrame(
+        {
+            "id": [100, 101, 102, 103],
+            "car_id": [1, 1, 1, 1],
+            "cost": [1.0, 2.0, 4.0, 8.0],
+            "repaired_at": [
+                datetime(2024, 3, 1),
+                datetime(2024, 4, 1),
+                datetime(2024, 8, 1),
+                datetime(2024, 9, 1),
+            ],
+        },
+    )
+    database = (
+        tusk.Database("garage")
+        .add_table(
+            "customers",
+            customers,
+            primary_key="id",
+            row_creation_time="signed_up_at",
+        )
+        .add_table(
+            "cars",
+            cars,
+            primary_key="id",
+            row_creation_time="bought_at",
+            when={
+                "current": lambda cutoff: (
+                    nw.col("sold_at").is_null() | (nw.col("sold_at") > cutoff)
+                ),
+            },
+        )
+        .add_table(
+            "repairs",
+            repairs,
+            primary_key="id",
+            row_creation_time="repaired_at",
+        )
+        .add_relationship(parent="customers", child="cars", foreign_key="customer_id")
+        .add_relationship(parent="cars", child="repairs", foreign_key="car_id")
+    )
+
+    repair_count = AggregationFeature(
+        resolve("count"),
+        (),
+        Relationship("cars", "repairs", "car_id"),
+    )
+    feature = AggregationFeature(
+        resolve("sum"),
+        (repair_count,),
+        Relationship("customers", "cars", "customer_id"),
+        condition=("when", "current"),
+    )
+    features = FeatureList([feature])
+    matrix = (
+        nw.from_native(
+            features.apply(database, cutoff_time=datetime(2024, 12, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+
+    values = dict(zip(matrix["id"], matrix[feature.name], strict=True))
+    assert values == {1: 0, 2: 4}

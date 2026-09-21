@@ -58,6 +58,20 @@ class UnmatchedPrimitiveWarning(UserWarning):
     """
 
 
+class UnmatchedConditionWarning(UserWarning):
+    """Warns that no table declares a condition for ``conditional_primitives``.
+
+    Distinct from :class:`UnmatchedPrimitiveWarning`, which is keyed on
+    dtype-matching a primitive to a column. A conditional primitive such as
+    ``count`` or ``sum`` is ordinarily also in ``agg_primitives`` and so is
+    already marked matched there, which would suppress that warning even
+    though it produced zero conditional features. This warns on the condition
+    dimension instead: no table declared a ``where`` or ``when`` at all, so
+    ``conditional_primitives`` had nothing to mask. Its own class, so it can be
+    filtered independently.
+    """
+
+
 class LineageError(TuskError):
     """Raised when a kept encoded column has no counterpart after the refit.
 

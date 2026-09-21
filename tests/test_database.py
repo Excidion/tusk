@@ -358,3 +358,40 @@ def test_add_table_still_does_not_scan_by_default():
         row_creation_time="created_at",
         row_update_times={"updated_at": {"updated_at": None}},
     )
+
+
+def test_add_table_stores_where_and_when_conditions(db):
+    """Declared conditions reach the schema unchanged."""
+    current = lambda cutoff: nw.col("occurred_at") <= cutoff  # noqa: E731
+    verified = nw.col("verified")
+    database = tusk.Database("shop").add_table(
+        "transactions",
+        _transactions_frame(),
+        primary_key="id",
+        row_creation_time="occurred_at",
+        where={"verified": verified},
+        when={"current": current},
+    )
+
+    schema = database.schema("transactions")
+    assert schema.where["verified"] is verified
+    assert schema.when["current"] is current
+
+
+def test_add_table_defaults_conditions_to_empty_mappings(db):
+    """A table declaring no condition has two empty mappings, never None."""
+    schema = db.schema("transactions")
+    assert schema.where == {}
+    assert schema.when == {}
+
+
+def _transactions_frame():
+    """A minimal transactions frame for schema-only tests."""
+    return pl.LazyFrame(
+        {
+            "id": [100, 101],
+            "amount": [1.0, 3.0],
+            "verified": [True, False],
+            "occurred_at": [dt.datetime(2024, 3, 4), dt.datetime(2024, 3, 5)],
+        },
+    )

@@ -1,11 +1,14 @@
 """FeatureList: the validated, self-applying collection synthesis hands back."""
 
+import datetime as dt
 import pickle
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
+import narwhals as nw
 import polars as pl
 import pytest
+from conftest import condition_database
 
 import tusk
 from tusk.exceptions import SchemaError
@@ -238,3 +241,48 @@ def test_restored_features_deduplicate_against_a_fresh_run(features, db):
     restored = pickle.loads(pickle.dumps(features))
     combined = tusk.FeatureList(dict.fromkeys([*restored, *features]))
     assert len(combined) == len(features)
+
+
+def test_condition_is_resolved_against_the_database_being_applied_to():
+    """Features carry the key; the new database supplies the expression."""
+    features = tusk.deep_feature_synthesis(
+        condition_database(),
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        conditional_primitives=["count"],
+        max_depth=1,
+        cutoff_time=dt.datetime(2024, 5, 1),
+        features_only=True,
+    )
+    relaxed = condition_database(large_threshold=1.0)
+    matrix = (
+        nw.from_native(
+            features.apply(relaxed, cutoff_time=dt.datetime(2024, 5, 1)),
+        )
+        .lazy()
+        .collect()
+    )
+    assert dict(
+        zip(matrix["id"], matrix["COUNT__orders__WHERE__large"], strict=True),
+    ) == {1: 3, 2: 1}
+
+
+def test_missing_condition_on_the_new_database_names_the_key():
+    """Applying to a database that never declared the condition fails loudly."""
+    features = tusk.deep_feature_synthesis(
+        condition_database(),
+        "customers",
+        agg_primitives=["count"],
+        trans_primitives=[],
+        conditional_primitives=["count"],
+        max_depth=1,
+        cutoff_time=dt.datetime(2024, 5, 1),
+        features_only=True,
+    )
+    large_only = FeatureList(
+        [f for f in features if getattr(f, "condition", None) == ("where", "large")]
+    )
+    without = condition_database(declare_conditions=False)
+    with pytest.raises(SchemaError, match="large"):
+        large_only.apply(without, cutoff_time=dt.datetime(2024, 5, 1))
