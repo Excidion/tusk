@@ -427,8 +427,8 @@ def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_ro
     group to empty and their sum falls back to 0. Customer 2's car survives
     the mask and brings its entire repair history with it -- all four
     repairs, regardless of when they happened. See
-    docs/guide/databases.md#what-a-condition-scopes for what this does and
-    does not say about ownership transfer.
+    docs/guide/databases.md#a-condition-only-filters-its-own-table for what
+    this does and does not say about ownership transfer.
     """
     customers = pl.LazyFrame(
         {"id": [1, 2], "signed_up_at": [datetime(2024, 1, 1)] * 2},

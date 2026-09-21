@@ -195,8 +195,10 @@ db.plot(columns="structural")
 
 ## Row conditions: `where` and `when`
 
-`where` and `when` declare named row conditions on a table, for masking which
-rows an aggregation groups:
+Sometimes only some of a table's rows should count. A customer's *open*
+orders, or only their *large* ones, make a different feature than all their
+orders put together. `where` and `when` name those conditions on the table
+itself, so synthesis can build both:
 
 ```python
 db.add_table(
@@ -215,43 +217,59 @@ on the cutoff. `when` takes a callable that receives the cutoff time and
 returns a narwhals expression, for a condition measured against it, such as
 "still open" or "currently valid". A `when` condition needs a `cutoff_time` at
 compile time; applying one without raises
-[`ValidationError`][tusk.exceptions.ValidationError]. A `where` condition
-needs none. A condition key may not contain `__`.
+[`ValidationError`][tusk.exceptions.ValidationError]. A condition key may not
+contain `__`.
 
-`add_table` only checks a condition's *shape* -- that a `where` value is a
-narwhals expression and a `when` value is callable. The expression body
-itself, such as a reference to a nonexistent column, is only evaluated when
-the query actually runs, so a malformed condition can surface as a raw
-backend error far from the `add_table` call that declared it.
+`add_table` only checks that a `where` value is a narwhals expression and a
+`when` value is callable. It does not run the expression. A condition
+referring to a column that does not exist is therefore not caught here — it
+surfaces later, as an error from the dataframe backend, when the feature
+matrix is computed.
 
-`deep_feature_synthesis` generates one masked variant per declared condition,
-for the primitives named in `conditional_primitives` (default:
-`CONDITIONAL_DEFAULTS`, i.e. `("count", "sum")`):
+Every primitive listed in `conditional_primitives` is then computed twice:
+once over all the rows, and once over only the rows each condition keeps. The
+default is `("count", "sum")`:
 
 ```python
-tusk.deep_feature_synthesis(
+feature_matrix, features = tusk.deep_feature_synthesis(
     database=db,
     target_table="customers",
-    agg_primitives=["mean", "count"],
     conditional_primitives=("count", "sum"),
-    trans_primitives=[],
-    max_depth=2,
     cutoff_time=datetime(2026, 1, 1),
 )
+
+# COUNT(orders WHERE large)
+# SUM(orders.amount WHEN open)
 ```
 
-A condition named `large` on `orders` synthesizes features like
-`COUNT__orders__WHERE__large`, displayed as `COUNT(orders WHERE large)`; a
-condition named `open` synthesizes `SUM__orders__amount__WHEN__open`,
-displayed as `SUM(orders.amount WHEN open)`.
+### A condition only filters its own table
 
-### What a condition scopes
+A condition on `cars` decides which cars count. It does not reach `repairs`:
+by the time the condition applies, each car's repairs have already been
+counted up.
 
-A condition masks the rows of the table it is declared on, at the moment that
-table is grouped. It does not reach the tables below it.
+Consider a garage database, where `cars` carries a `current` condition on
+ownership:
 
-Consider `customers <- cars <- repairs`, where `cars` carries a `current`
-condition on ownership:
+```mermaid
+erDiagram
+  "customers" {
+    Int64 id PK
+    Datetime[us] signed_up_at "row creation time"
+  }
+  "cars" {
+    Int64 id PK
+    Int64 customer_id FK "-> customers"
+    Datetime[us] bought_at "row creation time"
+  }
+  "repairs" {
+    Int64 id PK
+    Int64 car_id FK "-> cars"
+    Datetime[us] repaired_at "row creation time"
+  }
+  "customers" 1 to 0+ "cars" : ""
+  "cars" 1 to 0+ "repairs" : ""
+```
 
 ```python
 db.add_table(

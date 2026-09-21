@@ -75,10 +75,10 @@ def synthesize(
             :class:`~tusk.primitives.base.GroupTransformPrimitive` is applied
             within each foreign-key group, every other one to each row. None
             selects ``TRANS_DEFAULTS``.
-        conditional_primitives: Aggregation primitives that additionally get
-            one masked variant per condition declared on the child table, as
-            names or instances. None selects ``CONDITIONAL_DEFAULTS``; ``()``
-            generates no conditional features.
+        conditional_primitives: Aggregation primitives to compute a second
+            time over only the rows each declared condition keeps, as names
+            or instances. None selects ``CONDITIONAL_DEFAULTS``; ``()``
+            computes no conditional features.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
@@ -276,16 +276,16 @@ class _Context:
             child_features = self.build(rel.child, depth_limit - 1, path + (rel,))
             usable = self._usable(rel.child, child_features)
             for primitive in self.agg:
-                out.extend(self._aggregations_for(primitive, rel, usable, None))
+                out.extend(self._build_aggregations(primitive, rel, usable, None))
             conditions = self.database.schema(rel.child).conditions
             for primitive in self.conditional_agg:
                 for condition in conditions:
                     out.extend(
-                        self._aggregations_for(primitive, rel, usable, condition),
+                        self._build_aggregations(primitive, rel, usable, condition),
                     )
         return out
 
-    def _aggregations_for(
+    def _build_aggregations(
         self,
         primitive: Primitive,
         relationship: Relationship,
