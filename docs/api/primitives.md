@@ -126,6 +126,8 @@
 
 ::: tusk.primitives.Cosine
 
+::: tusk.primitives.NCharacters
+
 ::: tusk.primitives.NWords
 
 ::: tusk.primitives.NUniqueWords

@@ -73,6 +73,11 @@ ROWS = pd.DataFrame(
 )
 
 EXPECTED = {
+    "N_CHARACTERS__text": (
+        "n_characters",
+        nw.Int64,
+        [13, None, 11, 3, 7, 19, 3, 10],
+    ),
     "N_WORDS__text": (
         "n_words",
         nw.Int64,

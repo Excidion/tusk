@@ -1,4 +1,4 @@
-"""Cross-check tusk's word-count transform primitives against featuretools.
+"""Cross-check tusk's text transform primitives against featuretools.
 
 Each test builds one primitive on both sides over the shared table in
 ``tests/transform_cases.py`` and compares the one resulting column.
@@ -19,6 +19,13 @@ from differential.transform_matrices import (
 featuretools = pytest.importorskip("featuretools")
 
 pytestmark = pytest.mark.differential
+
+
+def test_n_characters_matches_featuretools():
+    """Covers a null, punctuation, whitespace only and a blank string."""
+    ours = tusk_values("n_characters", "N_CHARACTERS__text")
+    theirs = featuretools_values("num_characters", "NUM_CHARACTERS(text)")
+    assert_agree(ours, theirs)
 
 
 def test_n_words_matches_featuretools():

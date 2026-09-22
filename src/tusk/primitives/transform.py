@@ -408,6 +408,27 @@ class Cosine(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class NCharacters(TransformPrimitive):
+    """Number of characters in a text string."""
+
+    name = "n_characters"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.Int64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the character-count expression.
+
+        Args:
+            expr: A string expression.
+
+        Returns:
+            A narwhals expression of how many characters each value holds.
+        """
+        return expr.str.len_chars()
+
+
+@register
+@dataclass(frozen=True)
 class NWords(TransformPrimitive):
     """Number of whitespace-separated words in a string."""
 
@@ -431,7 +452,12 @@ class NWords(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class NUniqueWords(TransformPrimitive):
-    """Number of distinct words in a string, ignoring case."""
+    """Number of distinct words in a string, ignoring case.
+
+    Words are separated by whitespace and keep the punctuation inside them, so
+    `a-b` is one word; punctuation around a word is not part of it, and a run of
+    punctuation alone is not a word. A string holding no word at all is `0`.
+    """
 
     name = "n_unique_words"
     input_dtypes = (F.STRING,)
