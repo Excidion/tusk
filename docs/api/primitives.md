@@ -148,6 +148,12 @@
 
 ::: tusk.primitives.NUniqueWords
 
+::: tusk.primitives.Domain
+
+::: tusk.primitives.TopLevelDomain
+
+::: tusk.primitives.URLToProtocol
+
 ::: tusk.primitives.AddNumeric
 
 ::: tusk.primitives.SubtractNumeric

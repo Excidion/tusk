@@ -69,6 +69,32 @@ ROWS = pd.DataFrame(
             ],
             dtype="string",
         ),
+        "url": pd.array(
+            [
+                "https://play.google.com/store?x=1",
+                None,
+                "http://www.google.co.in:8080/path",
+                "www.facebook.com",
+                "https://user:pass@mysite.company/",
+                "ftp://files.example.org",
+                "http://:80",
+                "www.",
+            ],
+            dtype="string",
+        ),
+        "email": pd.array(
+            [
+                "name@gmail.com",
+                None,
+                "  padded@example.org  ",
+                "no-at-sign",
+                "a@b@c.com",
+                "trailing@",
+                "UPPER@Example.COM",
+                "",
+            ],
+            dtype="string",
+        ),
     },
 )
 
@@ -87,6 +113,49 @@ EXPECTED = {
         "n_unique_words",
         nw.Int64,
         [2, None, 2, 0, 2, 4, 0, 1],
+    ),
+    "DOMAIN__email": (
+        "domain",
+        nw.String,
+        [
+            "gmail.com",
+            None,
+            "example.org",
+            "no-at-sign",
+            "c.com",
+            None,
+            "Example.COM",
+            None,
+        ],
+    ),
+    "DOMAIN__url": (
+        "domain",
+        nw.String,
+        [
+            "play.google.com",
+            None,
+            "google.co.in",
+            "facebook.com",
+            "mysite.company",
+            "files.example.org",
+            None,
+            None,
+        ],
+    ),
+    "TOP_LEVEL_DOMAIN__email": (
+        "top_level_domain",
+        nw.String,
+        ["com", None, "org", None, "com", None, "COM", None],
+    ),
+    "TOP_LEVEL_DOMAIN__url": (
+        "top_level_domain",
+        nw.String,
+        ["com", None, "in", "com", "company", "org", None, None],
+    ),
+    "URL_TO_PROTOCOL__url": (
+        "url_to_protocol",
+        nw.String,
+        ["https", None, "http", None, "https", None, "http", None],
     ),
     "IS_NULL__value": (
         "is_null",

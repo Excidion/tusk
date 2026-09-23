@@ -481,6 +481,86 @@ class NUniqueWords(TransformPrimitive):
 
 @register
 @dataclass(frozen=True)
+class Domain(TransformPrimitive):
+    """Domain of a URL or an email address.
+
+    Whitespace around the value is ignored. The domain follows any scheme such
+    as `https://`, anything up to the last `@` before the first `/` or `?`, and
+    a leading `www.`, and runs up to the first `:`, `/` or `?`. A value that
+    leaves no domain is null.
+    """
+
+    name = "domain"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.String
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the domain expression.
+
+        Args:
+            expr: A string expression of URLs or email addresses.
+
+        Returns:
+            A narwhals expression of each value's domain.
+        """
+        return _extract_domain(expr)
+
+
+@register
+@dataclass(frozen=True)
+class TopLevelDomain(TransformPrimitive):
+    """Top-level domain of a URL or an email address, after its domain's last dot.
+
+    The domain is the one `domain` gives. A domain without a dot, or ending in
+    one, is null.
+    """
+
+    name = "top_level_domain"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.String
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the top-level-domain expression.
+
+        Args:
+            expr: A string expression of URLs or email addresses.
+
+        Returns:
+            A narwhals expression of each value's top-level domain.
+        """
+        domain = _extract_domain(expr)
+        return nw.when(domain.str.contains(r"\.[^.]+$")).then(
+            domain.str.replace_all(r"^.*\.", "")
+        )
+
+
+@register
+@dataclass(frozen=True)
+class URLToProtocol(TransformPrimitive):
+    """Protocol of a URL, `http` or `https`; null for any other or none."""
+
+    name = "url_to_protocol"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.String
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the URL-protocol expression.
+
+        Args:
+            expr: A string expression of URLs.
+
+        Returns:
+            A narwhals expression of each URL's protocol.
+        """
+        return (
+            nw.when(expr.str.starts_with("https:"))
+            .then(nw.lit("https"))
+            .otherwise(nw.when(expr.str.starts_with("http:")).then(nw.lit("http")))
+        )
+
+
+@register
+@dataclass(frozen=True)
 class Percentile(GroupTransformPrimitive):
     """Rank of the value among the known values of its group, from above 0 to 1.
 
@@ -1250,3 +1330,22 @@ def _count_unless_empty(words: nw.Expr, count: nw.Expr) -> nw.Expr:
         which splits into one empty word rather than into no word.
     """
     return nw.when(words == "").then(nw.lit(0)).otherwise(count)
+
+
+def _extract_domain(address: nw.Expr) -> nw.Expr:
+    """Extract the domain of a URL or an email address.
+
+    Args:
+        address: A string expression of URLs or email addresses.
+
+    Returns:
+        A narwhals expression of each value's domain, null where there is none.
+    """
+    domain = (
+        address.str.strip_chars()
+        .str.replace_all(r"^[A-Za-z][A-Za-z0-9+.-]*://", "")
+        .str.replace_all(r"^[^/?]*@", "")
+        .str.replace_all(r"^www\.", "")
+        .str.replace_all(r"[:/?][\s\S]*$", "")
+    )
+    return nw.when(domain != "").then(domain)

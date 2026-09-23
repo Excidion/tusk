@@ -33,6 +33,8 @@ LOGICAL_TYPES = {
     "maybe_flag": "BooleanNullable",
     "label": "Categorical",
     "text": "NaturalLanguage",
+    "url": "URL",
+    "email": "EmailAddress",
 }
 
 
