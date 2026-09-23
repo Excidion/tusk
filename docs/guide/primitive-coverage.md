@@ -152,7 +152,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Datetime transform | — | `nth_week_of_month` | ⛔ |  | narwhals exposes no ISO week number. |
 | Datetime transform | — | [`part_of_day`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.PartOfDay.html) | ⛔ |  |  |
 | Datetime transform | — | [`quarter`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Quarter.html) | ❌ |  |  |
-| Datetime transform | — | [`season`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Season.html) | ❌ |  |  |
+| Datetime transform | — | [`season`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Season.html) | ⛔ |  |  |
 | Datetime transform | [`second`][tusk.primitives.Second] | [`second`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Second.html) | ✅ | [`test_datetime_parts_match_featuretools`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_datetime_transforms.py) |  |
 | Datetime transform | — | [`week`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Week.html) | ❌ |  | narwhals exposes no ISO week number. |
 | Email and URL transform | — | [`email_address_to_domain`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.EmailAddressToDomain.html) | ❌ |  |  |
