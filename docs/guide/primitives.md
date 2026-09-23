@@ -1,8 +1,7 @@
 # Primitives
 
-A primitive builds a narwhals expression. DFS composes primitives into
-features; the primitive itself never sees a value, which is what keeps
-everything pushed down to the backend.
+A primitive builds a narwhals expression, which DFS composes into features.
+The whole computation stays on your backend.
 
 ## What ships with tusk
 
@@ -18,9 +17,9 @@ primitives require a `row_creation_time` on the table.
 See [primitive coverage](primitive-coverage.md) for how these line up against
 featuretools.
 
-Every name above is also an importable class — `from tusk.primitives import
-Year, CumSum` — and takes the same form as a user-defined one, so `Year` and
-`Count` are the same kind of object as anything you write yourself. See
+Every name above is also an importable class, so `from tusk.primitives import
+Year, CumSum` works. They take the same form as a user-defined one, so `Year`
+and `Count` are the same kind of object as anything you write yourself. See
 [Custom primitives](custom-primitives.md).
 
 ## Defaults
@@ -36,10 +35,10 @@ hundreds of features on wide tables.
 
 ## Multi-output primitives
 
-A multi-output primitive such as `quantiles` produces indexed columns —
-`QUANTILES__orders__quantity__0`, `__1`, `__2` — and nothing else stacks on
-it: there is no single column for another primitive to read. It is a valid
-output at any depth, just never an input.
+A multi-output primitive such as `quantiles` produces indexed columns:
+`QUANTILES__orders__quantity__0`, `__1`, `__2`. A primitive takes one column as
+input, so these columns are the end of their chain: they go into the matrix,
+and no further primitive builds on them. Use one at any depth.
 
 ## Empty groups
 
@@ -61,11 +60,10 @@ with no orders gets:
 | `IS_UNIQUE` | `null` | No rows to compare. Nulls are values, so a group of several nulls is `false`. |
 | `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE` | `null` | Undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
 
-The split is not arbitrary. Reporting `COUNT = 0` asserts we *know* there were
-no rows; a null `SUM` beside it would claim the total is unknown, which
-contradicts a known-zero count. `MEAN` has no such defence — there is no number
-that is the average of nothing — so it stays null. Each value lives on the
-primitive as `default_value` rather than as a special case in the compiler.
+`COUNT` and `SUM` report `0` because a group with no rows has nothing to count
+and nothing to add up. `MEAN` stays null, because there is no number that is
+the average of nothing. Each value lives on the primitive as `default_value`,
+so your own primitives set theirs the same way.
 
 featuretools agrees on `COUNT` and `SUM`, and also leaves `MEAN`/`MIN`/`MAX`
 null. It differs on `N_UNIQUE`: it leaves an empty group as `NaN`, where tusk
@@ -96,7 +94,7 @@ agrees on both sides: the negation of an unknown is unknown.
 ## Comparing two columns
 
 The comparison primitives accept a pair of numbers or a pair of datetimes,
-never one of each — a primitive may declare several input shapes, and each
+never one of each. A primitive may declare several input shapes, and each
 shape is matched as a whole:
 
 ```py
@@ -111,8 +109,8 @@ column by column.
 
 Labels are a separate case. `Categorical` and `Enum` columns are compared with
 `equal_categorical` and `not_equal_categorical`, which compare the labels
-themselves rather than their encodings — two `Enum` columns with different
-member lists cannot be compared directly on polars at all. A null label
+themselves rather than their encodings. On polars, two `Enum` columns with
+different member lists cannot be compared directly at all. A null label
 follows the same rule as everything else on this page: it makes the
 comparison unknown rather than simply unequal.
 

@@ -6,7 +6,7 @@ workflow is always the same three steps:
 1. **Describe your data.** Build a [database](databases.md): register each
    table, say which column is its primary key and which column records when a
    row became knowable, then link the tables with relationships. Those are
-   declarations tusk takes on trust — call
+   declarations tusk takes on trust. Call
    [`validate()`](databases.md#validation) when you want them checked against
    the data.
 2. **Synthesize.** Call [`deep_feature_synthesis()`](deep-feature-synthesis.md).
@@ -17,8 +17,7 @@ workflow is always the same three steps:
    compute the same columns on new data.
 
 Everything tusk builds is a narwhals expression, so the whole pipeline is one
-query plan on the backend you already use. Nothing is materialized until you
-ask for it.
+query plan on the backend you already use.
 
 - [Databases](databases.md)
 - [Running DFS](deep-feature-synthesis.md)

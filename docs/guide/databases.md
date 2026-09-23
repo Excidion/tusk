@@ -1,9 +1,8 @@
 # Databases
 
 A [`Database`][tusk.Database] holds the tables you want features over and the
-relationships between them. By default it is pure schema: adding a table reads
-its column names and dtypes, nothing else. No row is read unless you ask for
-[validation](#validation).
+relationships between them. `add_table` reads a table's column names and
+dtypes; [validation](#validation) is what looks at the rows.
 
 ```python
 import tusk
@@ -28,9 +27,7 @@ Both `add_table` and `add_relationship` return the database, so they chain.
 
 ## Keys
 
-tusk uses `primary_key` and `row_creation_time` rather than featuretools'
-`index` and `time_index`. Narwhals has no index concept, and
-`row_creation_time` names what the column actually means: when the row became
+`primary_key` identifies a row. `row_creation_time` records when the row became
 knowable.
 
 `primary_key` is **optional**, but a table without one cannot be a relationship
@@ -44,8 +41,8 @@ have non-deterministic tiebreaks. Omitting it raises a
 and is what a [cutoff time](deep-feature-synthesis.md#cutoff-times) filters on. A table without
 one is *timeless*: it passes through every cutoff unfiltered.
 
-Keys are single columns. Passing a tuple or list raises
-[`SchemaError`][tusk.exceptions.SchemaError] — there are no composite keys.
+Keys are single columns. There are no composite keys, so passing a tuple or
+list raises [`SchemaError`][tusk.exceptions.SchemaError].
 
 ## Relationships
 
@@ -68,17 +65,16 @@ One database uses one backend. The first table you add fixes it; a later
 table on a different backend raises `SchemaError`, because narwhals cannot join
 across backends.
 
-Eagerness, by contrast, is not sticky and not remembered. `add_table` accepts
-a native or narwhals frame in either form and immediately lazifies it, so an
-eager frame and a lazy one are interchangeable — you can mix both forms of the
-same backend in one database. Either way the feature matrix comes back
-[uncomputed](deep-feature-synthesis.md#lazy-out-always).
+Eager and lazy frames are interchangeable. `add_table` takes either, native or
+narwhals, and lazifies it on the way in, so you can mix both forms of the same
+backend in one database and the feature matrix comes back
+[the same way](deep-feature-synthesis.md#lazy-out-always) regardless.
 
 ## Validation
 
 A database takes your declarations (mostly) on trust. Naming a column as `primary_key`
 asserts that it identifies a row, but nothing confirms it. When the assertion is
-false, tusk does not fail — a duplicated key fans out every join that lands on
+false, tusk does not fail. A duplicated key fans out every join that lands on
 the table, and `COUNT`, `SUM` and `MEAN` come back inflated by a factor you
 cannot see.
 
@@ -111,7 +107,8 @@ db.add_relationship(..., validate=True)  # run all checks
 db.add_relationship(..., validate=False)  # check nothing
 ```
 
-A relationship that fails validation is not registered and as a table that fails is not added.
+A failed check leaves the database as it was, so the table or relationship
+that raised is not part of it.
 
 ### Available checks
 
@@ -124,8 +121,8 @@ There are checks that
 
 ## Looking at the schema
 
-`plot()` draws the database as a Mermaid entity-relationship diagram. It reads
-no rows, so it costs nothing:
+`plot()` draws the database as a Mermaid entity-relationship diagram, from the
+schema alone:
 
 ```python
 db.plot()
@@ -207,31 +204,22 @@ db.add_table(
     primary_key="id",
     row_creation_time="placed_at",
     where={"large": nw.col("amount") >= 100.0},
-    when={"open": lambda cutoff: nw.col("closed_at").is_null()
-                               | (nw.col("closed_at") > cutoff)},
+    when={
+        "open": lambda cutoff: (
+            nw.col("closed_at").is_null() | (nw.col("closed_at") > cutoff)
+        )
+    },
 )
 ```
 
-`where` takes a static narwhals expression: a condition that does not depend
-on the cutoff. `when` takes a callable that receives the cutoff time and
-returns a narwhals expression, for a condition measured against it, such as
-"still open" or "currently valid". A `when` condition needs a `cutoff_time` at
-compile time; applying one without raises
-[`ValidationError`][tusk.exceptions.ValidationError]. A condition key may not
-contain `__`.
-
-`add_table` only checks that a `where` value is a narwhals expression and a
-`when` value is callable. It does not run the expression. A condition
-referring to a column that does not exist is therefore not caught here — it
-surfaces later, as an error from the dataframe backend, when the feature
-matrix is computed.
+Use `where` for a condition that means the same thing at every cutoff, like an
+amount threshold. Use `when` for one you measure against the cutoff itself,
+like "still open at the time we ask". `when` receives the cutoff time and
+returns the expression, so synthesis needs a `cutoff_time` to apply it and
+raises [`ValidationError`][tusk.exceptions.ValidationError] without one.
 
 `conditional_primitives` names the primitives computed over only the rows each
-condition keeps. It is a separate list from `agg_primitives`, not a subset of
-it: a primitive listed here gives you the conditional features alone, and you
-list it in both to get the unconditional ones too. The default is
-`("count", "sum")`, so a table that declares a condition gets conditional
-counts and sums even when `agg_primitives` never mentions them:
+condition keeps:
 
 ```python
 feature_matrix, features = tusk.deep_feature_synthesis(
@@ -246,11 +234,13 @@ feature_matrix, features = tusk.deep_feature_synthesis(
 #   SUM(orders.amount WHEN open)
 ```
 
+The expressions run when the feature matrix is computed, so a misspelled
+column name surfaces there, as an error from your dataframe backend.
+
 ### A condition only filters its own table
 
-A condition on `cars` decides which cars count. It does not reach `repairs`:
-by the time the condition applies, each car's repairs have already been
-counted up.
+A condition picks rows of the table it is declared on. Everything already
+aggregated up from that table's children stays whole.
 
 Consider a garage database, where `cars` carries a `current` condition on
 ownership:
@@ -299,37 +289,13 @@ SUM(cars.COUNT(cars.repairs) WHEN current)
 ```
 
 reads as "over the cars this customer currently owns, each car's **lifetime**
-repair count". All four of car 1's repairs count toward customer 2,
-regardless of when each one happened — the `current` condition masks rows of
-`cars`, and `repairs` is never filtered by it.
+repair count". Customer 2 gets all four repairs, including the ones from
+before they bought the car.
 
-No condition can fix this. `repairs` has no `customer_id` and no knowledge of
-ownership windows, so no predicate over its own columns can express "during
-this customer's ownership". Splitting the repairs by owner requires an
-interval join between `repaired_at` and the ownership window, which is a
-different mechanism from masking.
-
-This is not a defect introduced by `where`/`when`. A depth-2 aggregation
-already rolls a child's whole history up to whichever parent its foreign key
-currently points at; conditions make that existing attribution visible rather
-than creating it.
-
-Normalizing ownership into its own table does not fix it either. Modelling
-ownership as `ownerships(car_id, customer_id, valid_from, valid_until)`
-decides *which customer* a car belongs to in a window, but not *which
-repairs*. Reaching repairs from customers still goes: aggregate `repairs`
-onto `cars`, direct-feature onto `ownerships`, aggregate onto `customers` —
-and that middle rollup is still the car's lifetime repair count, so every
-ownership row inherits the car's whole history.
-
-The split falls out of existing machinery in exactly one case: when
-`repairs` already carries an `ownership_id`, so repairs hang off
-`ownerships` directly rather than off `cars`. Deriving that key from
-`repairs(car_id, repaired_at)` is itself an interval join, so this only
-helps when the source data already materializes the link.
-
-The general case — propagating an ancestor's validity window down to filter
-descendant rows by their own timestamps — is tracked as
+To count only the repairs from the ownership window, `repairs` needs a column
+naming the owner at repair time, and a condition of its own over that column.
+Deriving such a column from `car_id` and `repaired_at` alone requires an
+interval join, tracked as
 [issue #29](https://github.com/Excidion/tusk/issues/29).
 
 ## Row update times
@@ -408,9 +374,8 @@ row_update_times = {
 
 ### On multiple updates
 
-A column that changes more than once is not something `row_update_times` can
-describe. A ride status going from booked to accepted to completed has a
-history, and the mapping gives a column one earlier value for all time. Record
-each step in its own column, the way `picked_up_at` and `dropped_off_at` do
-above. Or keep the history in a child table, where a cutoff filters the rows
-normally.
+`row_update_times` handles a column that is updated once: it holds one earlier
+value for all time. For a ride status going from booked to accepted to
+completed, record each step in its own column, the way `picked_up_at` and
+`dropped_off_at` do above, or keep the history in a child table, where a cutoff
+filters the rows normally.

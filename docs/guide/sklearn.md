@@ -7,8 +7,8 @@ pipeline. Install the extra:
 uv add "tusk-ml[sklearn]"
 ```
 
-`X` is the target table's primary key — one value per row, in the order you
-want the rows back — and the database is passed separately, as scikit-learn
+`X` is the target table's primary key: one value per row, in the order you
+want the rows back. The database is passed separately, as scikit-learn
 metadata:
 
 ```python
@@ -45,17 +45,16 @@ rows. `transform` computes them and returns one row per key, in key order.
 `sklearn.set_config(enable_metadata_routing=True)` is what lets `database=`
 reach the transformer through the pipeline. Set it once per process.
 
-The matrix holds whatever dtypes synthesis produced, and aggregates over an
-empty group are null, so a step between tusk and the model is the normal
-shape: most estimators take neither strings nor nulls. The encoding is yours
-to choose — tusk never encodes anything itself.
+The matrix holds whatever dtypes synthesis produced, so it can carry strings
+and nulls, which most estimators do not take. How to encode them, and what to
+fill in for a null, is yours to choose.
 
 Pass `database=` to `predict` to score a different set of keys, from either
 the same database or another one built to the same schema.
 
 ## What `X` may be
 
-Any iterable of key values — a list, a 1-D array, a Series:
+Any iterable of key values, such as a list, a 1-D array or a Series:
 
 ```python
 pipeline.fit([1, 2, 3], y_train, database=db)
@@ -138,7 +137,7 @@ selector = DFSSelectorTransformer(
 selector.fit(keys, y_train, database=db)
 ```
 
-`selection_pipeline` must end in a scikit-learn selector — one with a
+`selection_pipeline` must end in a scikit-learn selector, one with a
 `get_support()` mask. Everything before it encodes.
 
 After fitting, `features_` holds the kept feature definitions as a
@@ -170,9 +169,9 @@ primitives apply to which columns:
 | Family | Matches |
 | --- | --- |
 | `"numeric"` | integers and floats |
-| `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` — every temporal dtype |
-| `"has_date"` | `Date`, `Datetime` — columns a calendar position can be read from |
-| `"has_time"` | `Datetime`, `Time` — columns an hour or minute can be read from |
+| `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` (every temporal dtype) |
+| `"has_date"` | `Date`, `Datetime` (columns a calendar position can be read from) |
+| `"has_time"` | `Datetime`, `Time` (columns an hour or minute can be read from) |
 | `"duration"` | `Duration` |
 | `"string"` | `String` |
 | `"categorical"` | `Categorical`, `Enum` |
@@ -195,8 +194,8 @@ uses, so narwhals-native transformers get the frame type they want. Set
 DFSTransformer(target_table="customers", output_backend="pandas")
 ```
 
-`tusk[sklearn]` does not depend on pandas, so install it yourself to use that
-option. Two cases call for it:
+Install pandas yourself for `output_backend="pandas"`; `tusk[sklearn]` does not
+pull it in. Two cases call for it:
 
 - `ColumnTransformer` cannot read pyarrow tables, which is what a duckdb
   database collects to. Use `"pandas"` or `"polars"` there.

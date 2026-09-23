@@ -1,7 +1,6 @@
 # Custom primitives
 
-A primitive builds a narwhals expression and never sees a value, which is what
-keeps it pushed down:
+A primitive builds a narwhals expression, so it runs on your backend:
 
 ```python
 from dataclasses import dataclass
@@ -30,11 +29,6 @@ ordinary dataclass fields.
 
 `@dataclass(frozen=True)` is required: features deduplicate by value. A
 primitive without it is rejected with `PrimitiveError`.
-
-There is no second, shorter way to declare one. Every built-in primitive is a
-frozen dataclass written out like this, so `Year` and `Count` are the same kind
-of object as `Range` — nothing in tusk can reach a definition path your own
-code cannot.
 
 See [empty groups](primitives.md#empty-groups) for how `default_value` is used
 downstream.
@@ -88,17 +82,17 @@ A practical test is to look at what `build()` calls on its input:
   `OrderedTransformPrimitive`;
 - anything else subclasses `TransformPrimitive`.
 
-tusk cannot inspect an expression, so a primitive that reads other rows but
-subclasses `TransformPrimitive` is not caught:
+Subclass by what your expression does, since the class is what tusk goes on:
 
-- A reduction, such as `expr / expr.sum()`, silently computes over every row
-  of the table, on lazy polars and on duckdb alike. No error is raised, and
-  every row's value leaks into every other row's.
-- An order-dependent expression, such as `expr.cum_sum()`, passes synthesis,
-  including with `features_only=True`. narwhals then raises
-  `InvalidOperationError: Order-dependent expressions are not supported for use
-  in LazyFrame` when the feature matrix's query is built, on lazy polars and
-  on duckdb alike, before anything is collected.
+- A reduction under `TransformPrimitive`, such as `expr / expr.sum()`,
+  computes over every row of the table, on lazy polars and on duckdb alike, so
+  every row's value leaks into every other row's and your feature carries the
+  whole dataset in it.
+- An order-dependent expression under `TransformPrimitive`, such as
+  `expr.cum_sum()`, passes synthesis, including with `features_only=True`.
+  narwhals then raises `InvalidOperationError: Order-dependent expressions are
+  not supported for use in LazyFrame` when the feature matrix's query is
+  built, on lazy polars and on duckdb alike, before anything is collected.
 
 A share of the group's total reads the other rows of its group without needing
 them in order, so it subclasses `GroupTransformPrimitive`:
@@ -135,7 +129,7 @@ the built-in transforms of each kind.
 
 Mix in [`NeedsCutoffTime`][tusk.primitives.NeedsCutoffTime] for a primitive
 whose value depends on the moment the feature matrix is built, not just its
-input column — `time_since` is the built-in example. `build()` takes
+input column. `time_since` is the built-in example. `build()` takes
 `cutoff_time` as a keyword alongside the usual input expressions:
 
 ```python
@@ -160,8 +154,7 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
         return nw.lit(cutoff_time) - expr
 ```
 
-The primitive never stores `cutoff_time` — it is a dataclass field-free
-argument passed in at build time — which is what lets one `FeatureList` built
-once be applied at several cutoff times. `deep_feature_synthesis()` and
+`cutoff_time` arrives as a build argument, so one `FeatureList` can be built
+once and applied at several cutoff times. `deep_feature_synthesis()` and
 `FeatureList.apply()` raise `ValidationError` if such a primitive is requested
 and no `cutoff_time` is given.

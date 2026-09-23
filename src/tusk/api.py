@@ -69,10 +69,9 @@ def deep_feature_synthesis(
         features_only: Return the feature definitions without computing them.
 
     Returns:
-        feature_matrix: An uncomputed query plan in the caller's native frame
-            type. On a backend with a lazy frame type you get one back, so call
-            ``.collect()`` to compute it. Not returned when ``features_only``
-            is true.
+        feature_matrix: The features on the caller's backend, as a lazy
+            frame where that backend has one. Not returned when
+            ``features_only`` is true.
         features (FeatureList): The feature definitions, reusable with
             :meth:`~tusk.FeatureList.apply` or :func:`apply_features`.
 
@@ -130,8 +129,8 @@ def apply_features(
             after the cutoff.
 
     Returns:
-        feature_matrix: An uncomputed query plan in the caller's native frame
-            type, with one row per visible target row. tusk never collects, so
-            on a backend with a lazy frame type you decide when to compute.
+        feature_matrix: The features on the caller's backend, as a lazy
+            frame where that backend has one, with one row per visible target
+            row.
     """
     return FeatureList(features).apply(database, cutoff_time)

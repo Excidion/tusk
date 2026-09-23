@@ -79,8 +79,9 @@ class FeatureList(Sequence[Feature]):
                 ``database``.
 
         Returns:
-            feature_matrix: An uncomputed query plan in the caller's native
-                frame type, with one row per visible target row.
+            feature_matrix: The features on the caller's backend, as a lazy
+                frame where that backend has one, with one row per visible
+                target row.
 
         Raises:
             TypeError: If ``cutoff_time`` is not a ``datetime``.

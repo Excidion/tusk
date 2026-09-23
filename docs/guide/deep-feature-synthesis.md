@@ -20,19 +20,13 @@ raises [`SchemaError`][tusk.exceptions.SchemaError].
 
 ## Lazy out, always
 
-tusk builds one query plan and **never collects**. Whatever you feed it — a
-`pl.DataFrame`, a `pl.LazyFrame`, a pandas frame, a duckdb relation — the
-matrix comes back uncomputed, in your backend's native type, and you decide
-when to compute:
+tusk builds one query plan. The matrix comes back on the backend you put in, as
+a lazy frame where that backend has one, so you decide when to compute it, the
+way that backend computes anything.
 
-```python
-matrix = feature_matrix.collect()
-```
-
-On a backend with no separate lazy type, such as pandas or pyarrow, there is
-nothing to collect and you already have your frame. The only `collect()` calls
-in tusk are the ones [validation](databases.md#validation) makes when you ask
-for a check by name.
+On a backend with no separate lazy type, such as pandas or pyarrow, you already
+have your frame. [Validation](databases.md#validation) is the one part of tusk
+that computes on its own, and only for the checks you ask for.
 
 ## Definitions without computation
 
@@ -47,8 +41,8 @@ matrix = features.apply(db_new)
 ```
 
 This is how you apply a feature set fitted on training data to new data. All
-features in a `FeatureList` — and so all features passed to
-[`apply_features()`][tusk.apply_features] — must share one target table.
+features in a `FeatureList`, and so all features passed to
+[`apply_features()`][tusk.apply_features], must share one target table.
 
 ## Cutoff times
 
@@ -58,18 +52,18 @@ features in a `FeatureList` — and so all features passed to
 It must be a `datetime`, not just a `date`. A date has no time of day, and
 therefore risks differing behaviors across dataframe backends.
 
-Its time zone awareness must match the database's `Datetime` columns — every
-one of them, not only the declared row creation times. A comparison between a
-tz-aware timestamp and a naive one has no defined ordering, so a mismatch
-raises [`ValidationError`][tusk.exceptions.ValidationError]. Filtering is not
-the only place the cutoff meets a column: `TimeSince` subtracts it from
-whatever column its feature was built on, so a database that mixes awareness
-is rejected outright rather than at whichever column the query happens to
-reach. `validate(database="consistent_time_zones")` reports the same mixing
-without a cutoff.
+Its time zone awareness must match every `Datetime` column in the database,
+including the ones beyond the declared row creation times. A comparison between
+a tz-aware timestamp and a naive one has no defined ordering, so a mismatch
+raises [`ValidationError`][tusk.exceptions.ValidationError] up front, for the
+whole database. The cutoff reaches columns beyond the ones it filters on:
+`TimeSince` subtracts it from whatever column its feature was built on.
+`validate(database="consistent_time_zones")` reports the same mixing without a
+cutoff.
 
 It filters the target table too, so the matrix can have fewer rows than the
-target — a row that did not exist yet at the cutoff has no features to compute.
+target. A row that did not exist yet at the cutoff has no features to
+compute.
 
 Tables with no `row_creation_time` are timeless and pass through unfiltered, so
 a cutoff on a database that declares none is silently a no-op.
@@ -86,14 +80,12 @@ computed and feature definitions do not record it.
 
 ## Warnings
 
-DFS reports what it quietly skipped rather than failing:
+DFS skips what it cannot build and warns instead of failing:
 
-- [`UnmatchedPrimitiveWarning`][tusk.exceptions.UnmatchedPrimitiveWarning] — a
+- [`UnmatchedPrimitiveWarning`][tusk.exceptions.UnmatchedPrimitiveWarning]: a
   requested primitive matched no column of its input dtypes anywhere in the
-  walk. Skipping is correct, since raising would break a zero-configuration
-  `deep_feature_synthesis()` on any schema that happens to lack a dtype family; skipping
-  *silently* is not.
-- [`CategoricalDtypeWarning`][tusk.exceptions.CategoricalDtypeWarning] — a
+  walk, so it contributed no features.
+- [`CategoricalDtypeWarning`][tusk.exceptions.CategoricalDtypeWarning]: a
   Categorical or Enum column was skipped because the primitive requires a
   string input.
 

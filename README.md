@@ -37,8 +37,11 @@ db.add_table(
     row_creation_time="placed_at",
     row_update_times={"payed_at": {"payed_at": None, "payment_method": None}},
     where={"large": nw.col("amount") >= 100.0},
-    when={"open": lambda cutoff: nw.col("closed_at").is_null()
-                               | (nw.col("closed_at") > cutoff)},
+    when={
+        "open": lambda cutoff: (
+            nw.col("closed_at").is_null() | (nw.col("closed_at") > cutoff)
+        )
+    },
 )
 
 db.add_relationship(parent="customers", child="orders", foreign_key="customer_id")
@@ -57,15 +60,10 @@ feature_matrix, features = tusk.deep_feature_synthesis(
 )
 ```
 
-`feature_matrix` comes back as an uncomputed query plan — tusk never collects —
-so on a backend with a lazy frame type you get one back and decide when to
-compute:
+`feature_matrix` comes back as a data frame of the backend you put in,
+changed to a lazy frame if that supports has one.
 
-```python
-matrix = feature_matrix.collect()
-```
-
-`features` is a `FeatureList` — a sequence of inspectable definitions that
+`features` is a `FeatureList`: a sequence of inspectable definitions that
 knows its target table and can re-apply itself to new data:
 
 ```python
@@ -74,7 +72,7 @@ matrix = features.apply(db_new)
 
 ## Looking at the schema
 
-`plot()` draws the database you just built. It runs no query against the data.
+`plot()` draws the database you just built, from the schema alone.
 
 ```python
 db.plot()
