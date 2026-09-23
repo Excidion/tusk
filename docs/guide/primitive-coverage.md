@@ -7,9 +7,8 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | --- | --- |
 | ✅ | Same values, covered by a test |
 | ➕ | tusk only |
-| ❓ | Implemented, but no test yet |
 | ⚠️ | Diverges on purpose |
-| ❌ | Diverges, or not implemented |
+| ❌ | Not yet implemented |
 | ⛔ | Out of scope (for now) |
 
 
