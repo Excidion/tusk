@@ -3,12 +3,21 @@ from datetime import date, datetime, timedelta
 import narwhals as nw
 import polars as pl
 import pytest
-from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
+from aggregation_cases import (
+    CHILDREN,
+    EXPECTED,
+    PARENTS,
+    ROW_CREATION_TIME,
+    assert_values_match,
+)
 
 import tusk
+from tusk.exceptions import PrimitiveError
 from tusk.primitives.aggregation import (
     AGG_DEFAULTS,
     Count,
+    CountInsideNthStd,
+    CountOutsideNthStd,
     Quantiles,
     TimeSinceLast,
 )
@@ -218,7 +227,12 @@ def test_standalone_aggregations_on_every_kind_of_group(primitive_name):
     database = (
         tusk.Database("cases")
         .add_table("parents", pl.from_pandas(PARENTS).lazy(), primary_key="id")
-        .add_table("children", pl.from_pandas(CHILDREN).lazy(), primary_key="id")
+        .add_table(
+            "children",
+            pl.from_pandas(CHILDREN).lazy(),
+            primary_key="id",
+            row_creation_time=ROW_CREATION_TIME,
+        )
         .add_relationship(parent="parents", child="children", foreign_key="parent_id")
     )
     matrix, _ = tusk.deep_feature_synthesis(
@@ -250,3 +264,88 @@ def test_first_last_time_delta_of_dates_is_a_duration():
     )
     got = _agg(lf, resolve("first_last_time_delta"), "d")
     assert got["o0"][0] == timedelta(days=61)
+
+
+def _parents_and_children():
+    return (
+        tusk.Database("cases")
+        .add_table("parents", pl.from_pandas(PARENTS).lazy(), primary_key="id")
+        .add_table(
+            "children",
+            pl.from_pandas(CHILDREN).lazy(),
+            primary_key="id",
+            row_creation_time=ROW_CREATION_TIME,
+            where={"small": nw.col("value") < 6.0},
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+
+
+def _parent_values(database, column, **dfs_arguments):
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=database,
+        target_table="parents",
+        trans_primitives=[],
+        max_depth=1,
+        **dfs_arguments,
+    )
+    return matrix.collect().sort("id")[column].to_list()
+
+
+@pytest.mark.parametrize("primitive", [CountInsideNthStd, CountOutsideNthStd])
+def test_a_band_of_negative_width_is_rejected(primitive):
+    with pytest.raises(PrimitiveError, match="n >= 0"):
+        primitive(n=-1)
+
+
+def test_a_wider_band_takes_in_values_the_default_leaves_out():
+    """Parent 1's 6.0 lies 1.39 population deviations from its mean of 3."""
+    matrix_values = [
+        _parent_values(
+            _parents_and_children(),
+            f"{primitive.stem}__children__value",
+            agg_primitives=[primitive],
+        )
+        for primitive in (CountInsideNthStd(n=3), CountOutsideNthStd(n=3))
+    ]
+    assert matrix_values == [[3, 2, 0, 4, 0, 1, 0, 1], [0, 0, 0, 0, 0, 0, 0, 0]]
+
+
+@pytest.mark.parametrize(
+    ("primitive", "stem"),
+    [
+        (CountInsideNthStd(), "COUNT_INSIDE_1_STD"),
+        (CountInsideNthStd(n=1.5), "COUNT_INSIDE_1_5_STD"),
+        (CountOutsideNthStd(n=2.0), "COUNT_OUTSIDE_2_STD"),
+    ],
+)
+def test_the_band_width_is_spelled_into_the_feature_name(primitive, stem):
+    assert primitive.generate_name(["children", "value"]) == f"{stem}__children__value"
+    assert (
+        primitive.generate_display_name(["children.value"]) == f"{stem}(children.value)"
+    )
+
+
+def test_two_band_widths_give_two_features():
+    matrix, _ = tusk.deep_feature_synthesis(
+        database=_parents_and_children(),
+        target_table="parents",
+        agg_primitives=[CountInsideNthStd(n=1), CountInsideNthStd(n=2)],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    assert {
+        "COUNT_INSIDE_1_STD__children__value",
+        "COUNT_INSIDE_2_STD__children__value",
+    } <= set(matrix.collect_schema().names())
+
+
+def test_a_conditioned_count_measures_against_the_mean_of_the_kept_rows():
+    """Without its 6.0, parent 1's mean is 1.5, so only the 2.0 lies above it."""
+    above = _parent_values(
+        _parents_and_children(),
+        "COUNT_ABOVE_MEAN__children__value__WHERE__small",
+        agg_primitives=[],
+        conditional_primitives=["count_above_mean"],
+    )
+    assert above == [1, 0, 0, 1, 0, 0, 0, 0]

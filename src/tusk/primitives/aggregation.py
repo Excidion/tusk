@@ -15,7 +15,13 @@ from datetime import datetime
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
-from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
+from tusk.exceptions import PrimitiveError
+from tusk.primitives.base import (
+    AggregationPrimitive,
+    GroupRelativeAggregationPrimitive,
+    NeedsCutoffTime,
+    OrderedAggregationPrimitive,
+)
 from tusk.primitives.registry import register
 
 AGG_DEFAULTS: tuple[str, ...] = (
@@ -428,7 +434,7 @@ class NTrue(AggregationPrimitive):
         Returns:
             A narwhals expression.
         """
-        return expr.fill_null(False).cast(nw.Int64).sum()
+        return _count_true_rows(expr)
 
 
 @register
@@ -675,6 +681,299 @@ class NUniqueMonths(AggregationPrimitive):
         year = expr.dt.year().cast(nw.Int32)
         month = expr.dt.month().cast(nw.Int32)
         return (year * 12 + month).n_unique()
+
+
+@register
+@dataclass(frozen=True)
+class First(OrderedAggregationPrimitive):
+    """Value of a column in the group's earliest row; a null is kept."""
+
+    name = "first"
+    input_dtypes = (F.ANY,)
+    stack_on_self = False
+
+    def build(self, expr: nw.Expr, *, order_by: Sequence[str]) -> nw.Expr:
+        """Build the earliest-row expression.
+
+        Args:
+            expr: The column to read.
+            order_by: The columns that order the group's rows.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.first(order_by=order_by)
+
+
+@register
+@dataclass(frozen=True)
+class Last(OrderedAggregationPrimitive):
+    """Value of a column in the group's latest row; a null is kept."""
+
+    name = "last"
+    input_dtypes = (F.ANY,)
+    stack_on_self = False
+
+    def build(self, expr: nw.Expr, *, order_by: Sequence[str]) -> nw.Expr:
+        """Build the latest-row expression.
+
+        Args:
+            expr: The column to read.
+            order_by: The columns that order the group's rows.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr.last(order_by=order_by)
+
+
+@register
+@dataclass(frozen=True)
+class CountAboveMean(GroupRelativeAggregationPrimitive):
+    """Number of known values of a numeric column above the group's mean."""
+
+    name = "count_above_mean"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Int64
+    default_value = 0
+    stack_on_self = False
+
+    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+        """Build the above-the-mean test.
+
+        Args:
+            expr: The numeric column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr > expr.mean()
+
+    def build(self, per_row: nw.Expr) -> nw.Expr:
+        """Build the count of rows above the mean.
+
+        Args:
+            per_row: The above-the-mean test.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _count_true_rows(per_row)
+
+
+@register
+@dataclass(frozen=True)
+class CountBelowMean(GroupRelativeAggregationPrimitive):
+    """Number of known values of a numeric column below the group's mean."""
+
+    name = "count_below_mean"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Int64
+    default_value = 0
+    stack_on_self = False
+
+    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+        """Build the below-the-mean test.
+
+        Args:
+            expr: The numeric column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return expr < expr.mean()
+
+    def build(self, per_row: nw.Expr) -> nw.Expr:
+        """Build the count of rows below the mean.
+
+        Args:
+            per_row: The below-the-mean test.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _count_true_rows(per_row)
+
+
+@register
+@dataclass(frozen=True)
+class CountInsideNthStd(GroupRelativeAggregationPrimitive):
+    """Number of known values at most ``n`` standard deviations from the group's mean.
+
+    The standard deviation is the population one, over the group's known
+    values.
+
+    Attributes:
+        name: Registry key.
+        input_dtypes: Tuple containing one dtype family (NUMERIC).
+        output_dtype: The output dtype (Int64).
+        default_value: Zero, for a group without rows.
+        stack_on_self: False, as in featuretools.
+        n: How many standard deviations the band reaches either side of the
+            mean; zero or more.
+    """
+
+    name = "count_inside_nth_std"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Int64
+    default_value = 0
+    stack_on_self = False
+
+    n: float = 1
+
+    def __post_init__(self) -> None:
+        """Reject a negative ``n`` with a :class:`~tusk.exceptions.PrimitiveError`."""
+        _require_non_negative_width(self.name, self.n)
+
+    @property
+    def stem(self) -> str:
+        """The name with ``n`` spelled in, e.g. ``COUNT_INSIDE_1_STD``."""
+        return f"COUNT_INSIDE_{_spell_width(self.n)}_STD"
+
+    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+        """Build the inside-the-band test.
+
+        Args:
+            expr: The numeric column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _measure_distance_from_mean(expr) <= _measure_band_width(expr, self.n)
+
+    def build(self, per_row: nw.Expr) -> nw.Expr:
+        """Build the count of rows inside the band.
+
+        Args:
+            per_row: The inside-the-band test.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _count_true_rows(per_row)
+
+
+@register
+@dataclass(frozen=True)
+class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
+    """Number of known values over ``n`` standard deviations from the group's mean.
+
+    The standard deviation is the population one, over the group's known
+    values.
+
+    Attributes:
+        name: Registry key.
+        input_dtypes: Tuple containing one dtype family (NUMERIC).
+        output_dtype: The output dtype (Int64).
+        default_value: Zero, for a group without rows.
+        stack_on_self: False, as in featuretools.
+        n: How many standard deviations the band reaches either side of the
+            mean; zero or more.
+    """
+
+    name = "count_outside_nth_std"
+    input_dtypes = (F.NUMERIC,)
+    output_dtype = nw.Int64
+    default_value = 0
+    stack_on_self = False
+
+    n: float = 1
+
+    def __post_init__(self) -> None:
+        """Reject a negative ``n`` with a :class:`~tusk.exceptions.PrimitiveError`."""
+        _require_non_negative_width(self.name, self.n)
+
+    @property
+    def stem(self) -> str:
+        """The name with ``n`` spelled in, e.g. ``COUNT_OUTSIDE_1_STD``."""
+        return f"COUNT_OUTSIDE_{_spell_width(self.n)}_STD"
+
+    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+        """Build the outside-the-band test.
+
+        Args:
+            expr: The numeric column.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _measure_distance_from_mean(expr) > _measure_band_width(expr, self.n)
+
+    def build(self, per_row: nw.Expr) -> nw.Expr:
+        """Build the count of rows outside the band.
+
+        Args:
+            per_row: The outside-the-band test.
+
+        Returns:
+            A narwhals expression.
+        """
+        return _count_true_rows(per_row)
+
+
+def _count_true_rows(expr: nw.Expr) -> nw.Expr:
+    """Build the count of rows where a boolean column is true; a null is not true.
+
+    Args:
+        expr: The boolean column.
+
+    Returns:
+        A narwhals expression.
+    """
+    return expr.fill_null(False).cast(nw.Int64).sum()
+
+
+def _measure_distance_from_mean(expr: nw.Expr) -> nw.Expr:
+    """Build each value's absolute distance from the group's mean.
+
+    Args:
+        expr: The numeric column.
+
+    Returns:
+        A narwhals expression.
+    """
+    return (expr - expr.mean()).abs()
+
+
+def _measure_band_width(expr: nw.Expr, n: float) -> nw.Expr:
+    """Build ``n`` population standard deviations of the group.
+
+    Args:
+        expr: The numeric column.
+        n: How many standard deviations.
+
+    Returns:
+        A narwhals expression.
+    """
+    return expr.std(ddof=0) * n
+
+
+def _spell_width(n: float) -> str:
+    """Spell a band's width as part of a plain SQL identifier.
+
+    Args:
+        n: How many standard deviations the band reaches.
+
+    Returns:
+        A whole ``n`` without its decimals, e.g. ``3``; otherwise the decimal
+        point becomes an underscore, e.g. ``1_5``.
+    """
+    spelled = str(int(n)) if float(n).is_integer() else str(n)
+    return spelled.replace(".", "_")
+
+
+def _require_non_negative_width(name: str, n: float) -> None:
+    """Reject a band reaching a negative number of standard deviations.
+
+    Args:
+        name: The primitive's name, for the error message.
+        n: How many standard deviations the band reaches.
+
+    Raises:
+        PrimitiveError: If ``n`` is negative.
+    """
+    if n < 0:
+        raise PrimitiveError(f"primitive {name!r} needs n >= 0, got n={n}")
 
 
 def _time_since_last_selected(

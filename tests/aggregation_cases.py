@@ -5,6 +5,10 @@ all three check the same groups. Parent 1 mixes known values with a null,
 parent 2 is constant, parent 3 is all null, parent 4 varies, parent 5 has no
 children, parent 6 has a single known row, parent 7 has a single null row,
 and parent 8 has one known row beside a null.
+
+``created_at`` orders each group against its ids, so ``first`` and ``last``
+cannot pass by reading rows in id order: parent 1 starts on its null value,
+and parent 4's latest two rows share a time that only the id breaks.
 """
 
 import datetime as dt
@@ -12,6 +16,8 @@ import datetime as dt
 import narwhals as nw
 import pandas as pd
 import pytest
+
+ROW_CREATION_TIME = "created_at"
 
 PARENTS = pd.DataFrame({"id": [1, 2, 3, 4, 5, 6, 7, 8]})
 
@@ -51,6 +57,27 @@ CHILDREN = pd.DataFrame(
                 None,
                 dt.datetime(2024, 6, 1),
                 None,
+            ],
+        ),
+        ROW_CREATION_TIME: pd.to_datetime(
+            [
+                dt.datetime(2024, 1, 3),
+                dt.datetime(2024, 1, 4),
+                dt.datetime(2024, 1, 2),
+                dt.datetime(2024, 1, 1),
+                dt.datetime(2024, 1, 1),
+                dt.datetime(2024, 1, 2),
+                dt.datetime(2024, 1, 1),
+                dt.datetime(2024, 1, 2),
+                dt.datetime(2024, 1, 3),
+                dt.datetime(2024, 1, 5),
+                dt.datetime(2024, 1, 5),
+                dt.datetime(2024, 1, 1),
+                dt.datetime(2024, 1, 3),
+                dt.datetime(2024, 1, 1),
+                dt.datetime(2024, 1, 1),
+                dt.datetime(2024, 1, 2),
+                dt.datetime(2024, 1, 1),
             ],
         ),
     },
@@ -131,6 +158,36 @@ EXPECTED = {
         "N_UNIQUE_MONTHS__children__seen_at",
         nw.Int64,
         [3, 2, 1, 3, 0, 1, 1, 2],
+    ),
+    "first": (
+        "FIRST__children__value",
+        nw.Float64,
+        [None, 4.0, None, 2.0, None, 3.0, None, None],
+    ),
+    "last": (
+        "LAST__children__value",
+        nw.Float64,
+        [2.0, 4.0, None, 5.0, None, 3.0, None, 7.0],
+    ),
+    "count_above_mean": (
+        "COUNT_ABOVE_MEAN__children__value",
+        nw.Int64,
+        [1, 0, 0, 2, 0, 0, 0, 0],
+    ),
+    "count_below_mean": (
+        "COUNT_BELOW_MEAN__children__value",
+        nw.Int64,
+        [2, 0, 0, 2, 0, 0, 0, 0],
+    ),
+    "count_inside_nth_std": (
+        "COUNT_INSIDE_1_STD__children__value",
+        nw.Int64,
+        [2, 2, 0, 2, 0, 1, 0, 1],
+    ),
+    "count_outside_nth_std": (
+        "COUNT_OUTSIDE_1_STD__children__value",
+        nw.Int64,
+        [1, 0, 0, 2, 0, 0, 0, 0],
     ),
 }
 

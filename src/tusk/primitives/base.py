@@ -23,7 +23,7 @@ class Primitive(ABC):
     """Base class for every primitive.
 
     Attributes:
-        name: Registry key, also the upper-cased stem of generated names.
+        name: Registry key, and the default :attr:`stem` of generated names.
         input_dtypes: One dtype family per input, or several such tuples if
             the primitive accepts alternative input shapes. Empty means the
             primitive takes no column input, e.g. ``count``. Read it through
@@ -45,6 +45,11 @@ class Primitive(ABC):
     commutative: ClassVar[bool] = False
     stack_on_self: ClassVar[bool] = True
     default_value: ClassVar[Any] = None
+
+    @property
+    def stem(self) -> str:
+        """The upper-cased start of every name this primitive generates."""
+        return self.name.upper()
 
     @property
     def number_of_outputs(self) -> int:
@@ -110,7 +115,7 @@ class Primitive(ABC):
         Returns:
             The feature name.
         """
-        return "__".join([self.name.upper(), *arg_names])
+        return "__".join([self.stem, *arg_names])
 
     def generate_display_name(self, arg_names: Sequence[str]) -> str:
         """Build the readable name for an application of this primitive.
@@ -121,7 +126,7 @@ class Primitive(ABC):
         Returns:
             The conventional parenthesised form, e.g. ``MEAN(amount)``.
         """
-        return f"{self.name.upper()}({', '.join(arg_names)})"
+        return f"{self.stem}({', '.join(arg_names)})"
 
     def output_names(self, base_name: str) -> tuple[str, ...]:
         """Expand a feature name into one name per output column.
@@ -174,6 +179,81 @@ class Primitive(ABC):
 
 class AggregationPrimitive(Primitive):
     """A primitive applied to a child table's rows, grouped by foreign key."""
+
+
+class OrderedAggregationPrimitive(AggregationPrimitive):
+    """An aggregation that reads its group's rows in ``row_creation_time`` order.
+
+    The compiler passes the ordering columns in at the moment the expression
+    is built, so the child table needs a ``row_creation_time``.
+    """
+
+    def outputs(
+        self,
+        *inputs: nw.Expr,
+        order_by: Sequence[str],
+    ) -> tuple[nw.Expr, ...]:
+        """Normalize :meth:`build` to a tuple of expressions of the output dtype.
+
+        Args:
+            *inputs: One expression per declared input.
+            order_by: The columns that order the group's rows.
+
+        Returns:
+            One expression per output column, cast to :attr:`output_dtype`.
+        """
+        return _cast_to_output_dtype(
+            self.output_dtype,
+            self.build(*inputs, order_by=order_by),
+        )
+
+    @abstractmethod
+    def build(
+        self,
+        *inputs: nw.Expr,
+        order_by: Sequence[str],
+    ) -> nw.Expr | Sequence[nw.Expr]:
+        """Build this primitive's narwhals expression.
+
+        Args:
+            *inputs: One expression per declared input.
+            order_by: The columns that order the group's rows.
+
+        Returns:
+            A single expression, or a sequence for multi-output primitives.
+        """
+
+
+class GroupRelativeAggregationPrimitive(AggregationPrimitive):
+    """An aggregation that measures each row against its group before reducing.
+
+    SQL backends reject an aggregate nested in an aggregate, such as
+    ``SUM(x > AVG(x))``. The compiler therefore adds :meth:`build_per_row`
+    to the child as a column computed within each foreign-key group, and
+    :meth:`build` and :meth:`outputs` take that one column as their input.
+    """
+
+    @abstractmethod
+    def build_per_row(self, *inputs: nw.Expr) -> nw.Expr:
+        """Build the per-row expression, which may read its group's aggregates.
+
+        Args:
+            *inputs: One expression per declared input.
+
+        Returns:
+            A narwhals expression with one value per row.
+        """
+
+    @abstractmethod
+    def build(self, per_row: nw.Expr) -> nw.Expr:
+        """Build the expression reducing the per-row column.
+
+        Args:
+            per_row: The column :meth:`build_per_row` produced.
+
+        Returns:
+            A narwhals expression.
+        """
 
 
 class TransformPrimitive(Primitive):

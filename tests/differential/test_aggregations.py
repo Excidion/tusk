@@ -15,7 +15,7 @@ import datetime as dt
 import math
 
 import pytest
-from aggregation_cases import CHILDREN, PARENTS, assert_values_match
+from aggregation_cases import CHILDREN, PARENTS, ROW_CREATION_TIME, assert_values_match
 
 import tusk
 from differential import _as_tusk
@@ -379,9 +379,11 @@ def _featuretools_matrix(
     """
     es = featuretools.EntitySet("aggregations")
     es = es.add_dataframe(dataframe_name="parents", dataframe=parents, index="id")
+    # featuretools writes its woodwork schema onto the frame it is given, and
+    # a later call reuses that schema, dropping its own time_index.
     es = es.add_dataframe(
         dataframe_name="children",
-        dataframe=children,
+        dataframe=children.copy(),
         index="id",
         time_index=time_index,
         logical_types=logical_types,
@@ -778,3 +780,114 @@ def test_percent_unique_of_an_empty_group_is_null_rather_than_zero():
     assert theirs[5] == 0.0
     assert_values_match([ours[p] for p in (7, 8)], [1.0, 1.0])
     assert_values_match([theirs[p] for p in (7, 8)], [0.0, 0.5])
+
+
+@pytest.mark.parametrize("primitive_name", ["first", "last"])
+def test_first_and_last_match_featuretools_in_row_creation_order(primitive_name):
+    """Both sides read each group in time-index order, id breaking a tie.
+
+    Parent 1 starts on a null, which both sides keep rather than skip, and
+    parent 4's latest two rows share a time.
+    """
+    column = f"{primitive_name.upper()}(children.value)"
+    ours = _tusk_matrix(
+        PARENTS,
+        CHILDREN,
+        primitive_name,
+        time_index=ROW_CREATION_TIME,
+    )[_as_tusk(column)]
+    theirs = _featuretools_matrix(
+        PARENTS,
+        CHILDREN,
+        primitive_name,
+        time_index=ROW_CREATION_TIME,
+        logical_types=FEATURETOOLS_LOGICAL_TYPES,
+    )[column]
+    assert _plain_by_parent(ours) == _plain_by_parent(theirs)
+
+
+@pytest.mark.parametrize(
+    "primitive_name",
+    ["count_above_mean", "count_below_mean"],
+)
+def test_a_count_against_the_mean_without_a_known_value_is_zero_rather_than_null(
+    primitive_name,
+):
+    """No known value lies above or below the mean, so tusk counts 0.
+
+    Parents 3 and 7 hold only nulls and parent 5 has no child; featuretools
+    reports each as missing because their mean is undefined.
+    """
+    column = f"{primitive_name.upper()}(children.value)"
+    ours, theirs = _ours_and_theirs(primitive_name, primitive_name, column)
+    without_a_known_value = (3, 5, 7)
+    agreeing_parents = (1, 2, 4, 6, 8)
+    assert_values_match(
+        [ours[p] for p in agreeing_parents], [theirs[p] for p in agreeing_parents]
+    )
+    assert all(ours[p] == 0 for p in without_a_known_value)
+    assert all(theirs[p] is None for p in without_a_known_value)
+
+
+@pytest.mark.parametrize(
+    ("primitive_name", "tusk_column", "featuretools_column"),
+    [
+        (
+            "count_inside_nth_std",
+            "COUNT_INSIDE_1_STD__children__value",
+            "COUNT_INSIDE_NTH_STD(children.value)",
+        ),
+        (
+            "count_outside_nth_std",
+            "COUNT_OUTSIDE_1_STD__children__value",
+            "COUNT_OUTSIDE_NTH_STD(children.value)",
+        ),
+    ],
+)
+def test_std_band_counts_match_featuretools_on_every_parent_row(
+    primitive_name,
+    tusk_column,
+    featuretools_column,
+):
+    ours = _tusk_matrix(PARENTS, CHILDREN, primitive_name)[tusk_column]
+    theirs = _featuretools_matrix(
+        PARENTS,
+        CHILDREN,
+        primitive_name,
+        logical_types=FEATURETOOLS_LOGICAL_TYPES,
+    )[featuretools_column]
+    assert _plain_by_parent(ours) == _plain_by_parent(theirs)
+
+
+def test_date_first_event_is_first_over_the_row_creation_time():
+    """tusk has no ``date_first_event``; ``first`` over the time index answers it.
+
+    featuretools' dfs never feeds the time index to an aggregation, so its
+    feature is defined by hand.
+    """
+    ours = _tusk_matrix(
+        PARENTS,
+        CHILDREN,
+        "first",
+        time_index=ROW_CREATION_TIME,
+    )[f"FIRST__children__{ROW_CREATION_TIME}"]
+    es = featuretools.EntitySet("aggregations")
+    es = es.add_dataframe(
+        dataframe_name="parents", dataframe=PARENTS.copy(), index="id"
+    )
+    es = es.add_dataframe(
+        dataframe_name="children",
+        dataframe=CHILDREN.copy(),
+        index="id",
+        time_index=ROW_CREATION_TIME,
+    )
+    es = es.add_relationship("parents", "id", "children", "parent_id")
+    date_first_event = featuretools.Feature(
+        es["children"].ww[ROW_CREATION_TIME],
+        parent_dataframe_name="parents",
+        primitive=featuretools.primitives.DateFirstEvent,
+    )
+    theirs = featuretools.calculate_feature_matrix([date_first_event], es).sort_index()
+    assert _plain_by_parent(ours) == _plain_by_parent(
+        theirs[date_first_event.get_name()],
+    )

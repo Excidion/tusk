@@ -62,8 +62,9 @@ a different answer.
 
 - **`primary_key` is optional**, but a table without one cannot be a
   relationship parent or a DFS target. Be warned:
-  [ordered transform primitives][tusk.primitives.OrderedTransformPrimitive] on
-  such tables might behave non-deterministic.
+  [ordered transform][tusk.primitives.OrderedTransformPrimitive] and
+  [ordered aggregation][tusk.primitives.OrderedAggregationPrimitive] primitives
+  on such tables might behave non-deterministic.
 
 
 ## Comparing primitives

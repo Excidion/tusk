@@ -10,6 +10,10 @@
 
 ::: tusk.primitives.AggregationPrimitive
 
+::: tusk.primitives.OrderedAggregationPrimitive
+
+::: tusk.primitives.GroupRelativeAggregationPrimitive
+
 ::: tusk.primitives.TransformPrimitive
 
 ::: tusk.primitives.GroupTransformPrimitive
@@ -77,6 +81,18 @@
 ::: tusk.primitives.IsUnique
 
 ::: tusk.primitives.PercentUnique
+
+::: tusk.primitives.First
+
+::: tusk.primitives.Last
+
+::: tusk.primitives.CountAboveMean
+
+::: tusk.primitives.CountBelowMean
+
+::: tusk.primitives.CountInsideNthStd
+
+::: tusk.primitives.CountOutsideNthStd
 
 ::: tusk.primitives.NUniqueDays
 

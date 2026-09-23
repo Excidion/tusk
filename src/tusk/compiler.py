@@ -23,7 +23,13 @@ from tusk.features import (
     IdentityFeature,
     TransformFeature,
 )
-from tusk.primitives.base import NeedsCutoffTime, OrderedTransformPrimitive, Primitive
+from tusk.primitives.base import (
+    GroupRelativeAggregationPrimitive,
+    NeedsCutoffTime,
+    OrderedAggregationPrimitive,
+    OrderedTransformPrimitive,
+    Primitive,
+)
 
 if TYPE_CHECKING:
     from tusk.feature_list import FeatureList
@@ -426,12 +432,12 @@ def _join_condition_aggregations(
     """
     exprs = []
     for feature in batch:
-        inputs = [nw.col(b.name) for b in feature.base_features]
-        built = _build_expressions(feature.primitive, inputs, cutoff_time)
+        built = _build_aggregation(feature, database, relationship, cutoff_time)
         exprs.extend(
             e.alias(n) for e, n in zip(built, feature.output_names, strict=True)
         )
 
+    child = _add_per_row_columns(child, relationship, batch)
     grouped = child.group_by(relationship.foreign_key).agg(*exprs)
     frame = frame.join(
         grouped,
@@ -447,6 +453,88 @@ def _join_condition_aggregations(
         for name in feature.output_names
     ]
     return frame.with_columns(*defaults) if defaults else frame
+
+
+def _build_aggregation(
+    feature: AggregationFeature,
+    database: Database,
+    relationship: Relationship,
+    cutoff_time: datetime | None,
+) -> tuple[nw.Expr, ...]:
+    """Build an aggregation feature's output expressions over the child's columns.
+
+    Args:
+        feature: The aggregation feature.
+        database: The database, used to find ordering columns.
+        relationship: The relationship being aggregated across.
+        cutoff_time: The cutoff, or None.
+
+    Returns:
+        One expression per output column.
+    """
+    primitive = feature.primitive
+    if isinstance(primitive, GroupRelativeAggregationPrimitive):
+        return primitive.outputs(nw.col(_generate_per_row_column_name(feature)))
+    inputs = [nw.col(b.name) for b in feature.base_features]
+    if isinstance(primitive, OrderedAggregationPrimitive):
+        order_by = _order_by(database, relationship.child, primitive.name)
+        return primitive.outputs(*inputs, order_by=order_by)
+    return _build_expressions(primitive, inputs, cutoff_time)
+
+
+def _add_per_row_columns(
+    child: nw.LazyFrame,
+    relationship: Relationship,
+    batch: Sequence[AggregationFeature],
+) -> nw.LazyFrame:
+    """Add the per-row column every group-relative aggregation reduces.
+
+    Args:
+        child: The child frame, already filtered to the condition.
+        relationship: The relationship being aggregated across.
+        batch: The aggregation features sharing this condition.
+
+    Returns:
+        The child frame with one column per group-relative feature.
+    """
+    per_row = [
+        _build_per_row_column(feature, feature.primitive, relationship)
+        for feature in batch
+        if isinstance(feature.primitive, GroupRelativeAggregationPrimitive)
+    ]
+    return child.with_columns(*per_row) if per_row else child
+
+
+def _build_per_row_column(
+    feature: AggregationFeature,
+    primitive: GroupRelativeAggregationPrimitive,
+    relationship: Relationship,
+) -> nw.Expr:
+    """Build a group-relative aggregation's per-row column within each group.
+
+    Args:
+        feature: The group-relative aggregation feature.
+        primitive: The feature's primitive.
+        relationship: The relationship whose foreign key forms the groups.
+
+    Returns:
+        The named per-row expression.
+    """
+    inputs = [nw.col(b.name) for b in feature.base_features]
+    per_row = primitive.build_per_row(*inputs).over(relationship.foreign_key)
+    return per_row.alias(_generate_per_row_column_name(feature))
+
+
+def _generate_per_row_column_name(feature: AggregationFeature) -> str:
+    """Name the child column a group-relative aggregation reduces.
+
+    Args:
+        feature: The group-relative aggregation feature.
+
+    Returns:
+        The column name.
+    """
+    return f"{feature.name}__per_row"
 
 
 def _add_directs(

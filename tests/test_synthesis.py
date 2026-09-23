@@ -752,6 +752,28 @@ def test_ordered_transform_without_row_creation_time_fails_in_phase_one():
         )
 
 
+@pytest.mark.parametrize("primitive_name", ["first", "last"])
+def test_ordered_aggregation_without_row_creation_time_fails_in_phase_one(
+    primitive_name,
+):
+    db = (
+        tusk.Database("x")
+        .add_table("p", pl.LazyFrame({"id": [1]}), primary_key="id")
+        .add_table(
+            "t", pl.LazyFrame({"id": [1], "g": [1], "v": [1.0]}), primary_key="id"
+        )
+        .add_relationship(parent="p", child="t", foreign_key="g")
+    )
+    with pytest.raises(PrimitiveError, match="row_creation_time"):
+        synthesize(
+            db,
+            "p",
+            agg_primitives=[primitive_name],
+            trans_primitives=[],
+            max_depth=1,
+        )
+
+
 @dataclass(frozen=True)
 class ShareOfGroupMaximum(GroupTransformPrimitive):
     """A user-defined group transform: each value divided by its group's maximum."""

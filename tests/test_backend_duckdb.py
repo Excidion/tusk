@@ -16,7 +16,13 @@ import math
 
 import narwhals as nw
 import pytest
-from aggregation_cases import CHILDREN, EXPECTED, PARENTS, assert_values_match
+from aggregation_cases import (
+    CHILDREN,
+    EXPECTED,
+    PARENTS,
+    ROW_CREATION_TIME,
+    assert_values_match,
+)
 from transform_cases import (
     EXPECTED as TRANSFORM_EXPECTED,
 )
@@ -618,6 +624,7 @@ def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name
             "children",
             nw.from_native(con.sql("SELECT * FROM children_frame")),
             primary_key="id",
+            row_creation_time=ROW_CREATION_TIME,
         )
         .add_relationship(parent="parents", child="children", foreign_key="parent_id")
     )

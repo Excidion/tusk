@@ -36,6 +36,7 @@ from tusk.primitives.aggregation import AGG_DEFAULTS, CONDITIONAL_DEFAULTS
 from tusk.primitives.base import (
     AggregationPrimitive,
     GroupTransformPrimitive,
+    OrderedAggregationPrimitive,
     OrderedTransformPrimitive,
     Primitive,
     TransformPrimitive,
@@ -269,7 +270,10 @@ class _Context:
             path: Relationships already traversed.
 
         Returns:
-            Aggregation features on the table.
+            Aggregation features on the table. ``_check_ordering`` raises
+                :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
+                primitive is requested for a child table with no
+                ``row_creation_time``.
         """
         out: list[Feature] = []
         for rel in self.database.children_of(table):
@@ -278,9 +282,11 @@ class _Context:
             child_features = self.build(rel.child, depth_limit - 1, path + (rel,))
             usable = self._usable(rel.child, child_features)
             for primitive in self.agg:
+                self._check_ordering(primitive, rel.child)
                 out.extend(self._build_aggregations(primitive, rel, usable, None))
             conditions = self.database.schema(rel.child).conditions
             for primitive in self.conditional_agg:
+                self._check_ordering(primitive, rel.child)
                 for condition in conditions:
                     out.extend(
                         self._build_aggregations(primitive, rel, usable, condition),
@@ -512,7 +518,7 @@ class _Context:
             )
 
     def _check_ordering(self, primitive: Primitive, table: str) -> None:
-        """Reject ordered transform primitives on tables that cannot be ordered.
+        """Reject order-dependent primitives on tables that cannot be ordered.
 
         Narwhals requires ``order_by`` for these expressions on lazy backends,
         and the ordering column is the table's ``row_creation_time``. Checking
@@ -524,10 +530,14 @@ class _Context:
 
         Raises:
             PrimitiveError: If the primitive is an
-                :class:`~tusk.primitives.base.OrderedTransformPrimitive` and the
-                table has no ``row_creation_time``.
+                :class:`~tusk.primitives.base.OrderedTransformPrimitive` or an
+                :class:`~tusk.primitives.base.OrderedAggregationPrimitive` and
+                the table has no ``row_creation_time``.
         """
-        if not isinstance(primitive, OrderedTransformPrimitive):
+        if not isinstance(
+            primitive,
+            (OrderedTransformPrimitive, OrderedAggregationPrimitive),
+        ):
             return
         if self.database.schema(table).row_creation_time is None:
             raise PrimitiveError(
