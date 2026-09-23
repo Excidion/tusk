@@ -2623,7 +2623,7 @@ wheels = [
 
 [[package]]
 name = "tusk-ml"
-version = "0.1.20"
+version = "0.1.21"
 source = { editable = "." }
 dependencies = [
     { name = "narwhals" },
