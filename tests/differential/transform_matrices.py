@@ -39,7 +39,7 @@ LOGICAL_TYPES = {
 
 
 def featuretools_values(
-    primitive_name,
+    primitive,
     feature_name,
     *,
     cutoff_time=None,
@@ -52,7 +52,7 @@ def featuretools_values(
     ``groupby_trans_primitives``, any other in its ``trans_primitives``.
 
     Args:
-        primitive_name: The primitive's featuretools name.
+        primitive: The featuretools primitive, as a name or an instance.
         feature_name: The featuretools feature column to read.
         cutoff_time: Passed through to ``featuretools.dfs``. None disables
             filtering, so every row is visible.
@@ -85,40 +85,41 @@ def featuretools_values(
         )
         .add_relationship("groups", "id", "rows", "group_id")
     )
-    grouped = _runs_within_groups_in_tusk(primitive_name)
+    grouped = _runs_within_groups_in_tusk(primitive)
     matrix, _ = featuretools.dfs(
         entityset=entityset,
         target_dataframe_name="rows",
         agg_primitives=[],
-        trans_primitives=[] if grouped else [primitive_name],
-        groupby_trans_primitives=[primitive_name] if grouped else [],
+        trans_primitives=[] if grouped else [primitive],
+        groupby_trans_primitives=[primitive] if grouped else [],
         max_depth=1,
         cutoff_time=cutoff_time,
     )
     return matrix.sort_index()[feature_name].tolist()
 
 
-def _runs_within_groups_in_tusk(primitive_name):
+def _runs_within_groups_in_tusk(primitive):
     """Report whether tusk runs a primitive of this name within foreign-key groups.
 
     Args:
-        primitive_name: The primitive's featuretools name.
+        primitive: The featuretools primitive, as a name or an instance.
 
     Returns:
         True for a tusk group transform primitive; False for any other, and
         for a name tusk does not register under the same spelling.
     """
+    name = primitive if isinstance(primitive, str) else primitive.name
     try:
-        return isinstance(resolve(primitive_name), GroupTransformPrimitive)
+        return isinstance(resolve(name), GroupTransformPrimitive)
     except PrimitiveError:
         return False
 
 
-def tusk_values(primitive_name, column, *, cutoff_time=None, rows=ROWS, groups=GROUPS):
+def tusk_values(primitive, column, *, cutoff_time=None, rows=ROWS, groups=GROUPS):
     """Run one transform primitive through tusk on polars and read one column.
 
     Args:
-        primitive_name: The primitive's tusk name.
+        primitive: The tusk primitive, as a name or an instance.
         column: The tusk feature column to read.
         cutoff_time: Passed through to ``tusk.deep_feature_synthesis``. None
             disables filtering, so every row is visible.
@@ -137,7 +138,7 @@ def tusk_values(primitive_name, column, *, cutoff_time=None, rows=ROWS, groups=G
         agg_primitives=[],
         max_depth=1,
         cutoff_time=cutoff_time,
-        trans_primitives=[primitive_name],
+        trans_primitives=[primitive],
     )
     return feature_values(matrix, column)
 

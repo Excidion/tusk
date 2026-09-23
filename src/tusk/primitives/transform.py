@@ -9,12 +9,15 @@ backends and raises otherwise.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from typing import cast
 
 import narwhals as nw
 
 from tusk.dtypes import DtypeFamily as F
+from tusk.exceptions import PrimitiveError
 from tusk.primitives.base import (
     GroupTransformPrimitive,
     NeedsCutoffTime,
@@ -1276,6 +1279,177 @@ class TimeSince(NeedsCutoffTime, TransformPrimitive):
         return nw.lit(cutoff_time) - expr
 
 
+@dataclass(frozen=True)
+class _HolidayCalendarPrimitive(TransformPrimitive):
+    """A transform that reads a date against a calendar of holidays.
+
+    A datetime is read by its calendar date, and a null date gives null. The
+    expression grows with each holiday, so a calendar of a few hundred dates
+    is the intended scale.
+
+    Attributes:
+        input_dtypes: Tuple containing one dtype family (HAS_DATE).
+        holidays: Each holiday's date mapped to its name. Stored as
+            ``(date, name)`` pairs sorted by date, so equal calendars give
+            equal primitives.
+
+    Raises:
+        PrimitiveError: If ``holidays`` is empty, or a key is a datetime or
+            not a date at all.
+    """
+
+    input_dtypes = (F.HAS_DATE,)
+
+    holidays: Mapping[date, str]
+
+    def __post_init__(self) -> None:
+        """Store the holidays as sorted ``(date, name)`` pairs."""
+        object.__setattr__(self, "holidays", _sorted_holidays(self.holidays))
+
+    @property
+    def _holiday_pairs(self) -> tuple[tuple[date, str], ...]:
+        """The holidays as ``(date, name)`` pairs sorted by date."""
+        # The field is declared as the mapping callers pass, but holds the
+        # pairs __post_init__ stored, which keep the primitive hashable.
+        return cast("tuple[tuple[date, str], ...]", self.holidays)
+
+    @property
+    def _holiday_day_numbers(self) -> list[int]:
+        """The holidays' day numbers, as ``date.toordinal`` counts them, in order."""
+        return [holiday.toordinal() for holiday, _ in self._holiday_pairs]
+
+
+@register
+@dataclass(frozen=True)
+class IsHoliday(_HolidayCalendarPrimitive):
+    """Whether the date is one of the given holidays.
+
+    ``holidays`` maps each holiday's date to its name, as in
+    ``{date(2024, 12, 25): "Christmas"}``.
+    """
+
+    name = "is_holiday"
+    output_dtype = nw.Boolean
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the is-a-holiday expression.
+
+        Args:
+            expr: A date or datetime expression.
+
+        Returns:
+            A narwhals expression of whether each date is a holiday.
+        """
+        return expr.dt.date().is_in([holiday for holiday, _ in self._holiday_pairs])
+
+
+@register
+@dataclass(frozen=True)
+class HolidayName(_HolidayCalendarPrimitive):
+    """Name of the holiday on the date; null on any other day.
+
+    ``holidays`` maps each holiday's date to its name, as in
+    ``{date(2024, 12, 25): "Christmas"}``.
+    """
+
+    name = "holiday_name"
+    output_dtype = nw.String
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the holiday-name expression.
+
+        Args:
+            expr: A date or datetime expression.
+
+        Returns:
+            A narwhals expression of each date's holiday name.
+        """
+        return expr.dt.date().replace_strict(
+            dict(self._holiday_pairs),
+            default=None,
+            return_dtype=nw.String,
+        )
+
+
+@register
+@dataclass(frozen=True)
+class DaysToHoliday(_HolidayCalendarPrimitive):
+    """Signed days from the date to the nearest holiday; 0 on a holiday.
+
+    Positive when the nearest holiday is ahead, negative when it is behind.
+    Between two equally near holidays, the one behind counts.
+
+    ``holidays`` maps each holiday's date to its name, as in
+    ``{date(2024, 12, 25): "Christmas"}``.
+    """
+
+    name = "days_to_holiday"
+    output_dtype = nw.Int64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the days-to-nearest-holiday expression.
+
+        Args:
+            expr: A date or datetime expression.
+
+        Returns:
+            A narwhals expression of the signed days to each nearest holiday.
+        """
+        return _days_to_nearest(_day_number(expr), self._holiday_day_numbers)
+
+
+@register
+@dataclass(frozen=True)
+class DaysUntilHoliday(_HolidayCalendarPrimitive):
+    """Days from the date to the next holiday; 0 on a holiday.
+
+    Null after the last holiday.
+
+    ``holidays`` maps each holiday's date to its name, as in
+    ``{date(2024, 12, 25): "Christmas"}``.
+    """
+
+    name = "days_until_holiday"
+    output_dtype = nw.Int64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the days-until-next-holiday expression.
+
+        Args:
+            expr: A date or datetime expression.
+
+        Returns:
+            A narwhals expression of the days until each next holiday.
+        """
+        return _days_until_next(_day_number(expr), self._holiday_day_numbers)
+
+
+@register
+@dataclass(frozen=True)
+class DaysSinceHoliday(_HolidayCalendarPrimitive):
+    """Days from the last holiday to the date; 0 on a holiday.
+
+    Null before the first holiday.
+
+    ``holidays`` maps each holiday's date to its name, as in
+    ``{date(2024, 12, 25): "Christmas"}``.
+    """
+
+    name = "days_since_holiday"
+    output_dtype = nw.Int64
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the days-since-last-holiday expression.
+
+        Args:
+            expr: A date or datetime expression.
+
+        Returns:
+            A narwhals expression of the days since each last holiday.
+        """
+        return _days_since_last(_day_number(expr), self._holiday_day_numbers)
+
+
 def _time_since_last_match(moment: nw.Expr, is_match: nw.Expr) -> nw.Expr:
     """Build the time elapsed since the latest row that matches.
 
@@ -1349,3 +1523,143 @@ def _extract_domain(address: nw.Expr) -> nw.Expr:
         .str.replace_all(r"[:/?][\s\S]*$", "")
     )
     return nw.when(domain != "").then(domain)
+
+
+def _sorted_holidays(
+    holidays: Mapping[date, str] | Iterable[tuple[date, str]],
+) -> tuple[tuple[date, str], ...]:
+    """Validate a holiday calendar and sort it by date.
+
+    Args:
+        holidays: Each holiday's date mapped to its name, or the
+            ``(date, name)`` pairs.
+
+    Returns:
+        The ``(date, name)`` pairs, sorted by date.
+
+    Raises:
+        PrimitiveError: If ``holidays`` is empty, or a key is a datetime or
+            not a date at all.
+    """
+    names_by_date = dict(holidays)
+    if not names_by_date:
+        raise PrimitiveError("holidays is empty; pass at least one date")
+    for holiday in names_by_date:
+        _require_date(holiday)
+    return tuple(sorted(names_by_date.items()))
+
+
+def _require_date(holiday: object) -> None:
+    """Check that a holiday is a plain date.
+
+    Args:
+        holiday: One key of a holiday calendar.
+
+    Raises:
+        PrimitiveError: If it is a datetime, or not a date at all.
+    """
+    # datetime subclasses date; accepting one would silently drop its time.
+    if isinstance(holiday, datetime):
+        raise PrimitiveError(
+            f"holiday {holiday!r} is a datetime; pass its date, {holiday.date()!r}",
+        )
+    if not isinstance(holiday, date):
+        raise PrimitiveError(f"holiday {holiday!r} is not a date; pass a date")
+
+
+def _day_number(expr: nw.Expr) -> nw.Expr:
+    """Number each date's day as ``date.toordinal`` does, 0001-01-01 being day 1.
+
+    Args:
+        expr: A date or datetime expression.
+
+    Returns:
+        A narwhals expression of each value's day number.
+    """
+    # Built from year and day of year because no backend-neutral route turns
+    # a duration into days: duckdb subtracts two Dates into an integer, and
+    # its interval keeps whole days apart from the seconds.
+    years_before = expr.dt.year() - 1
+    leap_days_before = years_before // 4 - years_before // 100 + years_before // 400
+    return years_before * 365 + leap_days_before + expr.dt.ordinal_day()
+
+
+def _days_to_nearest(day_number: nw.Expr, holiday_day_numbers: list[int]) -> nw.Expr:
+    """Count the signed days to the nearest holiday; the earlier one on a tie.
+
+    Args:
+        day_number: Each value's day number.
+        holiday_day_numbers: The holidays' day numbers, in ascending order.
+
+    Returns:
+        A narwhals expression of the days, negative for a holiday before.
+    """
+    nearest_holiday = _pick_holiday(
+        holiday_day_numbers,
+        lambda earlier, later: day_number * 2 > earlier + later,
+    )
+    return nearest_holiday - day_number
+
+
+def _days_until_next(day_number: nw.Expr, holiday_day_numbers: list[int]) -> nw.Expr:
+    """Count the days until the next holiday on or after each day.
+
+    Args:
+        day_number: Each value's day number.
+        holiday_day_numbers: The holidays' day numbers, in ascending order.
+
+    Returns:
+        A narwhals expression of the days, null after the last holiday.
+    """
+    next_holiday = _pick_holiday(
+        holiday_day_numbers,
+        lambda earlier, later: day_number > earlier,
+    )
+    is_before_last = day_number <= holiday_day_numbers[-1]
+    return nw.when(is_before_last).then(next_holiday - day_number)
+
+
+def _days_since_last(day_number: nw.Expr, holiday_day_numbers: list[int]) -> nw.Expr:
+    """Count the days since the last holiday on or before each day.
+
+    Args:
+        day_number: Each value's day number.
+        holiday_day_numbers: The holidays' day numbers, in ascending order.
+
+    Returns:
+        A narwhals expression of the days, null before the first holiday.
+    """
+    last_holiday = _pick_holiday(
+        holiday_day_numbers,
+        lambda earlier, later: day_number >= later,
+    )
+    is_after_first = day_number >= holiday_day_numbers[0]
+    return nw.when(is_after_first).then(day_number - last_holiday)
+
+
+def _pick_holiday(
+    holiday_day_numbers: list[int],
+    lies_in_later_half: Callable[[int, int], nw.Expr],
+) -> nw.Expr:
+    """Pick one holiday per row by halving the holidays until one is left.
+
+    Args:
+        holiday_day_numbers: The holidays' day numbers, in ascending order.
+        lies_in_later_half: Given the last day number of an earlier half and
+            the first of the later half, builds whether a row's holiday lies in
+            the later half.
+
+    Returns:
+        A narwhals expression of the picked holiday's day number.
+    """
+    # Halving rather than one condition per holiday keeps the nesting at a
+    # logarithmic depth; narwhals recurses once per nested condition.
+    if len(holiday_day_numbers) == 1:
+        return nw.lit(holiday_day_numbers[0])
+    middle = len(holiday_day_numbers) // 2
+    earlier, later = holiday_day_numbers[:middle], holiday_day_numbers[middle:]
+    return (
+        nw.when(lies_in_later_half(earlier[-1], later[0]))
+        .then(_pick_holiday(later, lies_in_later_half))
+        .otherwise(_pick_holiday(earlier, lies_in_later_half))
+    )

@@ -10,7 +10,13 @@ import tusk.primitives  # noqa: F401  -- registers the built-in primitives
 from tusk.dtypes import DtypeFamily as F
 from tusk.exceptions import PrimitiveError
 from tusk.primitives.base import AggregationPrimitive, TransformPrimitive
-from tusk.primitives.registry import _REGISTRY, register, resolve, resolve_all
+from tusk.primitives.registry import (
+    _REGISTRY,
+    _required_fields,
+    register,
+    resolve,
+    resolve_all,
+)
 
 
 @register
@@ -149,7 +155,7 @@ def test_expressions_actually_evaluate():
 
 def test_every_registered_primitive_is_a_frozen_dataclass():
     for name in _REGISTRY:
-        primitive = resolve(name)
+        primitive = resolve(_example_of(name))
         assert is_dataclass(primitive), f"{name} is not a dataclass"
         with pytest.raises(FrozenInstanceError):
             setattr(primitive, "name", "mutated")  # noqa: B010
@@ -160,8 +166,48 @@ def test_every_registered_primitive_round_trips_through_pickle():
     # land in the wrong module and silently break any process-parallel or
     # cached use. Instantiating via the registry keeps this honest.
     for name in _REGISTRY:
-        primitive = resolve(name)
+        primitive = resolve(_example_of(name))
         assert pickle.loads(pickle.dumps(primitive)) == primitive
+
+
+EXAMPLE_ARGUMENTS = {"holidays": {dt.date(2024, 12, 25): "Christmas"}}
+
+
+def _example_of(name):
+    """Build a registered primitive, passing an example for each required field.
+
+    Args:
+        name: A registered primitive name.
+
+    Returns:
+        The name itself when the primitive needs no arguments, else an
+        instance built from ``EXAMPLE_ARGUMENTS``.
+    """
+    cls = _REGISTRY[name]
+    required = _required_fields(cls)
+    if not required:
+        return name
+    return cls(**{field: EXAMPLE_ARGUMENTS[field] for field in required})
+
+
+@dataclass(frozen=True)
+class Scaled(TransformPrimitive):
+    name = "scaled"
+    input_dtypes = (F.NUMERIC,)
+    factor: float
+    offset: float = 0.0
+
+    def build(self, expr):
+        return expr * self.factor + self.offset
+
+
+def test_a_primitive_with_a_required_field_asks_for_it_by_name(restore_registry):
+    register(Scaled)
+    with pytest.raises(
+        PrimitiveError,
+        match=r"'scaled' needs arguments; pass Scaled\(factor=\.\.\.\) instead",
+    ):
+        resolve("scaled")
 
 
 @pytest.fixture

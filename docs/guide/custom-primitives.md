@@ -25,7 +25,9 @@ class Range(AggregationPrimitive):
 ```
 
 Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
-ordinary dataclass fields.
+ordinary dataclass fields. A primitive with a field that has no default, such
+as [`IsHoliday`][tusk.primitives.IsHoliday], is passed as an instance; its
+name alone raises `PrimitiveError`.
 
 `@dataclass(frozen=True)` is required: features deduplicate by value. A
 primitive without it is rejected with `PrimitiveError`.

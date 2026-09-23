@@ -40,6 +40,49 @@ A multi-output primitive such as `quantiles` produces indexed columns:
 input, so these columns are the end of their chain: they go into the matrix,
 and no further primitive builds on them. Use one at any depth.
 
+## Holidays
+
+The holiday primitives read each date against holidays you pass them, as a
+mapping of `datetime.date` to the holiday's name. List every date the data
+spans: expand a fixed holiday over the years with a dict comprehension, and
+add a moving one, such as Easter, year by year.
+
+```python
+from datetime import date
+
+import tusk
+from tusk.primitives import DaysToHoliday, IsHoliday
+
+holidays = {date(year, 12, 25): "Christmas" for year in range(2015, 2031)}
+holidays[date(2024, 3, 31)] = "Easter Sunday"
+holidays[date(2025, 4, 20)] = "Easter Sunday"
+
+feature_matrix, features = tusk.deep_feature_synthesis(
+    database=db,
+    target_table="orders",
+    trans_primitives=[
+        IsHoliday(holidays=holidays),
+        DaysToHoliday(holidays=holidays),
+    ],
+)
+```
+
+The [`holidays`](https://pypi.org/project/holidays/) package builds such a
+mapping for a country, e.g. `holidays.US(years=range(2015, 2031))`.
+
+| Primitive | Value |
+|---|---|
+| `is_holiday` | Whether the date is a holiday. |
+| `holiday_name` | The holiday's name; null on any other day. |
+| `days_to_holiday` | Signed days to the nearest holiday, negative when it is behind; the one behind counts on a tie. |
+| `days_until_holiday` | Days to the next holiday; null after the last one. |
+| `days_since_holiday` | Days since the last holiday; null before the first one. |
+
+A datetime is read by its calendar date. The holidays are an argument, so
+these primitives are not among the defaults and cannot be passed by name. The
+calendar is not part of the feature name, as in `IS_HOLIDAY__ordered_at`, so a
+run takes one calendar per primitive per input column.
+
 ## Empty groups
 
 Aggregating a group with no rows is the most surprising correct behaviour in

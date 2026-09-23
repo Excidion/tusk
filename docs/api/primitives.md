@@ -128,6 +128,16 @@
 
 ::: tusk.primitives.TimeSince
 
+::: tusk.primitives.IsHoliday
+
+::: tusk.primitives.HolidayName
+
+::: tusk.primitives.DaysToHoliday
+
+::: tusk.primitives.DaysUntilHoliday
+
+::: tusk.primitives.DaysSinceHoliday
+
 ::: tusk.primitives.Absolute
 
 ::: tusk.primitives.NaturalLog

@@ -1,3 +1,4 @@
+import dataclasses
 import datetime as dt
 import math
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ from transform_cases import (
 
 import tusk
 from tusk.dtypes import DtypeFamily
-from tusk.exceptions import ValidationError
+from tusk.exceptions import PrimitiveError, ValidationError
 from tusk.primitives.base import (
     GroupTransformPrimitive,
     NeedsCutoffTime,
@@ -24,7 +25,16 @@ from tusk.primitives.base import (
     TransformPrimitive,
 )
 from tusk.primitives.registry import resolve
-from tusk.primitives.transform import TRANS_DEFAULTS, TimeSince, TimeSincePrevious
+from tusk.primitives.transform import (
+    TRANS_DEFAULTS,
+    DaysSinceHoliday,
+    DaysToHoliday,
+    DaysUntilHoliday,
+    HolidayName,
+    IsHoliday,
+    TimeSince,
+    TimeSincePrevious,
+)
 from tusk.synthesis import synthesize
 
 
@@ -731,7 +741,7 @@ def test_deep_feature_synthesis_builds_the_categorical_equality_transform():
 
 @pytest.mark.parametrize("column", sorted(EXPECTED))
 def test_transforms_give_the_expected_value_on_every_row(column):
-    primitive_name, dtype, expected = EXPECTED[column]
+    primitive, dtype, expected = EXPECTED[column]
     matrix, _ = tusk.deep_feature_synthesis(
         database=rows_database(
             pl.from_pandas(ROWS).lazy(),
@@ -740,7 +750,7 @@ def test_transforms_give_the_expected_value_on_every_row(column):
         target_table="rows",
         agg_primitives=[],
         max_depth=1,
-        trans_primitives=[primitive_name],
+        trans_primitives=[primitive],
     )
     assert nw.from_native(matrix).collect_schema()[column] == dtype
     assert_values_match(feature_values(matrix, column), expected)
@@ -864,3 +874,86 @@ def test_cumulative_time_since_stays_within_each_group():
         ),
         [dt.timedelta(0), dt.timedelta(days=1), None, dt.timedelta(0)],
     )
+
+
+HOLIDAY_PRIMITIVES = [
+    IsHoliday,
+    HolidayName,
+    DaysToHoliday,
+    DaysUntilHoliday,
+    DaysSinceHoliday,
+]
+
+
+@pytest.mark.parametrize("holiday_primitive", HOLIDAY_PRIMITIVES)
+def test_holiday_calendars_are_equal_regardless_of_insertion_order(holiday_primitive):
+    christmas = dt.date(2024, 12, 25)
+    new_year = dt.date(2025, 1, 1)
+    in_order = holiday_primitive(
+        holidays={christmas: "Christmas", new_year: "New Year's Day"},
+    )
+    reversed_order = holiday_primitive(
+        holidays={new_year: "New Year's Day", christmas: "Christmas"},
+    )
+    assert in_order == reversed_order
+    assert hash(in_order) == hash(reversed_order)
+    assert len({in_order, reversed_order}) == 1
+
+
+@pytest.mark.parametrize("holiday_primitive", HOLIDAY_PRIMITIVES)
+def test_holiday_calendars_with_different_names_differ(holiday_primitive):
+    christmas = dt.date(2024, 12, 25)
+    assert holiday_primitive(holidays={christmas: "Christmas"}) != holiday_primitive(
+        holidays={christmas: "Xmas"},
+    )
+
+
+@pytest.mark.parametrize("holiday_primitive", HOLIDAY_PRIMITIVES)
+def test_an_empty_holiday_calendar_is_rejected(holiday_primitive):
+    with pytest.raises(PrimitiveError, match="at least one"):
+        holiday_primitive(holidays={})
+
+
+@pytest.mark.parametrize("holiday_primitive", HOLIDAY_PRIMITIVES)
+def test_a_datetime_holiday_is_rejected(holiday_primitive):
+    with pytest.raises(PrimitiveError, match=r"datetime.*date\(2024, 12, 25\)"):
+        holiday_primitive(holidays={dt.datetime(2024, 12, 25, 12): "Christmas"})
+
+
+@pytest.mark.parametrize("holiday_primitive", HOLIDAY_PRIMITIVES)
+def test_a_holiday_that_is_not_a_date_is_rejected(holiday_primitive):
+    with pytest.raises(PrimitiveError, match="'2024-12-25'.*not a date"):
+        holiday_primitive(holidays={"2024-12-25": "Christmas"})
+
+
+def test_a_holiday_primitive_by_name_asks_for_its_arguments():
+    with pytest.raises(
+        PrimitiveError,
+        match=r"'is_holiday' needs arguments; pass IsHoliday\(holidays=\.\.\.\)",
+    ):
+        resolve("is_holiday")
+
+
+@pytest.mark.parametrize("holiday_primitive", HOLIDAY_PRIMITIVES)
+def test_a_holiday_primitive_rebuilds_from_its_own_holidays(holiday_primitive):
+    primitive = holiday_primitive(holidays={dt.date(2024, 12, 25): "Christmas"})
+    assert holiday_primitive(holidays=primitive.holidays) == primitive
+    assert dataclasses.replace(primitive) == primitive
+
+
+@pytest.mark.parametrize(
+    ("holiday_primitive", "expected"),
+    [(IsHoliday, True), (DaysUntilHoliday, 0), (DaysSinceHoliday, 0)],
+)
+def test_a_timezone_aware_datetime_is_read_by_its_local_date(
+    holiday_primitive, expected
+):
+    """Half past midnight on Christmas in Tokyo is still Christmas Eve in UTC."""
+    frame = nw.from_native(
+        pl.LazyFrame(
+            {"at": [dt.datetime(2024, 12, 25, 0, 30, tzinfo=ZoneInfo("Asia/Tokyo"))]},
+        ),
+    )
+    primitive = holiday_primitive(holidays={dt.date(2024, 12, 25): "Christmas"})
+    got = frame.select(primitive.outputs(nw.col("at"))[0]).collect()
+    assert got.to_native().to_series().to_list() == [expected]

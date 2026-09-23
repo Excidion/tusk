@@ -43,20 +43,64 @@ def resolve(spec: str | Primitive) -> Primitive:
         A primitive instance.
 
     Raises:
-        PrimitiveError: If the name is not registered, or the primitive is not
-            a frozen dataclass with equality enabled.
+        PrimitiveError: If the name is not registered, names a primitive that
+            needs arguments, or the primitive is not a frozen dataclass with
+            equality enabled.
     """
     if isinstance(spec, Primitive):
         primitive = spec
     else:
         try:
-            primitive = _REGISTRY[spec]()
+            cls = _REGISTRY[spec]
         except KeyError:
             known = ", ".join(sorted(_REGISTRY))
             msg = f"unknown primitive {spec!r}; available: {known}"
             raise PrimitiveError(msg) from None
+        _require_no_arguments(spec, cls)
+        primitive = cls()
     _require_frozen_dataclass(primitive)
     return primitive
+
+
+def _require_no_arguments(name: str, cls: type[Primitive]) -> None:
+    """Check that a primitive class can be built without arguments.
+
+    Args:
+        name: The name the class is registered under.
+        cls: The primitive class.
+
+    Raises:
+        PrimitiveError: If the class has a field without a default.
+    """
+    required = _required_fields(cls)
+    if not required:
+        return
+    arguments = ", ".join(f"{field}=..." for field in required)
+    raise PrimitiveError(
+        f"primitive {name!r} needs arguments; "
+        f"pass {cls.__name__}({arguments}) instead of its name",
+    )
+
+
+def _required_fields(cls: type[Primitive]) -> list[str]:
+    """List the dataclass fields a primitive class cannot be built without.
+
+    Args:
+        cls: A primitive class.
+
+    Returns:
+        The names of the fields without a default, none for a class that is
+        not a dataclass.
+    """
+    if not dataclasses.is_dataclass(cls):
+        return []
+    return [
+        field.name
+        for field in dataclasses.fields(cls)
+        if field.init
+        and field.default is dataclasses.MISSING
+        and field.default_factory is dataclasses.MISSING
+    ]
 
 
 def _require_frozen_dataclass(primitive: Primitive) -> None:

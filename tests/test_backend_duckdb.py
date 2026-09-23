@@ -650,7 +650,7 @@ def test_transforms_give_the_polars_values_on_duckdb(column):
     Args:
         column: The feature column under test.
     """
-    primitive_name, _, expected = TRANSFORM_EXPECTED[column]
+    primitive, _, expected = TRANSFORM_EXPECTED[column]
     con = duckdb.connect()
     con.register("rows_frame", ROWS)
     con.register("groups_frame", GROUPS)
@@ -662,7 +662,7 @@ def test_transforms_give_the_polars_values_on_duckdb(column):
         target_table="rows",
         agg_primitives=[],
         max_depth=1,
-        trans_primitives=[primitive_name],
+        trans_primitives=[primitive],
     )
     assert_transform_values_match(feature_values(matrix, column), expected)
 

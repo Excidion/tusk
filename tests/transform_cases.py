@@ -4,6 +4,12 @@ Shared by the polars suite, the duckdb suite and the differential suite, so
 all three check the same rows. ``occurred_at`` is the row creation time and
 orders the rows 3, 1, 5, 2, 8, 4, 7, 6, which differs from id order. Every row
 belongs to the one row of ``GROUPS``, so a group transform sees all eight.
+``due_on`` holds the calendar dates of ``due_at``.
+
+``EXPECTED`` maps each feature column to the primitive that builds it, as a
+name or an instance, its dtype and its values in id order. ``HOLIDAYS`` puts
+those dates on a holiday, before the first, after the last, and exactly
+halfway between two.
 """
 
 import datetime as dt
@@ -15,6 +21,13 @@ import pyarrow as pa
 import pytest
 
 import tusk
+from tusk.primitives import (
+    DaysSinceHoliday,
+    DaysToHoliday,
+    DaysUntilHoliday,
+    HolidayName,
+    IsHoliday,
+)
 
 GROUPS = pd.DataFrame({"id": [1]})
 
@@ -52,6 +65,16 @@ ROWS = pd.DataFrame(
                 dt.datetime(2019, 1, 1),
             ],
         ),
+        "due_on": [
+            dt.date(2024, 2, 29),
+            None,
+            dt.date(1900, 3, 1),
+            dt.date(2000, 12, 31),
+            dt.date(2023, 6, 15),
+            dt.date(2100, 1, 1),
+            dt.date(2024, 12, 31),
+            dt.date(2019, 1, 1),
+        ],
         "label": pd.array(
             ["a", None, "b", "a", "b", "a", None, "b"],
             dtype="string",
@@ -97,6 +120,37 @@ ROWS = pd.DataFrame(
         ),
     },
 )
+
+HOLIDAYS = {
+    dt.date(2000, 12, 25): "Christmas",
+    dt.date(2019, 1, 1): "New Year's Day",
+    dt.date(2024, 2, 29): "Leap Day",
+    dt.date(2024, 12, 25): "Christmas",
+    dt.date(2025, 1, 6): "Epiphany",
+}
+
+HOLIDAY_EXPECTED = {
+    IsHoliday(holidays=HOLIDAYS): (
+        nw.Boolean,
+        [True, None, False, False, False, False, False, True],
+    ),
+    HolidayName(holidays=HOLIDAYS): (
+        nw.String,
+        ["Leap Day", None, None, None, None, None, None, "New Year's Day"],
+    ),
+    DaysUntilHoliday(holidays=HOLIDAYS): (
+        nw.Int64,
+        [0, None, 36824, 6575, 259, None, 6, 0],
+    ),
+    DaysSinceHoliday(holidays=HOLIDAYS): (
+        nw.Int64,
+        [0, None, None, 6, 1626, 27388, 6, 0],
+    ),
+    DaysToHoliday(holidays=HOLIDAYS): (
+        nw.Int64,
+        [0, None, 36824, -6, 259, -27388, -6, 0],
+    ),
+}
 
 EXPECTED = {
     "N_CHARACTERS__text": (
@@ -321,6 +375,11 @@ EXPECTED = {
             dt.datetime(2019, 1, 1) - dt.datetime(2023, 6, 15, 7, 8, 9),
         ],
     ),
+    **{
+        f"{primitive.stem}__{column}": (primitive, dtype, values)
+        for primitive, (dtype, values) in HOLIDAY_EXPECTED.items()
+        for column in ("due_at", "due_on")
+    },
 }
 
 
