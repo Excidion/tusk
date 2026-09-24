@@ -1,9 +1,9 @@
 """Built-in aggregation primitives.
 
 Every expression here is legal inside a lazy ``group_by().agg()``. Length-changing
-expressions such as ``mode(keep="all")`` are not unless an aggregation follows --
-narwhals rejects them on lazy frames -- which is why ``quantiles`` rather than
-``n_most_common`` is the multi-output primitive.
+expressions such as ``mode()`` are not -- narwhals rejects them on lazy frames --
+which is why ``quantiles`` rather than ``n_most_common`` is the multi-output
+primitive.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from tusk.primitives.base import (
     GroupRelativeAggregationPrimitive,
     NeedsCutoffTime,
     OrderedAggregationPrimitive,
+    ValueCountAggregationPrimitive,
 )
 from tusk.primitives.registry import register
 
@@ -564,23 +565,34 @@ class PercentUnique(AggregationPrimitive):
 
 @register
 @dataclass(frozen=True)
-class Mode(AggregationPrimitive):
+class Mode(ValueCountAggregationPrimitive):
     """Most frequent known value of a label column; a tie gives the smallest value."""
 
     name = "mode"
     input_dtypes = ((F.STRING,), (F.CATEGORICAL,))
 
-    def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the most-frequent-value expression, ignoring nulls.
+    def build_per_row(self, values: nw.Expr, counts: nw.Expr) -> nw.Expr:
+        """Build each row's value where it is among its group's most frequent.
 
         Args:
-            expr: The label column.
+            values: The label column.
+            counts: How often each row's value occurs in its group.
+
+        Returns:
+            A narwhals expression; null on every other row.
+        """
+        return nw.when(counts == counts.max()).then(values)
+
+    def build(self, per_row: nw.Expr) -> nw.Expr:
+        """Build the smallest of the most frequent values.
+
+        Args:
+            per_row: The most frequent values, null on every other row.
 
         Returns:
             A narwhals expression.
         """
-        # keep="any" would run on SQL backends, but picks an arbitrary tied value
-        return expr.drop_nulls().mode(keep="all").min()
+        return per_row.min()
 
 
 @register
