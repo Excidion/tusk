@@ -531,6 +531,7 @@ def _plain(value):
     ("tusk_name", "featuretools_name", "featuretools_column"),
     [
         ("all_true", "all", "ALL(children.flag)"),
+        ("mode", "mode", "MODE(children.label)"),
         ("n_true", "num_true", "NUM_TRUE(children.flag)"),
         ("variance", "variance", "VARIANCE(children.value)"),
     ],

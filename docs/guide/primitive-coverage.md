@@ -55,7 +55,7 @@ primitives (rolling, expanding, lag) are out of scope and not listed.
 | Aggregation | [`max_min_delta`][tusk.primitives.MaxMinDelta] | `max_min_delta` | ⚠️ | [`test_a_delta_without_a_known_value_is_null_rather_than_zero`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A group without a known value is null in tusk and `0` in featuretools. |
 | Aggregation | — | `median_count` | ❌ |  | Needs per-group value counts. |
 | Aggregation | — | `min_count` | ❌ |  | Needs per-group value counts. |
-| Aggregation | — | [`mode`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Mode.html) | ⛔ |  | Length-changing inside a lazy `group_by().agg()`. |
+| Aggregation | [`mode`][tusk.primitives.Mode] | [`mode`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.Mode.html) | ✅ | [`test_standalone_aggregations_match_featuretools_on_every_parent_row`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | Not available on duckdb or other SQL backends. |
 | Aggregation | — | [`n_most_common`](https://featuretools.alteryx.com/en/stable/generated/featuretools.primitives.NMostCommon.html) | ⛔ |  | Length-changing inside a lazy `group_by().agg()`. |
 | Aggregation | — | `n_most_common_frequency` | ⛔ |  | Length-changing inside a lazy `group_by().agg()`. |
 | Aggregation | [`n_unique_days`][tusk.primitives.NUniqueDays] | `n_unique_days` | ⚠️ | [`test_distinct_date_counts_count_a_null_as_a_value`](https://github.com/Excidion/tusk/blob/main/tests/differential/test_aggregations.py) | A null date counts as one value in tusk; featuretools ignores it. |

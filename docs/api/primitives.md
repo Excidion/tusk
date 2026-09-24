@@ -76,6 +76,8 @@
 
 ::: tusk.primitives.MaxMinDelta
 
+::: tusk.primitives.Mode
+
 ::: tusk.primitives.FirstLastTimeDelta
 
 ::: tusk.primitives.IsUnique

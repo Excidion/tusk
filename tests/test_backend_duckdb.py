@@ -596,7 +596,13 @@ def test_date_aggregations_hold_the_elapsed_time_and_count_on_duckdb(duck_db):
     assert rows_by_id.loc[3, unique_days] == 0
 
 
-@pytest.mark.parametrize("primitive_name", sorted(EXPECTED))
+AGGREGATIONS_DUCKDB_CANNOT_RUN = {"mode"}
+
+
+@pytest.mark.parametrize(
+    "primitive_name",
+    sorted(set(EXPECTED) - AGGREGATIONS_DUCKDB_CANNOT_RUN),
+)
 def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name):
     """Every standalone aggregation survives translation to SQL, group by group.
 
@@ -610,6 +616,26 @@ def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name
         primitive_name: The aggregation under test.
     """
     column, _, expected = EXPECTED[primitive_name]
+    matrix = _aggregate_the_cases_on_duckdb(primitive_name)
+    got = matrix.df().sort_values("id")[column].tolist()
+    assert_values_match(got, expected)
+
+
+def test_mode_is_not_implemented_on_duckdb():
+    """narwhals implements neither ``drop_nulls`` nor a tie-keeping mode for duckdb."""
+    with pytest.raises(NotImplementedError):
+        _aggregate_the_cases_on_duckdb("mode").df()
+
+
+def _aggregate_the_cases_on_duckdb(primitive_name):
+    """Build one aggregation over the shared parent/child cases, backed by duckdb.
+
+    Args:
+        primitive_name: The aggregation to build.
+
+    Returns:
+        The feature matrix as a duckdb relation.
+    """
     con = duckdb.connect()
     con.register("parents_frame", PARENTS)
     con.register("children_frame", CHILDREN)
@@ -635,8 +661,7 @@ def test_standalone_aggregations_give_the_polars_values_on_duckdb(primitive_name
         trans_primitives=[],
         max_depth=1,
     )
-    got = matrix.df().sort_values("id")[column].tolist()
-    assert_values_match(got, expected)
+    return matrix
 
 
 @pytest.mark.parametrize("column", sorted(TRANSFORM_EXPECTED))

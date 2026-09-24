@@ -1,9 +1,9 @@
 """Built-in aggregation primitives.
 
 Every expression here is legal inside a lazy ``group_by().agg()``. Length-changing
-expressions such as ``mode()`` are not -- narwhals rejects them on lazy frames --
-which is why ``quantiles`` rather than ``n_most_common`` is the multi-output
-primitive.
+expressions such as ``mode(keep="all")`` are not unless an aggregation follows --
+narwhals rejects them on lazy frames -- which is why ``quantiles`` rather than
+``n_most_common`` is the multi-output primitive.
 """
 
 from __future__ import annotations
@@ -560,6 +560,27 @@ class PercentUnique(AggregationPrimitive):
             A narwhals expression.
         """
         return expr.n_unique() / nw.len()
+
+
+@register
+@dataclass(frozen=True)
+class Mode(AggregationPrimitive):
+    """Most frequent known value of a label column; a tie gives the smallest value."""
+
+    name = "mode"
+    input_dtypes = ((F.STRING,), (F.CATEGORICAL,))
+
+    def build(self, expr: nw.Expr) -> nw.Expr:
+        """Build the most-frequent-value expression, ignoring nulls.
+
+        Args:
+            expr: The label column.
+
+        Returns:
+            A narwhals expression.
+        """
+        # keep="any" would run on SQL backends, but picks an arbitrary tied value
+        return expr.drop_nulls().mode(keep="all").min()
 
 
 @register

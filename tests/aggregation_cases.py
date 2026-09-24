@@ -109,6 +109,11 @@ EXPECTED = {
         nw.Float64,
         [5.0, 0.0, None, 7.0, None, 0.0, None, 0.0],
     ),
+    "mode": (
+        "MODE__children__label",
+        nw.String,
+        ["a", None, None, "w", None, "q", None, "q"],
+    ),
     "n_true": ("N_TRUE__children__flag", nw.Int64, [2, 2, 0, 1, 0, 1, 0, 0]),
     "percent_unique": (
         "PERCENT_UNIQUE__children__label",

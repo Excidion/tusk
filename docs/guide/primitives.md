@@ -51,7 +51,7 @@ with no orders gets:
 | `COUNT` | `0` | We know there were zero rows. |
 | `N_UNIQUE` | `0` | Zero rows hold zero distinct values. A null counts as one value, so a group of only nulls is `1`. |
 | `SUM` | `0` | The additive identity. |
-| `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
+| `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES`, `MODE` | `null` | Genuinely undefined over an empty set: `0/0`, and the min or max of nothing. |
 | `PERCENT_TRUE` | `null` | Undefined over an empty set, same as `MEAN`. Within a non-empty group a null counts as false, so an all-null group computes to `0.0` rather than falling through to this default. |
 | `N_TRUE` | `0` | Zero rows hold nothing to count. |
 | `N_UNIQUE_DAYS`, `N_UNIQUE_DAYS_OF_CALENDAR_YEAR`, `N_UNIQUE_DAYS_OF_MONTH`, `N_UNIQUE_MONTHS` | `0` | Zero rows hold zero distinct values. A null date counts as one value, so a group of only nulls is `1`. |
