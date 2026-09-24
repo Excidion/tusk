@@ -572,29 +572,29 @@ class Mode(ValueCountAggregationPrimitive):
     name = "mode"
     input_dtypes = ((F.STRING,), (F.CATEGORICAL,))
 
-    def build_per_row(self, values: nw.Expr, counts: nw.Expr) -> nw.Expr:
+    def compare_with_group(self, expr: nw.Expr, counts: nw.Expr) -> nw.Expr:
         """Build each row's value if it is a most frequent value of its group.
 
         Args:
-            values: The label column.
+            expr: The label column.
             counts: How often each row's value occurs in its group.
 
         Returns:
             A narwhals expression. It is null on every other row.
         """
-        return nw.when(counts == counts.max()).then(values)
+        return nw.when(counts == counts.max()).then(expr)
 
-    def build(self, per_row: nw.Expr) -> nw.Expr:
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
         """Build the smallest of the most frequent values.
 
         Args:
-            per_row: Each row's value if it is a most frequent value, else
+            comparisons: Each row's value if it is a most frequent value, else
                 null.
 
         Returns:
             A narwhals expression.
         """
-        return per_row.min()
+        return comparisons.min()
 
 
 @register
@@ -773,7 +773,7 @@ class CountAboveMean(GroupRelativeAggregationPrimitive):
     default_value = 0
     stack_on_self = False
 
-    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+    def compare_with_group(self, expr: nw.Expr) -> nw.Expr:
         """Build the above-the-mean test.
 
         Args:
@@ -784,16 +784,16 @@ class CountAboveMean(GroupRelativeAggregationPrimitive):
         """
         return expr > expr.mean()
 
-    def build(self, per_row: nw.Expr) -> nw.Expr:
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
         """Build the count of rows above the mean.
 
         Args:
-            per_row: The above-the-mean test.
+            comparisons: The above-the-mean test.
 
         Returns:
             A narwhals expression.
         """
-        return _count_true_rows(per_row)
+        return _count_true_rows(comparisons)
 
 
 @register
@@ -807,7 +807,7 @@ class CountBelowMean(GroupRelativeAggregationPrimitive):
     default_value = 0
     stack_on_self = False
 
-    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+    def compare_with_group(self, expr: nw.Expr) -> nw.Expr:
         """Build the below-the-mean test.
 
         Args:
@@ -818,16 +818,16 @@ class CountBelowMean(GroupRelativeAggregationPrimitive):
         """
         return expr < expr.mean()
 
-    def build(self, per_row: nw.Expr) -> nw.Expr:
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
         """Build the count of rows below the mean.
 
         Args:
-            per_row: The below-the-mean test.
+            comparisons: The below-the-mean test.
 
         Returns:
             A narwhals expression.
         """
-        return _count_true_rows(per_row)
+        return _count_true_rows(comparisons)
 
 
 @register
@@ -865,7 +865,7 @@ class CountInsideNthStd(GroupRelativeAggregationPrimitive):
         """The name with ``n`` spelled in, e.g. ``COUNT_INSIDE_1_STD``."""
         return f"COUNT_INSIDE_{_spell_width(self.n)}_STD"
 
-    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+    def compare_with_group(self, expr: nw.Expr) -> nw.Expr:
         """Build the inside-the-band test.
 
         Args:
@@ -876,16 +876,16 @@ class CountInsideNthStd(GroupRelativeAggregationPrimitive):
         """
         return _measure_distance_from_mean(expr) <= _measure_band_width(expr, self.n)
 
-    def build(self, per_row: nw.Expr) -> nw.Expr:
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
         """Build the count of rows inside the band.
 
         Args:
-            per_row: The inside-the-band test.
+            comparisons: The inside-the-band test.
 
         Returns:
             A narwhals expression.
         """
-        return _count_true_rows(per_row)
+        return _count_true_rows(comparisons)
 
 
 @register
@@ -923,7 +923,7 @@ class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
         """The name with ``n`` spelled in, e.g. ``COUNT_OUTSIDE_1_STD``."""
         return f"COUNT_OUTSIDE_{_spell_width(self.n)}_STD"
 
-    def build_per_row(self, expr: nw.Expr) -> nw.Expr:
+    def compare_with_group(self, expr: nw.Expr) -> nw.Expr:
         """Build the outside-the-band test.
 
         Args:
@@ -934,16 +934,16 @@ class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
         """
         return _measure_distance_from_mean(expr) > _measure_band_width(expr, self.n)
 
-    def build(self, per_row: nw.Expr) -> nw.Expr:
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
         """Build the count of rows outside the band.
 
         Args:
-            per_row: The outside-the-band test.
+            comparisons: The outside-the-band test.
 
         Returns:
             A narwhals expression.
         """
-        return _count_true_rows(per_row)
+        return _count_true_rows(comparisons)
 
 
 def _count_true_rows(expr: nw.Expr) -> nw.Expr:

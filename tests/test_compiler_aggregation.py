@@ -52,11 +52,11 @@ class LargestValueShare(ValueCountAggregationPrimitive):
     input_dtypes = (F.STRING,)
     output_dtype = nw.Float64
 
-    def build_per_row(self, values, counts):
+    def compare_with_group(self, expr, counts):
         return counts / counts.count()
 
-    def build(self, per_row):
-        return per_row.max()
+    def build(self, comparisons):
+        return comparisons.max()
 
 
 def collect(features, db, cutoff_time=None):

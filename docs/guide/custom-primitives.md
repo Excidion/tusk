@@ -53,8 +53,8 @@ aggregation that measures each row against its own group first, as
 since SQL backends reject an aggregate nested in an aggregate. An aggregation
 that needs to know how often each value occurs in its group subclasses
 [`ValueCountAggregationPrimitive`][tusk.primitives.ValueCountAggregationPrimitive],
-as `mode` does. Its `build_per_row(values, counts)` receives the column and,
-for each row, how often the row's value occurs. Subclass
+as `mode` does. Its `compare_with_group(expr, counts)` receives the column
+and, for each row, how often the row's value occurs. Subclass
 [`TransformPrimitive`][tusk.primitives.TransformPrimitive] for something that
 maps a row to a row. A transform that reads the other rows of its foreign-key
 group subclasses

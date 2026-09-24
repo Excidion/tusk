@@ -40,10 +40,10 @@ rejected for that cost.
 `ValueCountAggregationPrimitive` in `tusk/primitives/base.py`, a subclass of
 `GroupRelativeAggregationPrimitive`:
 
-- `build_per_row(values, counts)` receives the input column and, per row, how
+- `compare_with_group(expr, counts)` receives the input column and, per row, how
   often that row's value occurs in its group. The count is null where the
   value is null.
-- `build(per_row)` reduces the per-row column, as for any group-relative
+- `build(comparisons)` reduces the comparison column, as for any group-relative
   aggregation.
 - A value-count primitive takes exactly one input column.
 
@@ -52,18 +52,28 @@ column (narwhals rejects length-changing expressions inside a lazy `agg`, and
 SQL cannot nest one window inside another) goes into a comment only where the
 code would otherwise look wrong.
 
+### Rename
+
+`GroupRelativeAggregationPrimitive.build_per_row` becomes `compare_with_group`,
+and the parameter of its `build` becomes `comparisons`. The new names state
+what the step does: it compares each row with its group. The compiler helpers
+change with them: `_add_comparison_columns`, `_build_comparison_column`,
+`_select_comparison_inputs`, `_generate_comparison_column_name`, and the
+column suffix `__comparison`. This changes the public API for custom
+group-relative primitives.
+
 ### Compiler
 
 `_join_condition_aggregations` in `tusk/compiler.py` calls a new
-`_add_value_count_columns` right before `_add_per_row_columns`. It adds, in a
+`_add_value_count_columns` right before `_add_comparison_columns`. It adds, in a
 `with_columns` of its own, one count column per value-count feature:
 
 ```python
 nw.when(~value.is_null()).then(nw.len().over(foreign_key, value.name))
 ```
 
-named `<feature name>__value_count`. `_build_per_row_column` reads its
-inputs from a new `_select_build_per_row_inputs`, which appends the count column for a
+named `<feature name>__value_count`. `_build_comparison_column` reads its
+inputs from a new `_select_comparison_inputs`, which appends the count column for a
 value-count primitive, and wraps the result in `.over(foreign_key)` as it does
 today. Conditions, the
 cutoff, defaults and the join are unchanged: both columns are added to the
@@ -73,11 +83,11 @@ already-masked child.
 
 ```python
 class Mode(ValueCountAggregationPrimitive):
-    def build_per_row(self, values, counts):
-        return nw.when(counts == counts.max()).then(values)
+    def compare_with_group(self, expr, counts):
+        return nw.when(counts == counts.max()).then(expr)
 
-    def build(self, per_row):
-        return per_row.min()
+    def build(self, comparisons):
+        return comparisons.min()
 ```
 
 Behaviour is unchanged from main: nulls are skipped, a tie gives the smallest

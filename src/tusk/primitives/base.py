@@ -225,19 +225,19 @@ class OrderedAggregationPrimitive(AggregationPrimitive):
 
 
 class GroupRelativeAggregationPrimitive(AggregationPrimitive):
-    """An aggregation that measures each row against its group before reducing.
+    """An aggregation that compares each row with its group before reducing.
 
     SQL backends reject an aggregate nested in an aggregate, such as
-    ``SUM(x > AVG(x))``. The compiler therefore adds :meth:`build_per_row`
+    ``SUM(x > AVG(x))``. The compiler therefore adds :meth:`compare_with_group`
     to the child as a column computed within each foreign-key group, and
     :meth:`build` and :meth:`outputs` take that one column as their input.
-    Its per-row expression must read an aggregate of the group, such as
+    The comparison must read an aggregate of the group, such as
     ``expr.mean()``.
     """
 
     @abstractmethod
-    def build_per_row(self, *inputs: nw.Expr) -> nw.Expr:
-        """Build the per-row expression, which may read its group's aggregates.
+    def compare_with_group(self, *inputs: nw.Expr) -> nw.Expr:
+        """Build the comparison of each row with its group.
 
         Args:
             *inputs: One expression per declared input.
@@ -247,11 +247,11 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
         """
 
     @abstractmethod
-    def build(self, per_row: nw.Expr) -> nw.Expr:
-        """Build the expression reducing the per-row column.
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
+        """Build the expression that reduces the comparisons.
 
         Args:
-            per_row: The column :meth:`build_per_row` produced.
+            comparisons: The column :meth:`compare_with_group` produced.
 
         Returns:
             A narwhals expression.
@@ -261,16 +261,16 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
 class ValueCountAggregationPrimitive(GroupRelativeAggregationPrimitive):
     """A group-relative aggregation that reads each row's value and its count.
 
-    It takes one input column. :meth:`build_per_row` receives that column and,
-    for each row, how often the row's value occurs in its group.
+    It takes one input column. :meth:`compare_with_group` receives that column
+    and, for each row, how often the row's value occurs in its group.
     """
 
     @abstractmethod
-    def build_per_row(self, values: nw.Expr, counts: nw.Expr) -> nw.Expr:
-        """Build the per-row expression from each row's value and its count.
+    def compare_with_group(self, expr: nw.Expr, counts: nw.Expr) -> nw.Expr:
+        """Build the comparison of each row with its group from its value and count.
 
         Args:
-            values: The input column.
+            expr: The input column.
             counts: How often each row's value occurs in its group. It is
                 null where the value is null.
 
