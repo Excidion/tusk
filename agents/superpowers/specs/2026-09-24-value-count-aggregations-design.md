@@ -54,17 +54,18 @@ code would otherwise look wrong.
 
 ### Compiler
 
-`_add_per_row_columns` in `tusk/compiler.py` adds, in a `with_columns` of its
-own and before the existing per-row columns, one count column per value-count
-feature:
+`_join_condition_aggregations` in `tusk/compiler.py` calls a new
+`_add_value_count_columns` right before `_add_per_row_columns`. It adds, in a
+`with_columns` of its own, one count column per value-count feature:
 
 ```python
 nw.when(~value.is_null()).then(nw.len().over(foreign_key, value.name))
 ```
 
-named `<feature name>__value_count`. `_build_per_row_column` passes
-`(value, count column)` to a value-count primitive's `build_per_row`, then
-wraps the result in `.over(foreign_key)` as it does today. Conditions, the
+named `<feature name>__value_count`. `_build_per_row_column` reads its
+inputs from a new `_build_per_row_inputs`, which appends the count column for a
+value-count primitive, and wraps the result in `.over(foreign_key)` as it does
+today. Conditions, the
 cutoff, defaults and the join are unchanged: both columns are added to the
 already-masked child.
 
@@ -93,8 +94,14 @@ per roadmap rule 6, since featuretools' DFS uses it by default.
 - A unit test drives a custom `ValueCountAggregationPrimitive` through DFS to
   pin the contract: the counts it receives per row, and null counts for null
   values.
-- Tests asserting the exact contents of `AGG_DEFAULTS` or of a default DFS run
-  are updated for `mode`.
+- `test_defaults_are_the_documented_set` lists `mode`.
+- The shared `db` fixture's `transactions` table gains a string column
+  `channel`, so `test_zero_config_run_warns_about_nothing` still finds a home
+  for every default primitive.
+- `test_it_routes_the_database_through_a_pipeline` imputes only the numeric
+  columns through a `ColumnTransformer` with `dtype_selector("numeric")`, as
+  `docs/guide/sklearn.md` shows, since default DFS output now holds a string
+  column.
 
 ## Docs
 
