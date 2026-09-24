@@ -1,9 +1,6 @@
 """Built-in aggregation primitives.
 
-Every expression here is legal inside a lazy ``group_by().agg()``. Length-changing
-expressions such as ``mode()`` are not -- narwhals rejects them on lazy frames --
-which is why ``quantiles`` rather than ``n_most_common`` is the multi-output
-primitive.
+Each one reduces the rows of a child table to one value per parent row.
 """
 
 from __future__ import annotations
