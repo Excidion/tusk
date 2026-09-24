@@ -35,6 +35,7 @@ AGG_DEFAULTS: tuple[str, ...] = (
     "n_unique",
     "skew",
     "percent_true",
+    "mode",
 )
 
 CONDITIONAL_DEFAULTS: tuple[str, ...] = ("count", "sum")
