@@ -622,6 +622,39 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
     assert not [w for w in recwarn if issubclass(w.category, CategoricalDtypeWarning)]
 
 
+def test_no_categorical_warning_for_primitive_with_categorical_signature(recwarn):
+    """``mode`` accepts CATEGORICAL directly, so it must not warn, and it must
+    still produce a feature for the Categorical column.
+    """
+    from tusk.exceptions import CategoricalDtypeWarning
+
+    db = (
+        tusk.Database("x")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3],
+                    "parent_id": [1, 1, 2],
+                    "cat": pl.Series(["a", "a", "b"], dtype=pl.Categorical),
+                },
+            ),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    got = synthesize(
+        db,
+        "parents",
+        agg_primitives=["mode"],
+        trans_primitives=[],
+        max_depth=1,
+    )
+    assert not [w for w in recwarn if issubclass(w.category, CategoricalDtypeWarning)]
+    assert "MODE__children__cat" in names(got)
+
+
 def test_requested_primitive_with_no_matching_column_warns():
     """Asking for a primitive and silently getting nothing is the bug.
 

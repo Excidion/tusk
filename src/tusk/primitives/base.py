@@ -231,6 +231,8 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
     ``SUM(x > AVG(x))``. The compiler therefore adds :meth:`build_per_row`
     to the child as a column computed within each foreign-key group, and
     :meth:`build` and :meth:`outputs` take that one column as their input.
+    Its per-row expression must read an aggregate of the group, such as
+    ``expr.mean()``.
     """
 
     @abstractmethod
@@ -260,8 +262,7 @@ class ValueCountAggregationPrimitive(GroupRelativeAggregationPrimitive):
     """A group-relative aggregation reading each row's value and its count.
 
     It takes one input column. :meth:`build_per_row` receives that column and,
-    per row, how often the row's value occurs in its group. Its per-row
-    expression must read an aggregate of the group, such as ``counts.max()``.
+    per row, how often the row's value occurs in its group.
     """
 
     @abstractmethod

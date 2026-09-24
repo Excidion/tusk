@@ -53,7 +53,7 @@ class LargestValueShare(ValueCountAggregationPrimitive):
     output_dtype = nw.Float64
 
     def build_per_row(self, values, counts):
-        return counts / counts.sum()
+        return counts / counts.count()
 
     def build(self, per_row):
         return per_row.max()
@@ -531,9 +531,10 @@ def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_ro
 
 
 def test_a_value_count_aggregation_reads_each_rows_value_count():
-    # parent 1: a, a, b, null -> counts 2, 2, 1, null -> shares 0.4, 0.4, 0.2 -> 0.4
-    # parent 2: c, null, null -> counts 1, null, null -> share 1.0
-    #   (if nulls were counted, this would be 0.4)
+    # parent 1: a, a, b, null -> counts 2, 2, 1, null; 3 known rows
+    #   -> shares 2/3, 2/3, 1/3 -> 2/3
+    # parent 2: c, null, null -> counts 1, null, null; 1 known row -> share 1.0
+    #   (if nulls were counted, this would be 2/3)
     # parent 3: no children -> None
     labels = (
         tusk.Database("labels")
@@ -558,7 +559,7 @@ def test_a_value_count_aggregation_reads_each_rows_value_count():
     )
     got = collect([feature], labels)
     assert got["LARGEST_VALUE_SHARE__children__label"].to_list() == [
-        pytest.approx(0.4),
+        pytest.approx(2 / 3),
         pytest.approx(1.0),
         None,
     ]

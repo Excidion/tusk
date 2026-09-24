@@ -480,6 +480,9 @@ class _Context:
         it *silently* is not: the user would get a feature matrix with columns
         quietly missing and nothing to explain why.
 
+        A primitive with a signature that already accepts CATEGORICAL directly
+        is not warned about: it is applied to the column, not skipping it.
+
         Each (primitive, column) pair warns at most once per synthesis run.
 
         Args:
@@ -488,6 +491,10 @@ class _Context:
         """
         if not any(
             DtypeFamily.STRING in signature for signature in primitive.signatures
+        ):
+            return
+        if any(
+            DtypeFamily.CATEGORICAL in signature for signature in primitive.signatures
         ):
             return
         # Arity is uniform across a primitive's signatures, so one answers for all.
