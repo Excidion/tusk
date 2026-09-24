@@ -1,0 +1,122 @@
+# Value-count aggregations
+
+Make `mode` run on every backend tusk supports by computing it from per-group
+value counts, and introduce value-count aggregations as a primitive kind that
+later primitives (`entropy`, `max_count`, `min_count`, `median_count`,
+`n_most_common`) can reuse. This pull request ships `mode` as the only one; it
+exists so the maintainer can judge the added complexity before merging.
+
+## Why
+
+`mode` on main is `expr.drop_nulls().mode(keep="all").min()`. narwhals only
+implements that on polars and pandas: duckdb, sqlframe and ibis raise
+`NotImplementedError`, and pyarrow and dask reject it inside `group_by().agg()`.
+That breaks shared rule 1 of the
+[parity roadmap](2026-09-13-primitive-parity-roadmap-design.md) (both backends
+or ⛔). `mode(keep="any")` runs on SQL backends but returns an arbitrary tied
+value, never featuretools' answer.
+
+## Probe
+
+Twenty shuffled datasets, fifty groups each, every group a two-way tie;
+featuretools answers the smaller tied value. Counting each row's value within
+its group with a window, flagging the rows holding the group's highest count
+with a second window, and taking the smallest flagged value in the
+`group_by().agg()`:
+
+| Backend | Result |
+| --- | --- |
+| polars, pandas, pyarrow, duckdb, sqlframe, ibis | 20/20 match featuretools |
+| dask | fails: `when/then` combined with `over` is not co-aligned |
+
+A separate count table joined back onto the parent also covered dask, but
+duplicates the compiler's join, default and condition handling. It was
+rejected for that cost.
+
+## Design
+
+### Primitive kind
+
+`ValueCountAggregationPrimitive` in `tusk/primitives/base.py`, a subclass of
+`GroupRelativeAggregationPrimitive`:
+
+- `compare_with_group(expr, counts)` receives the input column and, per row, how
+  often that row's value occurs in its group. The count is null where the
+  value is null.
+- `build(comparisons)` reduces the comparison column, as for any group-relative
+  aggregation.
+- A value-count primitive takes exactly one input column.
+
+Its docstring states what the two arguments hold. Why the counts arrive as a
+column (narwhals rejects length-changing expressions inside a lazy `agg`, and
+SQL cannot nest one window inside another) goes into a comment only where the
+code would otherwise look wrong.
+
+### Rename
+
+`GroupRelativeAggregationPrimitive.build_per_row` becomes `compare_with_group`,
+and the parameter of its `build` becomes `comparisons`. The new names state
+what the step does: it compares each row with its group. The compiler helpers
+change with them: `_add_comparison_columns`, `_build_comparison_column`,
+`_select_comparison_inputs`, `_generate_comparison_column_name`, and the
+column suffix `__comparison`. This changes the public API for custom
+group-relative primitives.
+
+### Compiler
+
+`_join_condition_aggregations` in `tusk/compiler.py` calls a new
+`_add_value_count_columns` right before `_add_comparison_columns`. It adds, in a
+`with_columns` of its own, one count column per value-count feature:
+
+```python
+nw.when(~value.is_null()).then(nw.len().over(foreign_key, value.name))
+```
+
+named `<feature name>__value_count`. `_build_comparison_column` reads its
+inputs from a new `_select_comparison_inputs`, which appends the count column for a
+value-count primitive, and wraps the result in `.over(foreign_key)` as it does
+today. Conditions, the
+cutoff, defaults and the join are unchanged: both columns are added to the
+already-masked child.
+
+### `mode`
+
+```python
+class Mode(ValueCountAggregationPrimitive):
+    def compare_with_group(self, expr, counts):
+        return nw.when(counts == counts.max()).then(expr)
+
+    def build(self, comparisons):
+        return comparisons.min()
+```
+
+Behaviour is unchanged from main: nulls are skipped, a tie gives the smallest
+value, and an empty or all-null group gives null. `mode` joins `AGG_DEFAULTS`,
+per roadmap rule 6, since featuretools' DFS uses it by default.
+
+## Tests
+
+- `mode` rejoins the duckdb parametrization in `tests/test_backend_duckdb.py`;
+  `AGGREGATIONS_DUCKDB_CANNOT_RUN` and `test_mode_is_not_implemented_on_duckdb`
+  go.
+- The shared cases in `tests/aggregation_cases.py` and the featuretools
+  comparison stay as they are; parent 4 is the four-way tie.
+- A unit test drives a custom `ValueCountAggregationPrimitive` through DFS to
+  pin the contract: the counts it receives per row, and null counts for null
+  values.
+- `test_defaults_are_the_documented_set` lists `mode`.
+- The shared `db` fixture's `transactions` table gains a string column
+  `channel`, so `test_zero_config_run_warns_about_nothing` still finds a home
+  for every default primitive.
+- `test_it_routes_the_database_through_a_pipeline` imputes only the numeric
+  columns through a `ColumnTransformer` with `dtype_selector("numeric")`, as
+  `docs/guide/sklearn.md` shows, since default DFS output now holds a string
+  column.
+
+## Docs
+
+- `docs/api/primitives.md` lists `ValueCountAggregationPrimitive` with the
+  other base classes.
+- `docs/guide/custom-primitives.md` gets a short section on writing one.
+- The `mode` row of `docs/guide/primitive-coverage.md` drops its backend
+  limitation.

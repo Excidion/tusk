@@ -6,6 +6,7 @@ import numpy as np
 import polars as pl
 import pytest
 import sklearn
+from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
@@ -14,7 +15,7 @@ from sklearn.pipeline import Pipeline
 
 import tusk
 from tusk.exceptions import SchemaError, UnmatchedPrimitiveWarning
-from tusk.sklearn import DFSTransformer
+from tusk.sklearn import DFSTransformer, dtype_selector
 
 KEYS = [1, 2, 3]
 Y = [0, 1, 0]
@@ -78,14 +79,26 @@ def test_it_routes_the_database_through_a_pipeline(db):
     # null MEAN/MIN/MAX/STD features for those nested empty groups (confirmed
     # against tusk.deep_feature_synthesis directly, independent of this
     # wrapper) -- real DFS output, not something LogisticRegression accepts
-    # unpreprocessed. What is under test here is metadata routing, not
+    # unpreprocessed. The imputer takes only the numeric columns, because the
+    # MODE feature is a string. What is under test here is metadata routing, not
     # feature-matrix completeness, so the fix belongs in the fixture pipeline
     # rather than in DFSTransformer.
     with sklearn.config_context(enable_metadata_routing=True):
         pipe = Pipeline(
             [
                 ("dfs", _transformer()),
-                ("impute", SimpleImputer(keep_empty_features=True)),
+                (
+                    "impute",
+                    ColumnTransformer(
+                        [
+                            (
+                                "numbers",
+                                SimpleImputer(keep_empty_features=True),
+                                dtype_selector("numeric"),
+                            ),
+                        ],
+                    ),
+                ),
                 ("clf", LogisticRegression()),
             ],
         )

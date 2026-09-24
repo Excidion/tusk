@@ -50,6 +50,7 @@ from tusk.primitives.base import (
     OrderedTransformPrimitive,
     Primitive,
     TransformPrimitive,
+    ValueCountAggregationPrimitive,
 )
 from tusk.primitives.registry import register, resolve, resolve_all
 from tusk.primitives.transform import (
@@ -208,6 +209,7 @@ __all__ = [
     "TopLevelDomain",
     "TransformPrimitive",
     "URLToProtocol",
+    "ValueCountAggregationPrimitive",
     "Variance",
     "Weekday",
     "Year",

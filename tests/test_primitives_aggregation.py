@@ -139,6 +139,7 @@ def test_defaults_are_the_documented_set():
         "n_unique",
         "skew",
         "percent_true",
+        "mode",
     )
 
 

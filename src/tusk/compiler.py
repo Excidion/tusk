@@ -29,6 +29,7 @@ from tusk.primitives.base import (
     OrderedAggregationPrimitive,
     OrderedTransformPrimitive,
     Primitive,
+    ValueCountAggregationPrimitive,
 )
 
 if TYPE_CHECKING:
@@ -437,7 +438,8 @@ def _join_condition_aggregations(
             e.alias(n) for e, n in zip(built, feature.output_names, strict=True)
         )
 
-    child = _add_per_row_columns(child, relationship, batch)
+    child = _add_value_count_columns(child, relationship, batch)
+    child = _add_comparison_columns(child, relationship, batch)
     grouped = child.group_by(relationship.foreign_key).agg(*exprs)
     frame = frame.join(
         grouped,
@@ -474,7 +476,7 @@ def _build_aggregation(
     """
     primitive = feature.primitive
     if isinstance(primitive, GroupRelativeAggregationPrimitive):
-        return primitive.outputs(nw.col(_generate_per_row_column_name(feature)))
+        return primitive.outputs(nw.col(_generate_comparison_column_name(feature)))
     inputs = [nw.col(b.name) for b in feature.base_features]
     if isinstance(primitive, OrderedAggregationPrimitive):
         order_by = _order_by(database, relationship.child, primitive.name)
@@ -482,12 +484,57 @@ def _build_aggregation(
     return _build_expressions(primitive, inputs, cutoff_time)
 
 
-def _add_per_row_columns(
+def _add_value_count_columns(
     child: nw.LazyFrame,
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
 ) -> nw.LazyFrame:
-    """Add the per-row column every group-relative aggregation reduces.
+    """Add the count column that each value-count aggregation reads.
+
+    Args:
+        child: The child frame, already filtered to the condition.
+        relationship: The relationship being aggregated across.
+        batch: The aggregation features sharing this condition.
+
+    Returns:
+        The child frame with one column per value-count feature.
+    """
+    counts = [
+        _build_value_count_column(feature, relationship)
+        for feature in batch
+        if isinstance(feature.primitive, ValueCountAggregationPrimitive)
+    ]
+    return child.with_columns(*counts) if counts else child
+
+
+def _build_value_count_column(
+    feature: AggregationFeature,
+    relationship: Relationship,
+) -> nw.Expr:
+    """Build the count of how often each row's value occurs in its group.
+
+    Args:
+        feature: The value-count aggregation feature.
+        relationship: The relationship whose foreign key forms the groups.
+
+    Returns:
+        The named count expression. It is null where the value is null.
+    """
+    value = feature.base_features[0].name
+    count = nw.len().over(relationship.foreign_key, value)
+    return (
+        nw.when(~nw.col(value).is_null())
+        .then(count)
+        .alias(_generate_value_count_column_name(feature))
+    )
+
+
+def _add_comparison_columns(
+    child: nw.LazyFrame,
+    relationship: Relationship,
+    batch: Sequence[AggregationFeature],
+) -> nw.LazyFrame:
+    """Add the comparison column that each group-relative aggregation reduces.
 
     Args:
         child: The child frame, already filtered to the condition.
@@ -497,20 +544,20 @@ def _add_per_row_columns(
     Returns:
         The child frame with one column per group-relative feature.
     """
-    per_row = [
-        _build_per_row_column(feature, feature.primitive, relationship)
+    comparisons = [
+        _build_comparison_column(feature, feature.primitive, relationship)
         for feature in batch
         if isinstance(feature.primitive, GroupRelativeAggregationPrimitive)
     ]
-    return child.with_columns(*per_row) if per_row else child
+    return child.with_columns(*comparisons) if comparisons else child
 
 
-def _build_per_row_column(
+def _build_comparison_column(
     feature: AggregationFeature,
     primitive: GroupRelativeAggregationPrimitive,
     relationship: Relationship,
 ) -> nw.Expr:
-    """Build a group-relative aggregation's per-row column within each group.
+    """Build a group-relative aggregation's comparison column within each group.
 
     Args:
         feature: The group-relative aggregation feature.
@@ -518,14 +565,32 @@ def _build_per_row_column(
         relationship: The relationship whose foreign key forms the groups.
 
     Returns:
-        The named per-row expression.
+        The named comparison expression.
+    """
+    inputs = _select_comparison_inputs(feature)
+    comparison = primitive.compare_with_group(*inputs)
+    return comparison.over(relationship.foreign_key).alias(
+        _generate_comparison_column_name(feature),
+    )
+
+
+def _select_comparison_inputs(feature: AggregationFeature) -> list[nw.Expr]:
+    """Select the columns that a group-relative aggregation's comparison reads.
+
+    Args:
+        feature: The group-relative aggregation feature.
+
+    Returns:
+        The feature's input columns, then its count column if it is a
+        value-count aggregation.
     """
     inputs = [nw.col(b.name) for b in feature.base_features]
-    per_row = primitive.build_per_row(*inputs).over(relationship.foreign_key)
-    return per_row.alias(_generate_per_row_column_name(feature))
+    if isinstance(feature.primitive, ValueCountAggregationPrimitive):
+        inputs.append(nw.col(_generate_value_count_column_name(feature)))
+    return inputs
 
 
-def _generate_per_row_column_name(feature: AggregationFeature) -> str:
+def _generate_comparison_column_name(feature: AggregationFeature) -> str:
     """Name the child column a group-relative aggregation reduces.
 
     Args:
@@ -534,7 +599,19 @@ def _generate_per_row_column_name(feature: AggregationFeature) -> str:
     Returns:
         The column name.
     """
-    return f"{feature.name}__per_row"
+    return f"{feature.name}__comparison"
+
+
+def _generate_value_count_column_name(feature: AggregationFeature) -> str:
+    """Name the child column that holds a value-count aggregation's counts.
+
+    Args:
+        feature: The value-count aggregation feature.
+
+    Returns:
+        The column name.
+    """
+    return f"{feature.name}__value_count"
 
 
 def _add_directs(

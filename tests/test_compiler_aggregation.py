@@ -14,7 +14,11 @@ from tusk.exceptions import ValidationError
 from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, DirectFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
-from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
+from tusk.primitives.base import (
+    AggregationPrimitive,
+    NeedsCutoffTime,
+    ValueCountAggregationPrimitive,
+)
 from tusk.primitives.registry import resolve
 
 CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
@@ -38,6 +42,21 @@ class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
 
     def build(self, *inputs, cutoff_time):
         return (nw.lit(cutoff_time) - inputs[0]).min()
+
+
+@dataclass(frozen=True)
+class LargestValueShare(ValueCountAggregationPrimitive):
+    """Largest share of a group's known rows that hold one value."""
+
+    name = "largest_value_share"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.Float64
+
+    def compare_with_group(self, expr, counts):
+        return counts / counts.count()
+
+    def build(self, comparisons):
+        return comparisons.max()
 
 
 def collect(features, db, cutoff_time=None):
@@ -509,3 +528,38 @@ def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_ro
 
     values = dict(zip(matrix["id"], matrix[feature.name], strict=True))
     assert values == {1: 0, 2: 4}
+
+
+def test_a_value_count_aggregation_reads_each_rows_value_count():
+    # parent 1: a, a, b, null -> counts 2, 2, 1, null; 3 known rows
+    #   -> shares 2/3, 2/3, 1/3 -> 2/3
+    # parent 2: c, null, null -> counts 1, null, null; 1 known row -> share 1.0
+    #   (if nulls were counted, this would be 2/3)
+    # parent 3: no children -> None
+    labels = (
+        tusk.Database("labels")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2, 3]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3, 4, 5, 6, 7],
+                    "parent_id": [1, 1, 1, 1, 2, 2, 2],
+                    "label": ["a", "a", "b", None, "c", None, None],
+                },
+            ),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    feature = AggregationFeature(
+        LargestValueShare(),
+        (IdentityFeature("children", "label", nw.String()),),
+        Relationship("parents", "children", "parent_id"),
+    )
+    got = collect([feature], labels)
+    assert got["LARGEST_VALUE_SHARE__children__label"].to_list() == [
+        pytest.approx(2 / 3),
+        pytest.approx(1.0),
+        None,
+    ]
