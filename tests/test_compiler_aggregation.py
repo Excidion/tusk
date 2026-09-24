@@ -45,23 +45,18 @@ class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
 
 
 @dataclass(frozen=True)
-class SummedValueCount(ValueCountAggregationPrimitive):
-    """Sum over a group's rows of how often each row's value occurs in it."""
+class LargestValueShare(ValueCountAggregationPrimitive):
+    """Largest share of a group's known rows that hold one value."""
 
-    name = "summed_value_count"
+    name = "largest_value_share"
     input_dtypes = (F.STRING,)
-    output_dtype = nw.Int64
+    output_dtype = nw.Float64
 
     def build_per_row(self, values, counts):
-        # narwhals rejects `.over()` on a purely elementwise expression, and
-        # the compiler always wraps build_per_row's result in one; adding
-        # counts.max() minus itself is 0 (and null stays null), so this
-        # returns counts unchanged while giving `.over()` a non-elementwise
-        # expression to wrap.
-        return counts + (counts.max() - counts.max())
+        return counts / counts.sum()
 
     def build(self, per_row):
-        return per_row.sum()
+        return per_row.max()
 
 
 def collect(features, db, cutoff_time=None):
@@ -536,9 +531,10 @@ def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_ro
 
 
 def test_a_value_count_aggregation_reads_each_rows_value_count():
-    # parent 1: a, a, b, null -> counts 2, 2, 1, null
-    # parent 2: c, null, null -> counts 1, null, null; a null value has no count
-    # parent 3: no children
+    # parent 1: a, a, b, null -> counts 2, 2, 1, null -> shares 0.4, 0.4, 0.2 -> 0.4
+    # parent 2: c, null, null -> counts 1, null, null -> share 1.0
+    #   (if nulls were counted, this would be 0.4)
+    # parent 3: no children -> None
     labels = (
         tusk.Database("labels")
         .add_table("parents", pl.LazyFrame({"id": [1, 2, 3]}), primary_key="id")
@@ -556,9 +552,13 @@ def test_a_value_count_aggregation_reads_each_rows_value_count():
         .add_relationship(parent="parents", child="children", foreign_key="parent_id")
     )
     feature = AggregationFeature(
-        SummedValueCount(),
+        LargestValueShare(),
         (IdentityFeature("children", "label", nw.String()),),
         Relationship("parents", "children", "parent_id"),
     )
     got = collect([feature], labels)
-    assert got["SUMMED_VALUE_COUNT__children__label"].to_list() == [5, 1, None]
+    assert got["LARGEST_VALUE_SHARE__children__label"].to_list() == [
+        pytest.approx(0.4),
+        pytest.approx(1.0),
+        None,
+    ]

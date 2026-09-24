@@ -260,7 +260,8 @@ class ValueCountAggregationPrimitive(GroupRelativeAggregationPrimitive):
     """A group-relative aggregation reading each row's value and its count.
 
     It takes one input column. :meth:`build_per_row` receives that column and,
-    per row, how often the row's value occurs in its group.
+    per row, how often the row's value occurs in its group. Its per-row
+    expression must read an aggregate of the group, such as ``counts.max()``.
     """
 
     @abstractmethod
