@@ -50,11 +50,11 @@ when it reads the rows in `row_creation_time` order, as `first` does. An
 aggregation that measures each row against its own group first, as
 `count_above_mean` does, subclasses
 [`GroupRelativeAggregationPrimitive`][tusk.primitives.GroupRelativeAggregationPrimitive],
-since SQL backends reject an aggregate nested in an aggregate. One that needs
-how often each value occurs in its group, as `mode` does, subclasses
-[`ValueCountAggregationPrimitive`][tusk.primitives.ValueCountAggregationPrimitive]:
-its `build_per_row(values, counts)` receives the column and each row's count.
-Subclass
+since SQL backends reject an aggregate nested in an aggregate. An aggregation
+that needs to know how often each value occurs in its group subclasses
+[`ValueCountAggregationPrimitive`][tusk.primitives.ValueCountAggregationPrimitive],
+as `mode` does. Its `build_per_row(values, counts)` receives the column and,
+for each row, how often the row's value occurs. Subclass
 [`TransformPrimitive`][tusk.primitives.TransformPrimitive] for something that
 maps a row to a row. A transform that reads the other rows of its foreign-key
 group subclasses

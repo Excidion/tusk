@@ -573,14 +573,14 @@ class Mode(ValueCountAggregationPrimitive):
     input_dtypes = ((F.STRING,), (F.CATEGORICAL,))
 
     def build_per_row(self, values: nw.Expr, counts: nw.Expr) -> nw.Expr:
-        """Build each row's value where it is among its group's most frequent.
+        """Build each row's value if it is a most frequent value of its group.
 
         Args:
             values: The label column.
             counts: How often each row's value occurs in its group.
 
         Returns:
-            A narwhals expression; null on every other row.
+            A narwhals expression. It is null on every other row.
         """
         return nw.when(counts == counts.max()).then(values)
 
@@ -588,7 +588,8 @@ class Mode(ValueCountAggregationPrimitive):
         """Build the smallest of the most frequent values.
 
         Args:
-            per_row: The most frequent values, null on every other row.
+            per_row: Each row's value if it is a most frequent value, else
+                null.
 
         Returns:
             A narwhals expression.

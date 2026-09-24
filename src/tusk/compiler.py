@@ -489,7 +489,7 @@ def _add_value_count_columns(
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
 ) -> nw.LazyFrame:
-    """Add the count column every value-count aggregation reads.
+    """Add the count column that each value-count aggregation reads.
 
     Args:
         child: The child frame, already filtered to the condition.
@@ -511,14 +511,14 @@ def _build_value_count_column(
     feature: AggregationFeature,
     relationship: Relationship,
 ) -> nw.Expr:
-    """Build how often each row's value occurs in its group.
+    """Build the count of how often each row's value occurs in its group.
 
     Args:
         feature: The value-count aggregation feature.
         relationship: The relationship whose foreign key forms the groups.
 
     Returns:
-        The named count expression; null where the value is null.
+        The named count expression. It is null where the value is null.
     """
     value = feature.base_features[0].name
     count = nw.len().over(relationship.foreign_key, value)
@@ -573,7 +573,7 @@ def _build_per_row_column(
 
 
 def _select_build_per_row_inputs(feature: AggregationFeature) -> list[nw.Expr]:
-    """Build the columns a group-relative aggregation's per-row expression reads.
+    """Select the columns that a group-relative aggregation's per-row step reads.
 
     Args:
         feature: The group-relative aggregation feature.
@@ -601,7 +601,7 @@ def _generate_per_row_column_name(feature: AggregationFeature) -> str:
 
 
 def _generate_value_count_column_name(feature: AggregationFeature) -> str:
-    """Name the child column holding a value-count aggregation's counts.
+    """Name the child column that holds a value-count aggregation's counts.
 
     Args:
         feature: The value-count aggregation feature.

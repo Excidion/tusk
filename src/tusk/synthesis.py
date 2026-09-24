@@ -480,8 +480,7 @@ class _Context:
         it *silently* is not: the user would get a feature matrix with columns
         quietly missing and nothing to explain why.
 
-        A primitive with a signature that already accepts CATEGORICAL directly
-        is not warned about: it is applied to the column, not skipping it.
+        It does not warn about a primitive that has a CATEGORICAL signature.
 
         Each (primitive, column) pair warns at most once per synthesis run.
 

@@ -79,8 +79,8 @@ def test_it_routes_the_database_through_a_pipeline(db):
     # null MEAN/MIN/MAX/STD features for those nested empty groups (confirmed
     # against tusk.deep_feature_synthesis directly, independent of this
     # wrapper) -- real DFS output, not something LogisticRegression accepts
-    # unpreprocessed. It takes the numeric columns only, since MODE is a
-    # string. What is under test here is metadata routing, not
+    # unpreprocessed. The imputer takes only the numeric columns, because the
+    # MODE feature is a string. What is under test here is metadata routing, not
     # feature-matrix completeness, so the fix belongs in the fixture pipeline
     # rather than in DFSTransformer.
     with sklearn.config_context(enable_metadata_routing=True):
