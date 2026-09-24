@@ -202,7 +202,7 @@ def _build_value_count_column(
 Replace the body of `_build_per_row_column` (keep its signature and docstring):
 
 ```python
-    inputs = _build_per_row_inputs(feature)
+    inputs = _select_build_per_row_inputs(feature)
     per_row = primitive.build_per_row(*inputs).over(relationship.foreign_key)
     return per_row.alias(_generate_per_row_column_name(feature))
 ```
@@ -210,7 +210,7 @@ Replace the body of `_build_per_row_column` (keep its signature and docstring):
 Insert directly below `_build_per_row_column`:
 
 ```python
-def _build_per_row_inputs(feature: AggregationFeature) -> list[nw.Expr]:
+def _select_build_per_row_inputs(feature: AggregationFeature) -> list[nw.Expr]:
     """Build the columns a group-relative aggregation's per-row expression reads.
 
     Args:

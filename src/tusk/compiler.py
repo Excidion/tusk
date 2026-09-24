@@ -567,12 +567,12 @@ def _build_per_row_column(
     Returns:
         The named per-row expression.
     """
-    inputs = _build_per_row_inputs(feature)
+    inputs = _select_build_per_row_inputs(feature)
     per_row = primitive.build_per_row(*inputs).over(relationship.foreign_key)
     return per_row.alias(_generate_per_row_column_name(feature))
 
 
-def _build_per_row_inputs(feature: AggregationFeature) -> list[nw.Expr]:
+def _select_build_per_row_inputs(feature: AggregationFeature) -> list[nw.Expr]:
     """Build the columns a group-relative aggregation's per-row expression reads.
 
     Args:

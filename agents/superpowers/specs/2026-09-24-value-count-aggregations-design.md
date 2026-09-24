@@ -63,7 +63,7 @@ nw.when(~value.is_null()).then(nw.len().over(foreign_key, value.name))
 ```
 
 named `<feature name>__value_count`. `_build_per_row_column` reads its
-inputs from a new `_build_per_row_inputs`, which appends the count column for a
+inputs from a new `_select_build_per_row_inputs`, which appends the count column for a
 value-count primitive, and wraps the result in `.over(foreign_key)` as it does
 today. Conditions, the
 cutoff, defaults and the join are unchanged: both columns are added to the

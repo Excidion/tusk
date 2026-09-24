@@ -622,7 +622,7 @@ def test_no_categorical_warning_when_no_string_primitive_requested(recwarn):
     assert not [w for w in recwarn if issubclass(w.category, CategoricalDtypeWarning)]
 
 
-def test_no_categorical_warning_for_primitive_with_categorical_signature(recwarn):
+def test_categorical_column_accepted_by_a_primitive_does_not_warn(recwarn):
     """``mode`` accepts CATEGORICAL directly, so it must not warn, and it must
     still produce a feature for the Categorical column.
     """
