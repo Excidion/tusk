@@ -256,6 +256,27 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
         """
 
 
+class ValueCountAggregationPrimitive(GroupRelativeAggregationPrimitive):
+    """A group-relative aggregation reading each row's value and its count.
+
+    It takes one input column. :meth:`build_per_row` receives that column and,
+    per row, how often the row's value occurs in its group.
+    """
+
+    @abstractmethod
+    def build_per_row(self, values: nw.Expr, counts: nw.Expr) -> nw.Expr:
+        """Build the per-row expression from each row's value and its count.
+
+        Args:
+            values: The input column.
+            counts: How often each row's value occurs in its group; null
+                where the value is null.
+
+        Returns:
+            A narwhals expression with one value per row.
+        """
+
+
 class TransformPrimitive(Primitive):
     """A primitive applied row-wise within a single table."""
 

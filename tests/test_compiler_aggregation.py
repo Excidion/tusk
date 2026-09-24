@@ -14,7 +14,11 @@ from tusk.exceptions import ValidationError
 from tusk.feature_list import FeatureList
 from tusk.features import AggregationFeature, DirectFeature, IdentityFeature
 from tusk.primitives.aggregation import Count, Mean, NUnique, Quantiles, Sum
-from tusk.primitives.base import AggregationPrimitive, NeedsCutoffTime
+from tusk.primitives.base import (
+    AggregationPrimitive,
+    NeedsCutoffTime,
+    ValueCountAggregationPrimitive,
+)
 from tusk.primitives.registry import resolve
 
 CUSTOMER_SESSION = Relationship("customers", "sessions", "customer_id")
@@ -38,6 +42,26 @@ class CutoffAggregation(NeedsCutoffTime, AggregationPrimitive):
 
     def build(self, *inputs, cutoff_time):
         return (nw.lit(cutoff_time) - inputs[0]).min()
+
+
+@dataclass(frozen=True)
+class SummedValueCount(ValueCountAggregationPrimitive):
+    """Sum over a group's rows of how often each row's value occurs in it."""
+
+    name = "summed_value_count"
+    input_dtypes = (F.STRING,)
+    output_dtype = nw.Int64
+
+    def build_per_row(self, values, counts):
+        # narwhals rejects `.over()` on a purely elementwise expression, and
+        # the compiler always wraps build_per_row's result in one; adding
+        # counts.max() minus itself is 0 (and null stays null), so this
+        # returns counts unchanged while giving `.over()` a non-elementwise
+        # expression to wrap.
+        return counts + (counts.max() - counts.max())
+
+    def build(self, per_row):
+        return per_row.sum()
 
 
 def collect(features, db, cutoff_time=None):
@@ -509,3 +533,32 @@ def test_a_masked_out_group_falls_back_while_a_surviving_group_keeps_its_full_ro
 
     values = dict(zip(matrix["id"], matrix[feature.name], strict=True))
     assert values == {1: 0, 2: 4}
+
+
+def test_a_value_count_aggregation_reads_each_rows_value_count():
+    # parent 1: a, a, b, null -> counts 2, 2, 1, null
+    # parent 2: c, null, null -> counts 1, null, null; a null value has no count
+    # parent 3: no children
+    labels = (
+        tusk.Database("labels")
+        .add_table("parents", pl.LazyFrame({"id": [1, 2, 3]}), primary_key="id")
+        .add_table(
+            "children",
+            pl.LazyFrame(
+                {
+                    "id": [1, 2, 3, 4, 5, 6, 7],
+                    "parent_id": [1, 1, 1, 1, 2, 2, 2],
+                    "label": ["a", "a", "b", None, "c", None, None],
+                },
+            ),
+            primary_key="id",
+        )
+        .add_relationship(parent="parents", child="children", foreign_key="parent_id")
+    )
+    feature = AggregationFeature(
+        SummedValueCount(),
+        (IdentityFeature("children", "label", nw.String()),),
+        Relationship("parents", "children", "parent_id"),
+    )
+    got = collect([feature], labels)
+    assert got["SUMMED_VALUE_COUNT__children__label"].to_list() == [5, 1, None]

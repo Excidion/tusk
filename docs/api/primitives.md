@@ -14,6 +14,8 @@
 
 ::: tusk.primitives.GroupRelativeAggregationPrimitive
 
+::: tusk.primitives.ValueCountAggregationPrimitive
+
 ::: tusk.primitives.TransformPrimitive
 
 ::: tusk.primitives.GroupTransformPrimitive
