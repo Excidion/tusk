@@ -2,7 +2,7 @@
 
 :func:`read_keys` normalizes the primary key ``X`` to a list.
 :func:`check_keys_are_visible` rejects keys the target table has no row for.
-:func:`collect_matrix` filters the matrix to those keys, collects it, and
+:func:`collect_feature_matrix` filters the matrix to those keys, collects it, and
 returns the rows in key order. :func:`backend_hint` annotates exceptions from
 a user's pipeline with the frame backend in play.
 
@@ -89,8 +89,8 @@ def check_keys_are_visible(
     _reject_missing_keys(keys, set(visible[primary_key].to_list()), primary_key)
 
 
-def collect_matrix(
-    matrix: IntoLazyFrame,
+def collect_feature_matrix(
+    feature_matrix: IntoLazyFrame,
     primary_key: str,
     keys: list[Any],
     output_backend: str | None,
@@ -98,7 +98,7 @@ def collect_matrix(
     """Materialize the feature matrix for ``keys``, in ``keys`` order.
 
     Args:
-        matrix: The uncomputed feature matrix from ``apply_features``.
+        feature_matrix: The uncomputed feature matrix from ``apply_features``.
         primary_key: The target table's primary key.
         keys: Key values selecting and ordering the rows.
         output_backend: Backend to collect to, or None to collect natively.
@@ -117,8 +117,8 @@ def collect_matrix(
             "target's primary key, so each row must be requested at most once",
         )
 
-    frame = nw.from_native(matrix)
-    filtered = frame.filter(nw.col(primary_key).is_in(keys))
+    table = nw.from_native(feature_matrix)
+    filtered = table.filter(nw.col(primary_key).is_in(keys))
     collected = _collect(filtered, output_backend)
 
     _reject_missing_keys(keys, set(collected[primary_key].to_list()), primary_key)
@@ -156,11 +156,11 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
     )
 
 
-def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
+def _collect(table: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
     """Collect, translating a missing backend package into a tusk error.
 
     Args:
-        frame: The filtered lazy matrix.
+        table: The filtered lazy matrix.
         output_backend: Backend name, or None for the database's own.
 
     Returns:
@@ -172,13 +172,13 @@ def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
     from tusk.exceptions import TuskError
 
     if output_backend is None:
-        return frame.collect()
+        return table.collect()
     try:
         # narwhals types `backend` as a 3-way Literal but accepts a plain
         # string. It rejects an unknown name itself, with a ValueError listing
         # what it accepts; this clause is for a name it accepts whose package
         # is not installed.
-        return frame.collect(backend=output_backend)  # ty: ignore[invalid-argument-type]
+        return table.collect(backend=output_backend)  # ty: ignore[invalid-argument-type]
     except ModuleNotFoundError as exc:
         raise TuskError(
             f"output_backend={output_backend!r} needs the {output_backend} "
@@ -187,7 +187,7 @@ def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
 
 
 @contextlib.contextmanager
-def backend_hint(frame: Any) -> Iterator[None]:
+def backend_hint(table: Any) -> Iterator[None]:
     """Attach a backend hint to whatever the user's pipeline raises.
 
     Many sklearn transformers reject non-pandas frames in ways that read as
@@ -199,7 +199,7 @@ def backend_hint(frame: Any) -> Iterator[None]:
     type and break a user's ``except ValueError`` around their own pipeline.
 
     Args:
-        frame: The matrix handed to the pipeline, used to name the backend.
+        table: The matrix handed to the pipeline, used to name the backend.
 
     Yields:
         None: Control returns to the caller's ``with`` block.
@@ -211,7 +211,7 @@ def backend_hint(frame: Any) -> Iterator[None]:
     try:
         yield
     except Exception as exc:
-        backend = nw.from_native(frame, eager_only=True, pass_through=True)
+        backend = nw.from_native(table, eager_only=True, pass_through=True)
         name = getattr(getattr(backend, "implementation", None), "name", "unknown")
         hint = (
             f"the feature matrix was collected as {name}; if this pipeline "

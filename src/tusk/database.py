@@ -94,7 +94,7 @@ class Database:
             name: Human-readable identifier for this database.
         """
         self.name = name
-        self._frames: dict[str, nw.LazyFrame] = {}
+        self._tables: dict[str, nw.LazyFrame] = {}
         self._schemas: dict[str, TableSchema] = {}
         self._relationships: list[Relationship] = []
         self._backend: Any = None
@@ -226,7 +226,7 @@ class Database:
         )
         validate_table(lazy, schema, validate)
 
-        self._frames[name] = lazy
+        self._tables[name] = lazy
         self._schemas[name] = schema
         self._backend = backend
         return self
@@ -356,7 +356,7 @@ class Database:
             SchemaError: If the table is unknown.
         """
         try:
-            return self._frames[name]
+            return self._tables[name]
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 

@@ -38,13 +38,13 @@ from tusk.sklearn._encoders import (
     get_last_step,
     validate_selection_pipeline,
 )
-from tusk.sklearn._frames import (
+from tusk.sklearn._lineage import Sentinels, make_sentinels
+from tusk.sklearn._tables import (
     backend_hint,
     check_keys_are_visible,
-    collect_matrix,
+    collect_feature_matrix,
     read_keys,
 )
-from tusk.sklearn._lineage import Sentinels, make_sentinels
 from tusk.synthesis import synthesize
 
 
@@ -145,8 +145,8 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         check_keys_are_visible(
             db, self.target_table, primary_key, keys, self.cutoff_time
         )
-        return collect_matrix(
-            matrix=self.features_.apply(db, self.cutoff_time),
+        return collect_feature_matrix(
+            feature_matrix=self.features_.apply(db, self.cutoff_time),
             primary_key=primary_key,
             keys=keys,
             output_backend=self.output_backend,
@@ -293,9 +293,11 @@ class DFSSelectorTransformer(DFSTransformer):
         super().fit(X, y, database=database)
         db = self.database_ if database is None else database
 
-        matrix = nw.from_native(super().transform(X, database=db), eager_only=True)
-        sentinels = make_sentinels(list(matrix.columns))
-        renamed = matrix.rename(sentinels.mapping)
+        feature_matrix = nw.from_native(
+            super().transform(X, database=db), eager_only=True
+        )
+        sentinels = make_sentinels(list(feature_matrix.columns))
+        renamed = feature_matrix.rename(sentinels.mapping)
         probe = renamed.to_native()
 
         # The selector is fitted once and then frozen; only the encoder is
@@ -328,7 +330,7 @@ class DFSSelectorTransformer(DFSTransformer):
         self.features_ = FeatureList(survivors)
 
         kept_columns = list(self.features_.output_names)
-        narrowed = matrix.select(kept_columns).rename(
+        narrowed = feature_matrix.select(kept_columns).rename(
             {c: sentinels.mapping[c] for c in kept_columns},
         )
         self.encoder_ = get_encoder_prefix(clone(self.selection_pipeline))
@@ -360,9 +362,11 @@ class DFSSelectorTransformer(DFSTransformer):
         """
         check_is_fitted(self, "kept_names_")
         db = self.database_ if database is None else database
-        matrix = nw.from_native(super().transform(X, database=db), eager_only=True)
+        feature_matrix = nw.from_native(
+            super().transform(X, database=db), eager_only=True
+        )
         kept_columns = list(self.features_.output_names)
-        probe = matrix.select(kept_columns).rename(
+        probe = feature_matrix.select(kept_columns).rename(
             {c: self.sentinels_.mapping[c] for c in kept_columns},
         )
         with backend_hint(probe.to_native()):
@@ -450,7 +454,7 @@ class DFSSelectorTransformer(DFSTransformer):
         # transform.
         order = list(self.encoder_.get_feature_names_out())
         indices = [order.index(n) for n in self.kept_names_]
-        frame = nw.from_native(encoded, eager_only=True, pass_through=True)
-        if isinstance(frame, nw.DataFrame):
-            return frame.select([frame.columns[i] for i in indices]).to_native()
+        table = nw.from_native(encoded, eager_only=True, pass_through=True)
+        if isinstance(table, nw.DataFrame):
+            return table.select([table.columns[i] for i in indices]).to_native()
         return encoded[:, indices]

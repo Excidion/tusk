@@ -74,9 +74,9 @@ def compile_features(
     closure = _closure(features)
     _require_cutoff_time(closure, cutoff_time)
 
-    frame = _table_frame(database, target, closure, cutoff_time)
+    table = _read_table(database, target, closure, cutoff_time)
     columns = [primary_key, *features.output_names]
-    return frame.select(*dict.fromkeys(columns))
+    return table.select(*dict.fromkeys(columns))
 
 
 def _reject_colliding_names(features: Sequence[Feature]) -> None:
@@ -145,7 +145,7 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         return
     measuring: set[str] = set()
     for feature in features:
-        measuring.update(_names_measuring_against_cutoff(feature))
+        measuring.update(_names_measuring_against_cutoff_time(feature))
     if measuring:
         raise ValidationError(
             f"{', '.join(sorted(measuring))} needs a cutoff_time; pass one "
@@ -153,7 +153,7 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
         )
 
 
-def _names_measuring_against_cutoff(feature: Feature) -> tuple[str, ...]:
+def _names_measuring_against_cutoff_time(feature: Feature) -> tuple[str, ...]:
     """Name whatever in a feature is measured against the cutoff time.
 
     Args:
@@ -175,7 +175,7 @@ def _names_measuring_against_cutoff(feature: Feature) -> tuple[str, ...]:
 
 def base_table(
     database: Database,
-    table: str,
+    table_name: str,
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
     """Return a table's frame as it stood at the cutoff.
@@ -190,31 +190,31 @@ def base_table(
 
     Args:
         database: The database holding the frames.
-        table: Table name.
+        table_name: Table name.
         cutoff_time: The cutoff, or None.
 
     Returns:
         The frame as it stood at the cutoff.
     """
-    frame = database.get_table(table)
+    table = database.get_table(table_name)
     if cutoff_time is None:
-        return frame
+        return table
 
-    schema = database.get_schema(table)
+    schema = database.get_schema(table_name)
     if schema.row_creation_time is not None:
-        frame = frame.filter(nw.col(schema.row_creation_time) <= cutoff_time)
-    return _restore_updated_columns(frame, schema, cutoff_time)
+        table = table.filter(nw.col(schema.row_creation_time) <= cutoff_time)
+    return _restore_updated_columns(table, schema, cutoff_time)
 
 
 def _restore_updated_columns(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     schema: TableSchema,
     cutoff_time: datetime,
 ) -> nw.LazyFrame:
     """Give every column updated after the cutoff the value it held before.
 
     Args:
-        frame: The table's frame, already filtered to the cutoff.
+        table: The table's frame, already filtered to the cutoff.
         schema: The table's schema, naming the updates.
         cutoff_time: The cutoff.
 
@@ -222,9 +222,9 @@ def _restore_updated_columns(
         The frame, with one replaced column per declared update.
     """
     if not schema.column_updates:
-        return frame
+        return table
 
-    return frame.with_columns(
+    return table.with_columns(
         nw.when(_was_updated_by(update_time, cutoff_time))
         .then(nw.col(column))
         .otherwise(nw.lit(value, dtype=schema.dtypes[column]))
@@ -249,9 +249,9 @@ def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
     return updated.is_null() | (updated <= cutoff_time)
 
 
-def _table_frame(
+def _read_table(
     database: Database,
-    table: str,
+    table_name: str,
     needed: set[Feature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
@@ -263,7 +263,7 @@ def _table_frame(
 
     Args:
         database: The database holding the frames.
-        table: Table to build.
+        table_name: Table to build.
         needed: Features on this table that must appear as columns.
         cutoff_time: The cutoff, or None.
 
@@ -275,16 +275,16 @@ def _table_frame(
         SchemaError: If ``needed`` contains a feature type this compiler does
             not know how to compute.
     """
-    frame = base_table(database, table, cutoff_time)
-    needed = {f for f in needed if f.table == table}
+    table = base_table(database, table_name, cutoff_time)
+    needed = {f for f in needed if f.table == table_name}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
     for relationship in dict.fromkeys(f.relationship for f in aggregations):
         batch = [f for f in aggregations if f.relationship == relationship]
-        frame = _add_aggregations(
-            frame,
-            database,
+        table = _add_aggregations(
             table,
+            database,
+            table_name,
             relationship,
             batch,
             cutoff_time,
@@ -293,13 +293,13 @@ def _table_frame(
     directs = [f for f in needed if isinstance(f, DirectFeature)]
     for relationship in dict.fromkeys(f.relationship for f in directs):
         batch = [f for f in directs if f.relationship == relationship]
-        frame = _add_directs(frame, database, relationship, batch, cutoff_time)
+        table = _add_directs(table, database, relationship, batch, cutoff_time)
 
     row_wise = [
         f for f in needed if isinstance(f, (TransformFeature, GroupByTransformFeature))
     ]
     for feature in sorted(row_wise, key=lambda f: f.depth):
-        frame = _apply(frame, feature, database, cutoff_time)
+        table = _apply(table, feature, database, cutoff_time)
 
     handled = (
         IdentityFeature,
@@ -311,13 +311,13 @@ def _table_frame(
     unhandled = [f for f in needed if not isinstance(f, handled)]
     if unhandled:
         raise SchemaError(f"cannot compile feature type {type(unhandled[0]).__name__}")
-    return frame
+    return table
 
 
 def _add_aggregations(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     database: Database,
-    table: str,
+    table_name: str,
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
     cutoff_time: datetime | None,
@@ -329,9 +329,9 @@ def _add_aggregations(
     further join over the child filtered to that condition's mask.
 
     Args:
-        frame: The parent frame being built.
+        table: The parent frame being built.
         database: The database holding the frames.
-        table: The parent table's name.
+        table_name: The parent table's name.
         relationship: The relationship being aggregated across.
         batch: Every aggregation feature using that relationship.
         cutoff_time: The cutoff, or None.
@@ -342,21 +342,21 @@ def _add_aggregations(
     child_needed: set[Feature] = set()
     for feature in batch:
         child_needed.update(_closure(feature.base_features))
-    child = _table_frame(database, relationship.child, child_needed, cutoff_time)
+    child = _read_table(database, relationship.child, child_needed, cutoff_time)
 
     child_schema = database.get_schema(relationship.child)
     for condition, features in _group_by_condition(batch):
         mask = _build_condition_mask(child_schema, condition, cutoff_time)
-        frame = _join_condition_aggregations(
-            frame,
+        table = _join_condition_aggregations(
+            table,
             child if mask is None else child.filter(mask),
             database,
-            table,
+            table_name,
             relationship,
             features,
             cutoff_time,
         )
-    return frame
+    return table
 
 
 def _build_condition_mask(
@@ -409,10 +409,10 @@ def _group_by_condition(
 
 
 def _join_condition_aggregations(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     child: nw.LazyFrame,
     database: Database,
-    table: str,
+    table_name: str,
     relationship: Relationship,
     batch: Sequence[AggregationFeature],
     cutoff_time: datetime | None,
@@ -420,10 +420,10 @@ def _join_condition_aggregations(
     """Fold a condition's aggregations into the parent with a single join.
 
     Args:
-        frame: The parent frame being built.
+        table: The parent frame being built.
         child: The child frame, already filtered to the condition.
         database: The database holding the schemas.
-        table: The parent table's name.
+        table_name: The parent table's name.
         relationship: The relationship being aggregated across.
         batch: The aggregation features sharing this condition.
         cutoff_time: The cutoff, or None.
@@ -441,9 +441,9 @@ def _join_condition_aggregations(
     child = _add_value_count_columns(child, relationship, batch)
     child = _add_comparison_columns(child, relationship, batch)
     grouped = child.group_by(relationship.foreign_key).agg(*exprs)
-    frame = frame.join(
+    table = table.join(
         grouped,
-        left_on=database.get_schema(table).primary_key,
+        left_on=database.get_schema(table_name).primary_key,
         right_on=relationship.foreign_key,
         how="left",
     )
@@ -454,7 +454,7 @@ def _join_condition_aggregations(
         if feature.primitive.default_value is not None
         for name in feature.output_names
     ]
-    return frame.with_columns(*defaults) if defaults else frame
+    return table.with_columns(*defaults) if defaults else table
 
 
 def _build_aggregation(
@@ -476,7 +476,7 @@ def _build_aggregation(
     """
     primitive = feature.primitive
     if isinstance(primitive, GroupRelativeAggregationPrimitive):
-        return primitive.outputs(nw.col(_generate_comparison_column_name(feature)))
+        return primitive.outputs(nw.col(_build_comparison_column_name(feature)))
     inputs = [nw.col(b.name) for b in feature.base_features]
     if isinstance(primitive, OrderedAggregationPrimitive):
         order_by = _order_by(database, relationship.child, primitive.name)
@@ -525,7 +525,7 @@ def _build_value_count_column(
     return (
         nw.when(~nw.col(value).is_null())
         .then(count)
-        .alias(_generate_value_count_column_name(feature))
+        .alias(_build_value_count_column_name(feature))
     )
 
 
@@ -570,7 +570,7 @@ def _build_comparison_column(
     inputs = _select_comparison_inputs(feature)
     comparison = primitive.compare_with_group(*inputs)
     return comparison.over(relationship.foreign_key).alias(
-        _generate_comparison_column_name(feature),
+        _build_comparison_column_name(feature),
     )
 
 
@@ -586,11 +586,11 @@ def _select_comparison_inputs(feature: AggregationFeature) -> list[nw.Expr]:
     """
     inputs = [nw.col(b.name) for b in feature.base_features]
     if isinstance(feature.primitive, ValueCountAggregationPrimitive):
-        inputs.append(nw.col(_generate_value_count_column_name(feature)))
+        inputs.append(nw.col(_build_value_count_column_name(feature)))
     return inputs
 
 
-def _generate_comparison_column_name(feature: AggregationFeature) -> str:
+def _build_comparison_column_name(feature: AggregationFeature) -> str:
     """Name the child column a group-relative aggregation reduces.
 
     Args:
@@ -602,7 +602,7 @@ def _generate_comparison_column_name(feature: AggregationFeature) -> str:
     return f"{feature.name}__comparison"
 
 
-def _generate_value_count_column_name(feature: AggregationFeature) -> str:
+def _build_value_count_column_name(feature: AggregationFeature) -> str:
     """Name the child column that holds a value-count aggregation's counts.
 
     Args:
@@ -615,7 +615,7 @@ def _generate_value_count_column_name(feature: AggregationFeature) -> str:
 
 
 def _add_directs(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     database: Database,
     relationship: Relationship,
     batch: Sequence[DirectFeature],
@@ -624,7 +624,7 @@ def _add_directs(
     """Join one parent table's features down onto the child with a single join.
 
     Args:
-        frame: The child frame being built.
+        table: The child frame being built.
         database: The database holding the frames.
         relationship: The relationship being traversed.
         batch: Every direct feature using that relationship.
@@ -642,13 +642,13 @@ def _add_directs(
     parent_needed: set[Feature] = set()
     for feature in batch:
         parent_needed.update(_closure(feature.base_features))
-    parent = _table_frame(database, relationship.parent, parent_needed, cutoff_time)
+    parent = _read_table(database, relationship.parent, parent_needed, cutoff_time)
 
     selected = [nw.col(parent_key)]
     for feature in batch:
         selected.append(nw.col(feature.base_feature.name).alias(feature.name))
 
-    return frame.join(
+    return table.join(
         parent.select(*selected),
         left_on=relationship.foreign_key,
         right_on=parent_key,
@@ -657,7 +657,7 @@ def _add_directs(
 
 
 def _apply(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     feature: Feature,
     database: Database,
     cutoff_time: datetime | None,
@@ -671,7 +671,7 @@ def _apply(
     for these expressions in any case.
 
     Args:
-        frame: The frame to extend.
+        table: The frame to extend.
         feature: The feature to compute.
         database: The database, used to find ordering columns.
         cutoff_time: The cutoff, passed as a keyword argument to a
@@ -702,7 +702,7 @@ def _apply(
         exprs = [e.over(*partition) for e in exprs]
 
     named = [e.alias(n) for e, n in zip(exprs, feature.output_names, strict=True)]
-    return frame.with_columns(*named)
+    return table.with_columns(*named)
 
 
 def _build_expressions(

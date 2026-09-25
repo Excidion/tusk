@@ -168,7 +168,7 @@ def spy(monkeypatch):
     """
     calls = []
     registry = {name: validation.TABLE_CHECKS[name] for name in DEFAULT_TABLE_CHECKS}
-    registry["unique_primary_key"] = lambda frame, schema: calls.append(schema.name)
+    registry["unique_primary_key"] = lambda table, schema: calls.append(schema.name)
     monkeypatch.setattr("tusk.validation.TABLE_CHECKS", registry)
     return calls
 
