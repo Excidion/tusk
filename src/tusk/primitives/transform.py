@@ -1,10 +1,10 @@
 """Built-in transform primitives.
 
-Group transforms subclass ``GroupTransformPrimitive`` and are wrapped by the
-compiler in ``.over(foreign_key)``. Ordered transforms subclass
-``OrderedTransformPrimitive`` and are wrapped in
-``.over(foreign_key, order_by=...)``; narwhals requires the ordering on lazy
-backends and raises otherwise.
+Group transforms subclass ``GroupTransformPrimitive``. The compiler wraps
+them in ``.over(foreign_key)``. Ordered transforms subclass
+``OrderedTransformPrimitive``. The compiler wraps them in
+``.over(foreign_key, order_by=...)``. narwhals requires the ordering on lazy
+backends. It raises an exception when the caller omits the ordering.
 """
 
 from __future__ import annotations
@@ -272,8 +272,8 @@ class Absolute(TransformPrimitive):
 class NaturalLog(TransformPrimitive):
     """Natural logarithm.
 
-    A negative input gives null, where the unguarded answer varies by
-    backend; zero gives negative infinity.
+    A negative input gives null. Backends disagree on the unguarded natural
+    logarithm of a negative value. Zero gives negative infinity.
     """
 
     name = "natural_log"
@@ -344,8 +344,8 @@ class Negate(TransformPrimitive):
 class SquareRoot(TransformPrimitive):
     """Square root.
 
-    A negative input gives null, where the unguarded answer varies by
-    backend; zero gives ``0.0``.
+    A negative input gives null. Backends disagree on the unguarded square
+    root of a negative value. Zero gives ``0.0``.
     """
 
     name = "square_root"
@@ -454,9 +454,10 @@ class NWords(TransformPrimitive):
 class NUniqueWords(TransformPrimitive):
     """Number of distinct words in a string, ignoring case.
 
-    Words are separated by whitespace and keep the punctuation inside them, so
-    `a-b` is one word; punctuation around a word is not part of it, and a run of
-    punctuation alone is not a word. A string holding no word at all is `0`.
+    Words are separated by whitespace. A word keeps the punctuation inside
+    it, so `a-b` is one word. Punctuation around a word is not part of the
+    word. A run of punctuation alone is not a word. A string holding no word
+    at all is `0`.
     """
 
     name = "n_unique_words"
@@ -484,10 +485,10 @@ class NUniqueWords(TransformPrimitive):
 class Domain(TransformPrimitive):
     """Domain of a URL or an email address.
 
-    Whitespace around the value is ignored. The domain follows any scheme such
-    as `https://`, anything up to the last `@` before the first `/` or `?`, and
-    a leading `www.`, and runs up to the first `:`, `/` or `?`. A value that
-    leaves no domain is null.
+    Whitespace around the value is ignored. The domain skips any scheme, such
+    as `https://`. It skips anything up to the last `@` before the first `/`
+    or `?`. It skips a leading `www.`. It then runs up to the first `:`, `/`
+    or `?`. A value that leaves no domain is null.
     """
 
     name = "domain"
@@ -537,7 +538,10 @@ class TopLevelDomain(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class URLToProtocol(TransformPrimitive):
-    """Protocol of a URL, `http` or `https`; null for any other or none."""
+    """Protocol of a URL, `http` or `https`.
+
+    It is null for any other protocol or for no protocol.
+    """
 
     name = "url_to_protocol"
     input_dtypes = (F.STRING,)
@@ -562,9 +566,9 @@ class URLToProtocol(TransformPrimitive):
 @register
 @dataclass(frozen=True)
 class Percentile(GroupTransformPrimitive):
-    """Rank of the value among the known values of its group, from above 0 to 1.
+    """Rank of the value among the non-null values of its group, from above 0 to 1.
 
-    Tied values share their average rank. A null stays null and is not
+    Tied values share their average rank. A null stays null. A null is not
     counted.
     """
 
@@ -677,8 +681,8 @@ class ModuloNumeric(TransformPrimitive):
     """Remainder after division, taking the sign of the divisor.
 
     A null dividend or divisor gives a null. A zero divisor is
-    backend-defined: duckdb nulls it for every numeric dtype, polars nulls it
-    for integers but produces NaN for floats.
+    backend-defined. duckdb nulls it for every numeric dtype. polars nulls
+    it for integers, but produces NaN for floats.
     """
 
     name = "modulo_numeric"
@@ -1102,7 +1106,7 @@ class TimeSincePrevious(OrderedTransformPrimitive):
 @register
 @dataclass(frozen=True)
 class CumMean(OrderedTransformPrimitive):
-    """Running mean of the known values in row-creation order. A null row is null."""
+    """Running mean of the non-null values in row-creation order. A null row is null."""
 
     name = "cum_mean"
     input_dtypes = (F.NUMERIC,)
@@ -1125,7 +1129,8 @@ class CumMean(OrderedTransformPrimitive):
 class SameAsPrevious(OrderedTransformPrimitive):
     """Whether the value equals the previous row's in row-creation order.
 
-    The first row, and a row whose own or previous value is null, is null.
+    The first row is null. A row whose own or previous value is null is
+    also null.
     """
 
     name = "same_as_previous"
@@ -1149,9 +1154,9 @@ class SameAsPrevious(OrderedTransformPrimitive):
 class AbsoluteDiff(OrderedTransformPrimitive):
     """Size of the change from the previous row in row-creation order.
 
-    The first row, and a row whose own or previous value is null, is null.
-    An integer above 2**53 in magnitude, or a high-precision decimal, loses
-    precision in the round trip through ``Float64``.
+    The first row is null. A row whose own or previous value is null is
+    also null. An integer above 2**53 in magnitude, or a high-precision
+    decimal, loses precision in the round trip through ``Float64``.
     """
 
     name = "absolute_diff"
@@ -1176,9 +1181,9 @@ class AbsoluteDiff(OrderedTransformPrimitive):
 class PercentChange(OrderedTransformPrimitive):
     """Relative change from the previous row in row-creation order.
 
-    The first row, and a row whose own or previous value is null, is null. A
-    zero previous value gives positive or negative infinity, or NaN when the
-    value is zero too.
+    The first row is null. A row whose own or previous value is null is
+    also null. A zero previous value gives positive or negative infinity.
+    It gives NaN when the value is zero too.
     """
 
     name = "percent_change"
@@ -1202,10 +1207,11 @@ class PercentChange(OrderedTransformPrimitive):
 class CumulativeTimeSinceLastTrue(OrderedTransformPrimitive):
     """Time elapsed since the latest row whose flag is true, in row-creation order.
 
-    Null until the first true flag, and on a row whose datetime is null. A
-    null flag is not true. A matching row whose datetime is null is skipped,
-    so later rows measure from the match before it. For a time-zone-aware
-    column, a gap across a daylight-saving change can vary by backend.
+    The result is null until the first true flag. A row whose datetime is
+    null is also null. A null flag is not true. A matching row whose
+    datetime is null is skipped. Later rows then measure from the match
+    before it. For a time-zone-aware column, a gap across a daylight-saving
+    change can vary by backend.
     """
 
     name = "cumulative_time_since_last_true"
@@ -1230,11 +1236,11 @@ class CumulativeTimeSinceLastTrue(OrderedTransformPrimitive):
 class CumulativeTimeSinceLastFalse(OrderedTransformPrimitive):
     """Time elapsed since the latest row whose flag is false, in row-creation order.
 
-    Null until the first false flag, and on a row whose datetime is null. A
-    null flag is not false. A matching row whose datetime is null is
-    skipped, so later rows measure from the match before it. For a
-    time-zone-aware column, a gap across a daylight-saving change can vary by
-    backend.
+    The result is null until the first false flag. A row whose datetime is
+    null is also null. A null flag is not false. A matching row whose
+    datetime is null is skipped. Later rows then measure from the match
+    before it. For a time-zone-aware column, a gap across a daylight-saving
+    change can vary by backend.
     """
 
     name = "cumulative_time_since_last_false"
@@ -1281,10 +1287,10 @@ def _time_since_last_match(moment: nw.Expr, is_match: nw.Expr) -> nw.Expr:
 
     Args:
         moment: The datetime of each row.
-        is_match: Where the row matches; a null does not match.
+        is_match: Where the row matches. A null does not match.
 
     Returns:
-        A narwhals expression of the elapsed time, to be ordered by the caller.
+        A narwhals expression of the elapsed time. The caller must order it.
     """
     # duckdb subtracts two Dates into a day count instead of an interval
     timestamps = moment.cast(nw.Datetime)
@@ -1295,16 +1301,16 @@ def _time_since_last_match(moment: nw.Expr, is_match: nw.Expr) -> nw.Expr:
 def _split_into_words(expr: nw.Expr) -> nw.Expr:
     """Reduce a string to its words, separated by one space each.
 
-    Words are whitespace-separated and keep the punctuation inside them, so
-    ``"a-b"`` is one word; punctuation around a word is not part of it, and a
-    run of punctuation alone is not a word.
+    Words are separated by whitespace. A word keeps the punctuation inside
+    it, so ``"a-b"`` is one word. Punctuation around a word is not part of
+    the word. A run of punctuation alone is not a word.
 
     Args:
         expr: A string expression.
 
     Returns:
-        A narwhals expression of the words, joined by single spaces, empty
-        where the value holds no word at all.
+        A narwhals expression of the words, joined by single spaces. It is
+        empty where the value holds no word at all.
     """
     # Codepoint ranges rather than escaped literals: polars' regex engine
     # rejects a redundant escape such as `\!` inside a character class.
@@ -1319,15 +1325,15 @@ def _split_into_words(expr: nw.Expr) -> nw.Expr:
 
 
 def _count_unless_empty(words: nw.Expr, count: nw.Expr) -> nw.Expr:
-    """Apply a counting expression, answering zero where there is no word.
+    """Apply a counting expression. It answers zero where there is no word.
 
     Args:
         words: A string expression of words joined by single spaces.
         count: A counting expression over ``words``.
 
     Returns:
-        A narwhals expression of the count, zero where ``words`` is empty,
-        which splits into one empty word rather than into no word.
+        A narwhals expression of the count. It is zero where ``words`` is
+        empty. An empty string splits into one word, not zero.
     """
     return nw.when(words == "").then(nw.lit(0)).otherwise(count)
 
