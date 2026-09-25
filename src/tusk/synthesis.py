@@ -74,11 +74,10 @@ def synthesize(
         target_table: Table to build features for.
         agg_primitives: Aggregation primitives, as names or instances. None
             selects ``AGG_DEFAULTS``.
-        trans_primitives: Transform primitives, as names or instances. This
-            function applies each
-            :class:`~tusk.primitives.base.GroupTransformPrimitive` within
-            each foreign-key group. It applies every other transform
-            primitive to each row. None selects ``TRANS_DEFAULTS``.
+        trans_primitives: Transform primitives, as names or instances. Each
+            :class:`~tusk.primitives.base.GroupTransformPrimitive` applies
+            within each foreign-key group. Every other transform primitive
+            applies to each row. None selects ``TRANS_DEFAULTS``.
         conditional_primitives: Aggregation primitives to compute over only
             the rows each declared condition keeps, as names or instances.
             This is a separate list from ``agg_primitives``. A primitive
@@ -265,7 +264,7 @@ class _Context:
         depth_limit: int,
         path: tuple[Relationship, ...],
     ) -> list[Feature]:
-        """Aggregate each child table's features up into this table.
+        """Aggregate each child table's features into this table.
 
         Args:
             table: The parent table.
@@ -328,7 +327,7 @@ class _Context:
         depth_limit: int,
         path: tuple[Relationship, ...],
     ) -> list[Feature]:
-        """Join each parent table's features down onto this table.
+        """Join each parent table's features onto this table.
 
         Args:
             table: The child table.
@@ -434,10 +433,10 @@ class _Context:
     def _record_ungroupable(self, table: str) -> None:
         """Record every group transform primitive as unmatched on ``table``.
 
-        This function records only a table with no parent relationship at
-        all. A table whose parents the walk already consumed on its path
-        still has a relationship. Naming it here would tell the user to add
-        one they already have.
+        The caller passes only a table with no parent relationship. A table
+        whose parents the walk already consumed on its path still has a
+        relationship. Naming it here would tell the user to add one they
+        already have.
 
         Args:
             table: A table with no parent relationship.
@@ -458,10 +457,10 @@ class _Context:
         lacking a dtype family. However, skipping silently leaves the user
         with a primitive they asked for, no column, and no explanation.
 
-        A primitive that produced features somewhere is not reported. Being
-        inapplicable to one particular table is ordinary. Warning about it
-        would bury the genuinely unusable case in noise. Each surviving
-        (primitive, table) pair warns once.
+        A primitive that produced features somewhere is not reported. A
+        primitive being inapplicable to one particular table is ordinary.
+        Warning about it would bury the genuinely unusable case in noise.
+        Each surviving (primitive, table) pair warns once.
         """
         for (primitive_name, _), reason in self._unmatched.items():
             if primitive_name in self._matched:
@@ -531,9 +530,9 @@ class _Context:
     def _check_ordering(self, primitive: Primitive, table: str) -> None:
         """Reject order-dependent primitives on tables that cannot be ordered.
 
-        Narwhals requires ``order_by`` for these expressions on lazy backends,
-        and the ordering column is the table's ``row_creation_time``. Checking
-        here keeps the failure in phase 1, before any query is built.
+        Narwhals requires ``order_by`` for these expressions on lazy
+        backends. The ordering column is the table's ``row_creation_time``.
+        This check runs in phase 1, before any query is built.
 
         Args:
             primitive: The primitive being applied.

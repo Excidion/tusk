@@ -1,4 +1,4 @@
-"""Phase 2: the lazy query plan built from feature definitions.
+"""Phase 2: the single lazy query plan built from feature definitions.
 
 Nothing here materializes a table, and neither does the caller. The only
 ``collect()`` calls in tusk are the ones :mod:`tusk.validation` makes when a
@@ -41,7 +41,7 @@ def compile_features(
     database: Database,
     cutoff_time: datetime | None = None,
 ) -> nw.LazyFrame:
-    """Compute a feature matrix from feature definitions.
+    """Compute a lazy feature matrix from feature definitions.
 
     It also raises :class:`~tusk.exceptions.ValidationError`, from
     :func:`_require_cutoff_time`, if a primitive measures against
@@ -83,8 +83,8 @@ def compile_features(
 def _reject_colliding_names(features: Sequence[Feature]) -> None:
     """Fail if two distinct features want the same column.
 
-    Column names join their parts with ``__``, so a source column already
-    containing ``__`` can in principle collide with a built name -- e.g.
+    Column names join their parts with ``__``. A source column already
+    containing ``__`` can collide with a built name. For example,
     ``MEAN(a.b)`` and ``MEAN(a__b)`` both want ``MEAN__a__b``. Silently
     keeping one and dropping the other would put the wrong values under a
     plausible-looking name, so this function raises an error instead.
@@ -111,8 +111,8 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
     """Expand features to include every feature they are computed from.
 
     A requested feature's inputs must exist as columns before it can be
-    computed. So this function always works over the transitive closure, not
-    just the caller's list.
+    computed. So the compiler always works over the transitive closure, not
+    only the caller's list.
 
     Args:
         features: Starting features.
@@ -259,9 +259,10 @@ def _read_table(
 ) -> nw.LazyFrame:
     """Build a table for ``table_name`` carrying a column for every needed feature.
 
-    Aggregations are folded in first, batched by relationship so that feature
-    count does not drive join count; row-wise features are then applied in
-    depth order, so each one's inputs already exist as columns.
+    This function joins aggregations onto the table first, batched by
+    relationship. This keeps join count independent of feature count. It
+    then applies row-wise features in depth order, so each one's inputs
+    already exist as columns.
 
     Args:
         database: The database holding the tables.
@@ -326,9 +327,9 @@ def _add_aggregations(
 ) -> nw.LazyFrame:
     """Fold one child table's aggregations into the parent, one join per condition.
 
-    Unconditioned features share a single join over the unfiltered child,
-    exactly as before conditions existed. Each distinct condition adds one
-    further join over the child filtered to that condition's mask.
+    Unconditioned features share a single join over the unfiltered child.
+    Each distinct condition adds one further join over the child filtered to
+    that condition's mask.
 
     Args:
         table: The parent table being built.
@@ -623,7 +624,7 @@ def _add_directs(
     batch: Sequence[DirectFeature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Join one parent table's features down onto the child with a single join.
+    """Join one parent table's features onto the child with a single join.
 
     Args:
         table: The child table being built.
