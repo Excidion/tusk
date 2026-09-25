@@ -168,12 +168,12 @@ class TransformFeature(Feature):
     @property
     def name(self) -> str:
         """Generated name, e.g. ``MONTH__started_at``."""
-        return self.primitive.generate_name([b.name for b in self.bases])
+        return self.primitive.build_name([b.name for b in self.bases])
 
     @property
     def display_name(self) -> str:
         """Readable name, e.g. ``MONTH(started_at)``."""
-        return self.primitive.generate_display_name(
+        return self.primitive.build_display_name(
             [b.display_name for b in self.bases],
         )
 
@@ -249,9 +249,9 @@ class AggregationFeature(Feature):
         """
         child = self.relationship.child
         if not self.bases:
-            return self.primitive.generate_name([child, *self._condition_parts])
+            return self.primitive.build_name([child, *self._condition_parts])
         names = [f"{child}__{b.name}" for b in self.bases]
-        return self.primitive.generate_name([*names, *self._condition_parts])
+        return self.primitive.build_name([*names, *self._condition_parts])
 
     @property
     def display_name(self) -> str:
@@ -266,7 +266,7 @@ class AggregationFeature(Feature):
         else:
             arguments = [f"{child}.{b.display_name}" for b in self.bases]
         arguments[-1] += self._condition_display
-        return self.primitive.generate_display_name(arguments)
+        return self.primitive.build_display_name(arguments)
 
     @property
     def _condition_parts(self) -> tuple[str, ...]:
@@ -388,13 +388,13 @@ class GroupByTransformFeature(Feature):
     @property
     def name(self) -> str:
         """Generated name, e.g. ``CUM_SUM__amount__by__session_id``."""
-        stem = self.primitive.generate_name([b.name for b in self.bases])
+        stem = self.primitive.build_name([b.name for b in self.bases])
         return f"{stem}__by__{self.relationship.foreign_key}"
 
     @property
     def display_name(self) -> str:
         """Readable name, e.g. ``CUM_SUM(amount) by session_id``."""
-        stem = self.primitive.generate_display_name(
+        stem = self.primitive.build_display_name(
             [b.display_name for b in self.bases],
         )
         return f"{stem} by {self.relationship.foreign_key}"

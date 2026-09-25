@@ -186,7 +186,7 @@ def get_count_of_children(database: Database, relationship: Relationship) -> str
     Returns:
         The Mermaid cardinality for the child end.
     """
-    if relationship.foreign_key == database.schema(relationship.child).primary_key:
+    if relationship.foreign_key == database.get_schema(relationship.child).primary_key:
         return "zero or one"
     return "0+"
 
@@ -226,7 +226,7 @@ def render_attributes(database: Database, name: str, columns: bool | str) -> lis
     Returns:
         One line per shown column, in schema order.
     """
-    schema = database.schema(name)
+    schema = database.get_schema(name)
     parents = collect_parents_by_foreign_key(database, name)
     lines = []
     for column, dtype in schema.dtypes.items():

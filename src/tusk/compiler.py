@@ -63,7 +63,7 @@ def compile_features(
         SchemaError: If the target table has no primary key.
     """
     target = features.target_table
-    primary_key = database.schema(target).primary_key
+    primary_key = database.get_schema(target).primary_key
     if primary_key is None:
         raise SchemaError(
             f"target table {target!r} needs a primary_key: the feature "
@@ -173,7 +173,7 @@ def _names_measuring_against_cutoff(feature: Feature) -> tuple[str, ...]:
     return tuple(names)
 
 
-def base_frame(
+def base_table(
     database: Database,
     table: str,
     cutoff_time: datetime | None,
@@ -196,11 +196,11 @@ def base_frame(
     Returns:
         The frame as it stood at the cutoff.
     """
-    frame = database.frame(table)
+    frame = database.get_table(table)
     if cutoff_time is None:
         return frame
 
-    schema = database.schema(table)
+    schema = database.get_schema(table)
     if schema.row_creation_time is not None:
         frame = frame.filter(nw.col(schema.row_creation_time) <= cutoff_time)
     return _restore_updated_columns(frame, schema, cutoff_time)
@@ -275,7 +275,7 @@ def _table_frame(
         SchemaError: If ``needed`` contains a feature type this compiler does
             not know how to compute.
     """
-    frame = base_frame(database, table, cutoff_time)
+    frame = base_table(database, table, cutoff_time)
     needed = {f for f in needed if f.table == table}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
@@ -344,7 +344,7 @@ def _add_aggregations(
         child_needed.update(_closure(feature.base_features))
     child = _table_frame(database, relationship.child, child_needed, cutoff_time)
 
-    child_schema = database.schema(relationship.child)
+    child_schema = database.get_schema(relationship.child)
     for condition, features in _group_by_condition(batch):
         mask = _build_condition_mask(child_schema, condition, cutoff_time)
         frame = _join_condition_aggregations(
@@ -443,7 +443,7 @@ def _join_condition_aggregations(
     grouped = child.group_by(relationship.foreign_key).agg(*exprs)
     frame = frame.join(
         grouped,
-        left_on=database.schema(table).primary_key,
+        left_on=database.get_schema(table).primary_key,
         right_on=relationship.foreign_key,
         how="left",
     )
@@ -636,7 +636,7 @@ def _add_directs(
     Raises:
         SchemaError: If the parent table has no primary key.
     """
-    parent_key = database.schema(relationship.parent).primary_key
+    parent_key = database.get_schema(relationship.parent).primary_key
     if parent_key is None:
         raise SchemaError(f"parent table {relationship.parent!r} needs a primary_key")
     parent_needed: set[Feature] = set()
@@ -741,7 +741,7 @@ def _order_by(database: Database, table: str, primitive_name: str) -> tuple[str,
     Raises:
         PrimitiveError: If the table has no ``row_creation_time``.
     """
-    schema = database.schema(table)
+    schema = database.get_schema(table)
     if schema.row_creation_time is None:
         raise PrimitiveError(
             f"primitive {primitive_name!r} is order-dependent, so table {table!r} "

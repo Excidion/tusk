@@ -326,7 +326,7 @@ class Database:
         """
         return SchemaDiagram.from_database(self, columns)
 
-    def schema(self, name: str) -> TableSchema:
+    def get_schema(self, name: str) -> TableSchema:
         """Return a table's schema.
 
         Args:
@@ -343,7 +343,7 @@ class Database:
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 
-    def frame(self, name: str) -> nw.LazyFrame:
+    def get_table(self, name: str) -> nw.LazyFrame:
         """Return a table's lazy frame.
 
         Args:
@@ -403,7 +403,7 @@ class Database:
         Returns:
             The table's join-key column names.
         """
-        schema = self.schema(name)
+        schema = self.get_schema(name)
         keys: set[str] = set()
         if schema.primary_key is not None:
             keys.add(schema.primary_key)
@@ -426,7 +426,7 @@ class Database:
         Returns:
             Column names to omit from the feature matrix.
         """
-        schema = self.schema(name)
+        schema = self.get_schema(name)
         keys = set(self.input_excluded_columns(name))
         if schema.row_creation_time is not None:
             keys.add(schema.row_creation_time)

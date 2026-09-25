@@ -22,7 +22,7 @@ from typing import Any
 import narwhals as nw
 from narwhals.typing import IntoLazyFrame
 
-from tusk.compiler import base_frame
+from tusk.compiler import base_table
 from tusk.database import Database
 from tusk.exceptions import SchemaError
 
@@ -81,7 +81,7 @@ def check_keys_are_visible(
         cutoff_time: The cutoff, or None.
     """
     visible = (
-        base_frame(database, target_table, cutoff_time)
+        base_table(database, target_table, cutoff_time)
         .select(primary_key)
         .filter(nw.col(primary_key).is_in(keys))
         .collect()

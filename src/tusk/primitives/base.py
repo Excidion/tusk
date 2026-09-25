@@ -99,13 +99,13 @@ class Primitive(ABC):
             return self.output_dtype
         return input_dtypes[0]
 
-    def generate_name(self, arg_names: Sequence[str]) -> str:
+    def build_name(self, arg_names: Sequence[str]) -> str:
         """Build the column name for an application of this primitive.
 
         Every part is joined with ``__`` so the result is a plain SQL
         identifier. Parentheses and commas would be parsed as a function call
         by any backend that generates SQL; see
-        :meth:`generate_display_name` for the readable form.
+        :meth:`build_display_name` for the readable form.
 
         Args:
             arg_names: Names of the inputs. For a zero-input aggregation
@@ -117,7 +117,7 @@ class Primitive(ABC):
         """
         return "__".join([self.stem, *arg_names])
 
-    def generate_display_name(self, arg_names: Sequence[str]) -> str:
+    def build_display_name(self, arg_names: Sequence[str]) -> str:
         """Build the readable name for an application of this primitive.
 
         Args:
@@ -132,7 +132,7 @@ class Primitive(ABC):
         """Expand a feature name into one name per output column.
 
         Args:
-            base_name: The name from :meth:`generate_name`.
+            base_name: The name from :meth:`build_name`.
 
         Returns:
             One name per output column; indexed when there is more than one.
@@ -145,7 +145,7 @@ class Primitive(ABC):
         """Expand a display name into one readable name per output column.
 
         Args:
-            base_name: The name from :meth:`generate_display_name`.
+            base_name: The name from :meth:`build_display_name`.
 
         Returns:
             One name per output column; indexed when there is more than one.

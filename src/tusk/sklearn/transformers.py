@@ -199,7 +199,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         Raises:
             SchemaError: If the target table declares none.
         """
-        primary_key = database.schema(self.target_table).primary_key
+        primary_key = database.get_schema(self.target_table).primary_key
         if primary_key is None:
             raise SchemaError(
                 f"target table {self.target_table!r} needs a primary_key: "

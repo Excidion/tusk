@@ -55,7 +55,7 @@ def synthesize(
 ) -> FeatureList:
     """Generate feature definitions for a target table.
 
-    ``database.schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
+    ``database.get_schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
     target table is unknown. Also raises
     :class:`~tusk.exceptions.PrimitiveError`, via
     :func:`~tusk.features._require_kind`, if a primitive resolved from
@@ -103,7 +103,7 @@ def synthesize(
             requested but no table in the database declares a ``where`` or
             ``when`` condition.
     """
-    database.schema(target_table)
+    database.get_schema(target_table)
     agg = resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives)
     trans = resolve_all(
         TRANS_DEFAULTS if trans_primitives is None else trans_primitives,
@@ -180,7 +180,7 @@ def _warn_if_conditional_primitives_are_unusable(
     """
     if conditional_primitives is None or not conditional_agg:
         return
-    if any(database.schema(name).conditions for name in database.table_names):
+    if any(database.get_schema(name).conditions for name in database.table_names):
         return
     warnings.warn(
         "conditional_primitives was requested but no table declares a where "
@@ -240,7 +240,7 @@ class _Context:
         Returns:
             Feature definitions on the table, deduplicated.
         """
-        schema = self.database.schema(table)
+        schema = self.database.get_schema(table)
         features: list[Feature] = [
             IdentityFeature(table, column, dtype)
             for column, dtype in schema.dtypes.items()
@@ -284,7 +284,7 @@ class _Context:
             for primitive in self.agg:
                 self._check_ordering(primitive, rel.child)
                 out.extend(self._build_aggregations(primitive, rel, usable, None))
-            conditions = self.database.schema(rel.child).conditions
+            conditions = self.database.get_schema(rel.child).conditions
             for primitive in self.conditional_agg:
                 self._check_ordering(primitive, rel.child)
                 for condition in conditions:
@@ -545,7 +545,7 @@ class _Context:
             (OrderedTransformPrimitive, OrderedAggregationPrimitive),
         ):
             return
-        if self.database.schema(table).row_creation_time is None:
+        if self.database.get_schema(table).row_creation_time is None:
             raise PrimitiveError(
                 f"primitive {primitive.name!r} is order-dependent, so table "
                 f"{table!r} needs a row_creation_time",

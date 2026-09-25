@@ -397,7 +397,7 @@ def is_time_zone_aware(database: Database) -> bool | None:
     """
     aware, naive = [], []
     for table in database.table_names:
-        for column, dtype in database.schema(table).dtypes.items():
+        for column, dtype in database.get_schema(table).dtypes.items():
             if dtype == nw.Datetime:
                 name = f"{table}.{column}"
                 if dtype.time_zone:
@@ -434,8 +434,8 @@ def check_matching_key_dtypes(database: Database, relationship: Relationship) ->
     Raises:
         ValidationError: If the two dtypes differ.
     """
-    parent = database.schema(relationship.parent)
-    child = database.schema(relationship.child)
+    parent = database.get_schema(relationship.parent)
+    child = database.get_schema(relationship.child)
     if parent.primary_key is None:
         return
 
@@ -469,16 +469,16 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
         ValidationError: If no foreign key value appears in the parent.
     """
     foreign_key = relationship.foreign_key
-    primary_key = database.schema(relationship.parent).primary_key
+    primary_key = database.get_schema(relationship.parent).primary_key
     if primary_key is None:
         return
 
     children = (
-        database.frame(relationship.child)
+        database.get_table(relationship.child)
         .select(nw.col(foreign_key))
         .filter(~nw.col(foreign_key).is_null())
     )
-    parents = database.frame(relationship.parent).select(nw.col(primary_key))
+    parents = database.get_table(relationship.parent).select(nw.col(primary_key))
     matched = children.join(
         parents,
         left_on=foreign_key,
@@ -696,7 +696,7 @@ def validate_database(
     wide = _select_checks(database_checks, DATABASE_CHECKS)
 
     for name in database.table_names:
-        validate_table(database.frame(name), database.schema(name), tables)
+        validate_table(database.get_table(name), database.get_schema(name), tables)
     for relationship in database.relationships:
         validate_relationship(database, relationship, relationships)
     for name in wide:
