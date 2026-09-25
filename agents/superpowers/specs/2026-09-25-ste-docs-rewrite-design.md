@@ -50,13 +50,15 @@ Known cases:
 
 - `Primitive.generate_name` → `build_name`
 - `Primitive.generate_display_name` → `build_display_name`
+- `Database.frame` → `get_table`, and `Database.schema` → `get_schema`, so that
+  the getters are verbs
 - `_generate_…_column_name` → `_build_…_column_name`
 - `base_frame`, `_table_frame`, and parameters and variables named `frame` →
   names with `table`
 
 The full list comes from a search at the start of the work. Behavior does not
-change. Renaming the two public `Primitive` methods breaks custom primitives
-that override them. The pull request says so.
+change. Renaming the public names breaks code that uses them, for example custom
+primitives that override `generate_name`. The pull request says so.
 
 ## Order of work
 

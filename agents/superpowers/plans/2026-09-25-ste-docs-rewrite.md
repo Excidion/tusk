@@ -129,24 +129,25 @@ EOF
 **Files:** `src/tusk/primitives/base.py`, `src/tusk/database.py`, `src/tusk/compiler.py`, and every file in `src/`, `tests/`, `docs/` that uses the renamed names.
 
 **Interfaces:**
-- Produces: `Primitive.build_name`, `Primitive.build_display_name`, `Database.table(name)`, `tusk.compiler.base_table`. The old names no longer exist.
+- Produces: `Primitive.build_name`, `Primitive.build_display_name`, `Database.get_table(name)`, `Database.get_schema(name)`, `tusk.compiler.base_table`. The old names no longer exist.
 
 - [ ] **Step 1: Find every use.**
 
 ```bash
-grep -rn "generate_name\|generate_display_name\|\.frame(\|def frame\|base_frame" src tests docs
+grep -rn "generate_name\|generate_display_name\|\.frame(\|def frame\|\.schema(\|def schema\|base_frame" src tests docs
 ```
 
 - [ ] **Step 2: Rename.**
   - `Primitive.generate_name` → `build_name`, and every override and call.
   - `Primitive.generate_display_name` → `build_display_name`, and every override and call.
-  - `Database.frame` → `Database.table`, and every call.
+  - `Database.frame` → `Database.get_table`, and every call.
+  - `Database.schema` → `Database.get_schema`, and every call.
   - `compiler.base_frame` → `base_table`, and every call.
   Update the docstrings of the renamed methods to the new verb ("Build the column name…").
 
 - [ ] **Step 3: Check that no old name is left.** The Step 1 command must print nothing.
 
-- [ ] **Step 4: Full checks and commit.** Message: `rename public names to the glossary terms`. The commit body lists the four renames and says that custom primitives that override `generate_name` or `generate_display_name` must rename them.
+- [ ] **Step 4: Full checks and commit.** Message: `rename public names to the glossary terms`. The commit body lists the five renames and says that custom primitives that override `generate_name` or `generate_display_name` must rename them.
 
 ---
 
