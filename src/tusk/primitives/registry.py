@@ -52,8 +52,8 @@ def resolve(spec: str | Primitive) -> Primitive:
         try:
             primitive = _REGISTRY[spec]()
         except KeyError:
-            known = ", ".join(sorted(_REGISTRY))
-            msg = f"unknown primitive {spec!r}; available: {known}"
+            available = ", ".join(sorted(_REGISTRY))
+            msg = f"unknown primitive {spec!r}; available: {available}"
             raise PrimitiveError(msg) from None
     _require_frozen_dataclass(primitive)
     return primitive

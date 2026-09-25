@@ -260,12 +260,12 @@ def check_ordered_row_times(table: nw.LazyFrame, schema: TableSchema) -> None:
     Raises:
         ValidationError: If an update time is before the row creation time.
     """
-    created = schema.row_creation_time
-    if created is None or not schema.row_update_times:
+    row_creation_time = schema.row_creation_time
+    if row_creation_time is None or not schema.row_update_times:
         return
 
     early = table.select(
-        (nw.col(update_time) < nw.col(created)).sum().alias(update_time)
+        (nw.col(update_time) < nw.col(row_creation_time)).sum().alias(update_time)
         for update_time in schema.row_update_times
     ).collect()
 
@@ -275,7 +275,7 @@ def check_ordered_row_times(table: nw.LazyFrame, schema: TableSchema) -> None:
             continue
         raise ValidationError(
             f"row_update_time {update_time!r} of {schema.name!r} is before "
-            f"row_creation_time {created!r} in {rows} rows",
+            f"row_creation_time {row_creation_time!r} in {rows} rows",
         )
 
 

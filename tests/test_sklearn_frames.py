@@ -47,25 +47,25 @@ def test_read_keys_rejects_something_that_is_not_iterable():
         read_keys(object())  # ty: ignore[invalid-argument-type]
 
 
-def test_collect_feature_matrix_returns_rows_in_key_order():
+def test_collect_matrix_returns_rows_in_key_order():
     frame = pl.LazyFrame({"id": [1, 2, 3, 4], "a": [10.0, 20.0, 30.0, 40.0]})
     out = nw.from_native(collect_feature_matrix(frame, "id", [3, 1, 4], None))
     assert out["a"].to_list() == [30.0, 10.0, 40.0]
 
 
-def test_collect_feature_matrix_drops_the_primary_key():
+def test_collect_matrix_drops_the_primary_key():
     frame = pl.LazyFrame({"id": [1, 2], "a": [10.0, 20.0]})
     out = nw.from_native(collect_feature_matrix(frame, "id", [1, 2], None))
     assert out.columns == ["a"]
 
 
-def test_collect_feature_matrix_rejects_a_duplicate_key():
+def test_collect_matrix_rejects_a_duplicate_key():
     frame = pl.LazyFrame({"id": [1, 2], "a": [10.0, 20.0]})
     with pytest.raises(SchemaError, match="duplicate"):
         collect_feature_matrix(frame, "id", [1, 1], None)
 
 
-def test_collect_feature_matrix_rejects_a_key_with_no_row():
+def test_collect_matrix_rejects_a_key_with_no_row():
     frame = pl.LazyFrame({"id": [1, 2], "a": [10.0, 20.0]})
     with pytest.raises(SchemaError, match="no row"):
         collect_feature_matrix(frame, "id", [1, 99], None)
