@@ -31,8 +31,8 @@ class Primitive(ABC):
         output_dtype: The output dtype every output column is cast to. It
             is None when the output keeps the first input's dtype.
         commutative: Whether argument order is irrelevant. When it is True,
-            the compiler builds only one of ``f(a, b)`` and ``f(b, a)``.
-        stack_on_self: Whether the compiler can apply this primitive to its
+            synthesis builds only one of ``f(a, b)`` and ``f(b, a)``.
+        stack_on_self: Whether synthesis can apply this primitive to its
             own output.
         default_value: The value the compiler substitutes for empty groups
             after a left join.
@@ -104,8 +104,8 @@ class Primitive(ABC):
         """Build the column name for an application of this primitive.
 
         Every part is joined with ``__``, so the result is a plain SQL
-        identifier. A backend that produces SQL parses parentheses and
-        commas as a function call. See :meth:`build_display_name` for the
+        identifier. A SQL backend parses parentheses and commas as a
+        function call. See :meth:`build_display_name` for the
         readable form.
 
         Args:
@@ -255,7 +255,7 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
         """Build the expression that reduces the comparisons.
 
         Args:
-            comparisons: The column :meth:`compare_with_group` produced.
+            comparisons: The column that :meth:`compare_with_group` builds.
 
         Returns:
             A narwhals expression.
