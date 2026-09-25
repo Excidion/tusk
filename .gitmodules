@@ -4,3 +4,6 @@
 [submodule "agents/style"]
 	path = agents/style
 	url = https://github.com/Excidion/style.git
+[submodule ".claude/skills/simplified-technical-english"]
+	path = .claude/skills/simplified-technical-english
+	url = https://github.com/danyuchn/asd-ste100-skill.git
