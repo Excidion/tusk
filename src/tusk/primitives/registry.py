@@ -43,8 +43,8 @@ def resolve(spec: str | Primitive) -> Primitive:
         A primitive instance.
 
     Raises:
-        PrimitiveError: If the name is not registered, or the primitive is not
-            a frozen dataclass with equality enabled.
+        PrimitiveError: If the name is not registered. If the primitive is
+            not a frozen dataclass with equality enabled.
     """
     if isinstance(spec, Primitive):
         primitive = spec
