@@ -10,7 +10,7 @@ terms.
 | --- | --- | --- |
 | `docs/guide/*.md` | STE-flavored | Sentences only. Pages, headings and their order stay. |
 | Every docstring in `src/`, public and private | Strict | Sentences, and the terms below. |
-| Code identifiers in `src/`, `tests/`, `docs/` | — | Renamed where a name uses a banned term. |
+| Code identifiers in `src/` | — | Renamed where a name uses a banned term. Tests change only where they use a renamed name. |
 
 Not changed: `README.md`, `docs/index.md`, code comments, and the existing
 specs and plans in `agents/superpowers/`. A spec or plan changes only if a
