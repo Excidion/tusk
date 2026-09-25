@@ -24,7 +24,7 @@ from tusk.primitives.base import (
 
 @dataclass(frozen=True)
 class Feature(ABC):
-    """Base class for every feature definition."""
+    """The base class for every feature definition."""
 
     @property
     @abstractmethod
@@ -51,12 +51,12 @@ class Feature(ABC):
     @property
     @abstractmethod
     def dtype(self) -> Any:
-        """Output dtype, computed statically."""
+        """The output dtype, computed statically."""
 
     @property
     @abstractmethod
     def depth(self) -> int:
-        """Number of stacked primitive applications."""
+        """The number of stacked primitive applications."""
 
     @property
     @abstractmethod
@@ -90,7 +90,7 @@ class Feature(ABC):
         primitive could read. It is a valid output of synthesis. It is
         never a valid input.
 
-        This is derived from :attr:`output_names`, not a primitive's
+        The value comes from :attr:`output_names`, not from a primitive's
         ``number_of_outputs``. It is defined even for
         :class:`IdentityFeature` and :class:`DirectFeature`, which have no
         primitive.
@@ -158,9 +158,10 @@ class TransformFeature(Feature):
     def __post_init__(self) -> None:
         """Confirm the primitive is a transform that reads only its own row.
 
-        This raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_kind`, if the primitive does not transform, or if
-        it is a :class:`~tusk.primitives.base.GroupTransformPrimitive`.
+        Raises:
+            PrimitiveError: If the primitive does not transform, raised via
+                :func:`_require_kind`. If the primitive is a
+                :class:`~tusk.primitives.base.GroupTransformPrimitive`.
         """
         _require_kind(self.primitive, TransformPrimitive, "a transform feature")
         if isinstance(self.primitive, GroupTransformPrimitive):
@@ -172,19 +173,19 @@ class TransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Built name, e.g. ``MONTH__started_at``."""
+        """The built name, e.g. ``MONTH__started_at``."""
         return self.primitive.build_name([b.name for b in self.bases])
 
     @property
     def display_name(self) -> str:
-        """Readable name, e.g. ``MONTH(started_at)``."""
+        """The readable name, e.g. ``MONTH(started_at)``."""
         return self.primitive.build_display_name(
             [b.display_name for b in self.bases],
         )
 
     @property
     def dtype(self) -> Any:
-        """Dtype derived from the primitive and its inputs."""
+        """The dtype derived from the primitive and its inputs."""
         return self.primitive.return_dtype(tuple(b.dtype for b in self.bases))
 
     @property
@@ -194,7 +195,7 @@ class TransformFeature(Feature):
 
     @property
     def table(self) -> str:
-        """The table its inputs live on."""
+        """The table that holds its inputs."""
         return self.bases[0].table
 
     @property
@@ -246,7 +247,7 @@ class AggregationFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Built name, e.g. ``MEAN__transactions__amount``.
+        """The built name, e.g. ``MEAN__transactions__amount``.
 
         Zero-arity primitives name the child table instead of a column,
         giving ``COUNT__transactions``. A condition adds two trailing
@@ -260,9 +261,9 @@ class AggregationFeature(Feature):
 
     @property
     def display_name(self) -> str:
-        """Readable name, e.g. ``MEAN(transactions.amount)``.
+        """The readable name, e.g. ``MEAN(transactions.amount)``.
 
-        A condition adds to the final argument, giving
+        The name appends the condition to the final argument, giving
         ``COUNT(transactions WHEN current)``.
         """
         child = self.relationship.child
@@ -291,7 +292,7 @@ class AggregationFeature(Feature):
 
     @property
     def dtype(self) -> Any:
-        """Dtype derived from the primitive and its inputs."""
+        """The dtype derived from the primitive and its inputs."""
         return self.primitive.return_dtype(tuple(b.dtype for b in self.bases))
 
     @property
@@ -334,12 +335,12 @@ class DirectFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Built name, e.g. ``customers__age``."""
+        """The built name, e.g. ``customers__age``."""
         return f"{self.relationship.parent}__{self.base_feature.name}"
 
     @property
     def display_name(self) -> str:
-        """Readable name, e.g. ``customers.age``."""
+        """The readable name, e.g. ``customers.age``."""
         return f"{self.relationship.parent}.{self.base_feature.display_name}"
 
     @property
@@ -392,13 +393,13 @@ class GroupByTransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Built name, e.g. ``CUM_SUM__amount__by__session_id``."""
+        """The built name, e.g. ``CUM_SUM__amount__by__session_id``."""
         stem = self.primitive.build_name([b.name for b in self.bases])
         return f"{stem}__by__{self.relationship.foreign_key}"
 
     @property
     def display_name(self) -> str:
-        """Readable name, e.g. ``CUM_SUM(amount) by session_id``."""
+        """The readable name, e.g. ``CUM_SUM(amount) by session_id``."""
         stem = self.primitive.build_display_name(
             [b.display_name for b in self.bases],
         )
@@ -406,7 +407,7 @@ class GroupByTransformFeature(Feature):
 
     @property
     def dtype(self) -> Any:
-        """Dtype derived from the primitive and its inputs."""
+        """The dtype derived from the primitive and its inputs."""
         return self.primitive.return_dtype(tuple(b.dtype for b in self.bases))
 
     @property

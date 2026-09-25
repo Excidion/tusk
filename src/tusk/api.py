@@ -54,7 +54,7 @@ def deep_feature_synthesis(
             selects the documented defaults.
         trans_primitives: Transform primitives, as names or instances.
             Synthesis applies each group or ordered transform primitive
-            within its foreign-key group. It applies every other transform
+            within each foreign-key group. It applies every other transform
             primitive to each row. None selects the defaults.
         conditional_primitives: Aggregation primitives to compute over only
             the rows each declared condition keeps, as names or instances.
@@ -74,14 +74,15 @@ def deep_feature_synthesis(
             ``row_update_times`` holds the value it had before the update,
             wherever that update happened after the cutoff time.
             ``cutoff_time`` is ignored entirely when ``features_only`` is
-            true. Synthesis computes nothing in that case.
+            true. :func:`deep_feature_synthesis` does not compute the
+            features in that case.
         features_only: Return the feature definitions without computing
             them.
 
     Returns:
-        feature_matrix: The features on the caller's backend, as a
-            narwhals LazyFrame where the backend has one. It is not
-            returned when ``features_only`` is true.
+        feature_matrix: The features on the caller's backend, as the
+            backend's native lazy table where the backend has one. It is
+            not returned when ``features_only`` is true.
         features (FeatureList): The feature definitions, reusable with
             :meth:`~tusk.FeatureList.apply` or :func:`apply_features`.
 
@@ -154,8 +155,8 @@ def apply_features(
             the cutoff time.
 
     Returns:
-        feature_matrix: The features on the caller's backend, as a
-            narwhals LazyFrame where the backend has one, with one row
-            per visible target row.
+        feature_matrix: The features on the caller's backend, as the
+            backend's native lazy table where the backend has one, with
+            one row per visible target row.
     """
     return FeatureList(features).apply(database, cutoff_time)

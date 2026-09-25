@@ -87,9 +87,9 @@ class FeatureList(Sequence[Feature]):
                 ``database``.
 
         Returns:
-            feature_matrix: The features on the caller's backend, as a
-                narwhals LazyFrame where the backend has one, with one row
-                per visible target row.
+            feature_matrix: The features on the caller's backend, as the
+                backend's native lazy table where the backend has one,
+                with one row per visible target row.
 
         Raises:
             TypeError: If ``cutoff_time`` is not a ``datetime``.
