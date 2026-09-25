@@ -1,6 +1,6 @@
-"""Phase 2: turn feature definitions into a single lazy query plan.
+"""Phase 2: the lazy query plan built from feature definitions.
 
-Nothing here materializes a frame, and neither does the caller: the only
+Nothing here materializes a table, and neither does the caller. The only
 ``collect()`` calls in tusk are the ones :mod:`tusk.validation` makes when a
 check is explicitly requested.
 """
@@ -41,23 +41,24 @@ def compile_features(
     database: Database,
     cutoff_time: datetime | None = None,
 ) -> nw.LazyFrame:
-    """Compile feature definitions into a lazy feature matrix.
+    """Compute a feature matrix from feature definitions.
 
-    Also raises :class:`~tusk.exceptions.ValidationError`, from
+    It also raises :class:`~tusk.exceptions.ValidationError`, from
     :func:`_require_cutoff_time`, if a primitive measures against
     ``cutoff_time`` and none was given.
 
     Args:
         features: Features to compute.
-        database: The database holding the frames.
+        database: The database holding the tables.
         cutoff_time: Only rows whose ``row_creation_time`` is at or before this
             value are visible. None disables filtering.
 
     Returns:
-        feature_matrix: A lazy frame with the target's primary key plus one
-            column per feature output, and one row per target row visible at
-            ``cutoff_time`` -- which may be fewer rows than the target table
-            holds, since the target is filtered like any other table.
+        feature_matrix: A narwhals LazyFrame with the target's primary key
+            plus one column per feature output, and one row per target row
+            visible at ``cutoff_time``. This may have fewer rows than the
+            target table holds, because the target is filtered like any
+            other table.
 
     Raises:
         SchemaError: If the target table has no primary key.
@@ -83,10 +84,10 @@ def _reject_colliding_names(features: Sequence[Feature]) -> None:
     """Fail if two distinct features want the same column.
 
     Column names join their parts with ``__``, so a source column already
-    containing ``__`` can in principle collide with a generated name -- e.g.
+    containing ``__`` can in principle collide with a built name -- e.g.
     ``MEAN(a.b)`` and ``MEAN(a__b)`` both want ``MEAN__a__b``. Silently
     keeping one and dropping the other would put the wrong values under a
-    plausible-looking name, so it is refused instead.
+    plausible-looking name, so this function raises an error instead.
 
     Args:
         features: The features to compile.
@@ -110,8 +111,8 @@ def _closure(features: Sequence[Feature]) -> set[Feature]:
     """Expand features to include every feature they are computed from.
 
     A requested feature's inputs must exist as columns before it can be
-    computed, so the compiler always works over the transitive closure rather
-    than the caller's list.
+    computed. So this function always works over the transitive closure, not
+    just the caller's list.
 
     Args:
         features: Starting features.
@@ -135,7 +136,7 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
 
     Args:
         features: The transitive closure of features to compile.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Raises:
         ValidationError: If a primitive or `when` condition measures against
@@ -160,7 +161,7 @@ def _names_measuring_against_cutoff_time(feature: Feature) -> tuple[str, ...]:
         feature: The feature to inspect.
 
     Returns:
-        The primitive's name when it measures against the cutoff, the
+        The primitive's name when it measures against the cutoff time, the
         condition's name when it is a ``when`` condition, or both.
     """
     names = []
@@ -178,23 +179,24 @@ def base_table(
     table_name: str,
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Return a table's frame as it stood at the cutoff.
+    """Return a table's narwhals LazyFrame as it stood at the cutoff time.
 
-    Rows created after the cutoff are dropped and columns updated after it
-    hold the value they held before. A table without a ``row_creation_time``
-    keeps every row, and a table declaring no ``row_update_times`` keeps every
-    value.
+    Rows created after the cutoff time are dropped. Columns updated after
+    the cutoff time hold the value they held before. A table with no
+    ``row_creation_time`` keeps every row, and a table declaring no
+    ``row_update_times`` keeps every value.
 
-    The target table is filtered like any other, so a cutoff can leave the
-    feature matrix with fewer rows than the target table has.
+    This function filters the target table the same way as any other table.
+    So a cutoff time can leave the feature matrix with fewer rows than the
+    target table holds.
 
     Args:
-        database: The database holding the frames.
+        database: The database holding the tables.
         table_name: Table name.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Returns:
-        The frame as it stood at the cutoff.
+        The table's narwhals LazyFrame as it stood at the cutoff time.
     """
     table = database.get_table(table_name)
     if cutoff_time is None:
@@ -211,15 +213,15 @@ def _restore_updated_columns(
     schema: TableSchema,
     cutoff_time: datetime,
 ) -> nw.LazyFrame:
-    """Give every column updated after the cutoff the value it held before.
+    """Give every column updated after the cutoff time the value it held before.
 
     Args:
-        table: The table's frame, already filtered to the cutoff.
+        table: The table, already filtered to the cutoff time.
         schema: The table's schema, naming the updates.
-        cutoff_time: The cutoff.
+        cutoff_time: The cutoff time.
 
     Returns:
-        The frame, with one replaced column per declared update.
+        The table, with one replaced column per declared update.
     """
     if not schema.column_updates:
         return table
@@ -240,7 +242,7 @@ def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
 
     Args:
         update_time: Column recording when the row was updated.
-        cutoff_time: The cutoff.
+        cutoff_time: The cutoff time.
 
     Returns:
         A boolean expression, true where the update has already happened.
@@ -255,21 +257,21 @@ def _read_table(
     needed: set[Feature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Build a frame for ``table`` carrying a column for every needed feature.
+    """Build a table for ``table_name`` carrying a column for every needed feature.
 
     Aggregations are folded in first, batched by relationship so that feature
     count does not drive join count; row-wise features are then applied in
     depth order, so each one's inputs already exist as columns.
 
     Args:
-        database: The database holding the frames.
+        database: The database holding the tables.
         table_name: Table to build.
         needed: Features on this table that must appear as columns.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Returns:
-        frame: A lazy frame with the table's own columns plus the needed
-            features.
+        table: A narwhals LazyFrame with the table's own columns plus the
+            needed features.
 
     Raises:
         SchemaError: If ``needed`` contains a feature type this compiler does
@@ -325,19 +327,19 @@ def _add_aggregations(
     """Fold one child table's aggregations into the parent, one join per condition.
 
     Unconditioned features share a single join over the unfiltered child,
-    exactly as before conditions existed; each distinct condition adds one
+    exactly as before conditions existed. Each distinct condition adds one
     further join over the child filtered to that condition's mask.
 
     Args:
-        table: The parent frame being built.
-        database: The database holding the frames.
+        table: The parent table being built.
+        database: The database holding the tables.
         table_name: The parent table's name.
         relationship: The relationship being aggregated across.
         batch: Every aggregation feature using that relationship.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Returns:
-        The parent frame with the batch's columns joined on.
+        The parent table with the batch's columns joined on.
     """
     child_needed: set[Feature] = set()
     for feature in batch:
@@ -369,7 +371,7 @@ def _build_condition_mask(
     Args:
         schema: The child table's schema, holding the declared conditions.
         condition: The (kind, key) pair, or None for an unconditioned feature.
-        cutoff_time: The cutoff, passed to a ``when`` condition's callable.
+        cutoff_time: The cutoff time, passed to a ``when`` condition's callable.
 
     Returns:
         The mask expression, or None when the feature has no condition.
@@ -420,16 +422,16 @@ def _join_condition_aggregations(
     """Fold a condition's aggregations into the parent with a single join.
 
     Args:
-        table: The parent frame being built.
-        child: The child frame, already filtered to the condition.
+        table: The parent table being built.
+        child: The child table, after the condition filter.
         database: The database holding the schemas.
         table_name: The parent table's name.
         relationship: The relationship being aggregated across.
         batch: The aggregation features sharing this condition.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Returns:
-        The parent frame with this condition's columns joined on.
+        The parent table with this condition's columns joined on.
     """
     exprs = []
     for feature in batch:
@@ -469,7 +471,7 @@ def _build_aggregation(
         feature: The aggregation feature.
         database: The database, used to find ordering columns.
         relationship: The relationship being aggregated across.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Returns:
         One expression per output column.
@@ -492,12 +494,12 @@ def _add_value_count_columns(
     """Add the count column that each value-count aggregation reads.
 
     Args:
-        child: The child frame, already filtered to the condition.
+        child: The child table, after the condition filter.
         relationship: The relationship being aggregated across.
         batch: The aggregation features sharing this condition.
 
     Returns:
-        The child frame with one column per value-count feature.
+        The child table with one column per value-count feature.
     """
     counts = [
         _build_value_count_column(feature, relationship)
@@ -537,12 +539,12 @@ def _add_comparison_columns(
     """Add the comparison column that each group-relative aggregation reduces.
 
     Args:
-        child: The child frame, already filtered to the condition.
+        child: The child table, after the condition filter.
         relationship: The relationship being aggregated across.
         batch: The aggregation features sharing this condition.
 
     Returns:
-        The child frame with one column per group-relative feature.
+        The child table with one column per group-relative feature.
     """
     comparisons = [
         _build_comparison_column(feature, feature.primitive, relationship)
@@ -624,14 +626,14 @@ def _add_directs(
     """Join one parent table's features down onto the child with a single join.
 
     Args:
-        table: The child frame being built.
-        database: The database holding the frames.
+        table: The child table being built.
+        database: The database holding the tables.
         relationship: The relationship being traversed.
         batch: Every direct feature using that relationship.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
 
     Returns:
-        The child frame with the batch's columns joined on.
+        The child table with the batch's columns joined on.
 
     Raises:
         SchemaError: If the parent table has no primary key.
@@ -662,24 +664,24 @@ def _apply(
     database: Database,
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Add a row-wise feature's columns to a frame.
+    """Add a row-wise feature's columns to a table.
 
-    A groupby transform is wrapped in ``.over(foreign_key)``, and an ordered
-    transform primitive in ``.over(foreign_key, order_by=...)``, rather than
-    relying on a frame-level sort: on lazy backends a sort is not
-    guaranteed to survive later operations, and narwhals requires ``order_by``
-    for these expressions in any case.
+    This function wraps a groupby transform in ``.over(foreign_key)``. It
+    wraps an ordered transform primitive in ``.over(foreign_key,
+    order_by=...)``. Neither relies on a table-level sort. On lazy backends,
+    a sort is not guaranteed to survive later operations. Narwhals also
+    requires ``order_by`` for these expressions in any case.
 
     Args:
-        table: The frame to extend.
+        table: The table to extend.
         feature: The feature to compute.
         database: The database, used to find ordering columns.
-        cutoff_time: The cutoff, passed as a keyword argument to a
+        cutoff_time: The cutoff time, passed as a keyword argument to a
             :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
             its expression.
 
     Returns:
-        The extended frame.
+        The extended table.
 
     Raises:
         SchemaError: If the feature type is not handled here.
@@ -715,7 +717,7 @@ def _build_expressions(
     Args:
         primitive: The primitive to build.
         inputs: One expression per declared input.
-        cutoff_time: The cutoff, passed as a keyword argument to a
+        cutoff_time: The cutoff time, passed as a keyword argument to a
             :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
             its expression.
 

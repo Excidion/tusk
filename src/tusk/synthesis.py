@@ -1,7 +1,7 @@
-"""Phase 1: build the feature graph from schemas alone.
+"""Phase 1: the feature graph built from schemas alone.
 
-Nothing here touches a dataframe; the walk reads schemas and primitive
-metadata only. Features flow one way, phase 1 to phase 2: this module must
+Nothing here touches a table. The walk reads schemas and primitive metadata
+only. Features flow one way, from phase 1 to phase 2: this module must
 never call the compiler.
 """
 
@@ -53,44 +53,48 @@ def synthesize(
     conditional_primitives: Iterable[str | Primitive] | None = None,
     max_depth: int = 2,
 ) -> FeatureList:
-    """Generate feature definitions for a target table.
+    """Build feature definitions for a target table.
 
-    ``database.get_schema()`` raises :class:`~tusk.exceptions.SchemaError` if the
-    target table is unknown. Also raises
-    :class:`~tusk.exceptions.PrimitiveError`, via
+    ``database.get_schema()`` raises :class:`~tusk.exceptions.SchemaError` if
+    the target table is unknown.
+
+    It also raises :class:`~tusk.exceptions.PrimitiveError`, via
     :func:`~tusk.features._require_kind`, if a primitive resolved from
     ``agg_primitives`` is not an
-    :class:`~tusk.primitives.base.AggregationPrimitive`, or one from
-    ``trans_primitives`` is not a
-    :class:`~tusk.primitives.base.TransformPrimitive`. Checked here, eagerly,
-    rather than left to each :class:`Feature` subclass's own check: a
-    primitive that matches no column is never built into a feature at all, so
-    only the argument it was passed to can name the mistake.
+    :class:`~tusk.primitives.base.AggregationPrimitive`, or if one resolved
+    from ``trans_primitives`` is not a
+    :class:`~tusk.primitives.base.TransformPrimitive`. This function checks
+    that eagerly, instead of leaving it to each :class:`Feature` subclass's
+    own check. A primitive that matches no column is never built into a
+    feature at all, so only the argument it was passed to can name the
+    mistake.
 
     Args:
         database: The schema to walk.
         target_table: Table to build features for.
         agg_primitives: Aggregation primitives, as names or instances. None
             selects ``AGG_DEFAULTS``.
-        trans_primitives: Transform primitives, as names or instances. Each
-            :class:`~tusk.primitives.base.GroupTransformPrimitive` is applied
-            within each foreign-key group, every other one to each row. None
-            selects ``TRANS_DEFAULTS``.
+        trans_primitives: Transform primitives, as names or instances. This
+            function applies each
+            :class:`~tusk.primitives.base.GroupTransformPrimitive` within
+            each foreign-key group. It applies every other transform
+            primitive to each row. None selects ``TRANS_DEFAULTS``.
         conditional_primitives: Aggregation primitives to compute over only
-            the rows each declared condition keeps, as names or instances. A
-            separate list from ``agg_primitives``: a primitive named here
-            yields the conditional features alone, so name it in both to get
-            the unconditional ones too. None selects ``CONDITIONAL_DEFAULTS``;
-            ``()`` computes no conditional features.
+            the rows each declared condition keeps, as names or instances.
+            This is a separate list from ``agg_primitives``. A primitive
+            named here yields only the conditional features, so name it in
+            both lists for the unconditional ones too. None selects
+            ``CONDITIONAL_DEFAULTS``. ``()`` computes no conditional
+            features.
         max_depth: Maximum number of stacked primitive applications.
 
     Returns:
-        features: Feature definitions on the target table, deduplicated and
-            excluding the target's own key columns.
+        features: Feature definitions on the target table, deduplicated. It
+            excludes the target's own key columns.
 
     Raises:
-        SchemaError: If the walk generated no features at all, which is a
-            dead end rather than an empty result: nothing downstream can be
+        SchemaError: If the walk built no features at all. This is a dead
+            end, not an empty result, because nothing downstream can be
             computed from it.
 
     Warns:
@@ -155,16 +159,15 @@ def _warn_if_conditional_primitives_are_unusable(
 ) -> None:
     """Warn when ``conditional_primitives`` was requested but no condition can use it.
 
-    This cannot route through ``_matched``/``_unmatched``: a conditional
-    primitive such as ``count`` or ``sum`` is normally also in
-    ``agg_primitives``, so it is already marked matched there and any warning
-    keyed on the primitive would be suppressed. The check is keyed on the
-    condition dimension instead, independent of primitive matching.
+    This check cannot use ``_matched``/``_unmatched``. A conditional
+    primitive such as ``count`` or ``sum`` is usually also in
+    ``agg_primitives``. There, it counts as matched already, so a warning
+    keyed on the primitive would stay suppressed. This check instead keys on
+    the condition dimension, independent of primitive matching.
 
-    ``conditional_primitives=None`` selects ``CONDITIONAL_DEFAULTS`` and must
-    stay silent -- a user who never asked for conditional features should not
-    be nagged. ``conditional_primitives=()`` explicitly disables conditional
-    features and must stay silent too.
+    ``conditional_primitives=None`` selects ``CONDITIONAL_DEFAULTS`` and
+    stays silent. ``conditional_primitives=()`` explicitly disables
+    conditional features and stays silent too.
 
     Args:
         database: The database to check for declared conditions.
@@ -193,7 +196,7 @@ def _warn_if_conditional_primitives_are_unusable(
 
 
 class _Context:
-    """Carries the database and resolved primitives through the recursion."""
+    """The database and resolved primitives, carried through the recursive walk."""
 
     def __init__(
         self,
@@ -431,9 +434,10 @@ class _Context:
     def _record_ungroupable(self, table: str) -> None:
         """Record every group transform primitive as unmatched on ``table``.
 
-        Only a table with no parent at all is recorded. A table whose parents
-        the walk has merely consumed on its path does have a relationship, so
-        naming it here would tell the user to add one they already have.
+        This function records only a table with no parent relationship at
+        all. A table whose parents the walk already consumed on its path
+        still has a relationship. Naming it here would tell the user to add
+        one they already have.
 
         Args:
             table: A table with no parent relationship.
@@ -449,13 +453,13 @@ class _Context:
     def warn_unmatched(self) -> None:
         """Warn about requested primitives that matched nothing anywhere.
 
-        Skipping is the right behaviour -- raising would break a
-        zero-configuration ``deep_feature_synthesis()`` on any schema missing
-        a dtype family -- but skipping silently leaves the user with a
-        primitive they asked for, no column, and no explanation.
+        Skipping is the right behaviour. Raising would break a
+        zero-configuration ``deep_feature_synthesis()`` on any schema
+        lacking a dtype family. However, skipping silently leaves the user
+        with a primitive they asked for, no column, and no explanation.
 
-        A primitive that produced features somewhere is not reported: it being
-        inapplicable to one particular table is ordinary, and warning about it
+        A primitive that produced features somewhere is not reported. Being
+        inapplicable to one particular table is ordinary. Warning about it
         would bury the genuinely unusable case in noise. Each surviving
         (primitive, table) pair warns once.
         """
@@ -475,10 +479,11 @@ class _Context:
     ) -> None:
         """Warn when a Categorical or Enum column is skipped by a STRING slot.
 
-        Casting a column to ``Categorical`` asserts that its values are labels
-        rather than text, so a string primitive skipping it is correct. Skipping
-        it *silently* is not: the user would get a feature matrix with columns
-        quietly missing and nothing to explain why.
+        Casting a column to ``Categorical`` asserts that its values are
+        labels, not text. So it is correct for a string primitive to skip
+        it. Skipping it *silently* is not correct. The user would then get
+        a feature matrix with columns quietly absent and no explanation for
+        it.
 
         It does not warn about a primitive that has a CATEGORICAL signature.
 
@@ -554,11 +559,13 @@ class _Context:
     def _usable(self, table: str, features: Sequence[Feature]) -> list[Feature]:
         """Drop join keys, which identify rows rather than measuring anything.
 
-        Only the primary key and foreign keys go: the ``row_creation_time`` is
-        a genuine measurement and stays available as a primitive input, which
-        is what makes ``MONTH(signed_up_at)``-style temporal transforms, and
-        ``N_UNIQUE`` or ``CUM_COUNT`` over a temporal column, reachable. It is
-        dropped later, from the matrix's raw passthrough columns only (see
+        Only the primary key and foreign keys are dropped here. The
+        ``row_creation_time`` is a genuine measurement, so it stays available
+        as a primitive input. This is what makes ``MONTH(signed_up_at)``-style
+        temporal transforms reachable, along with ``N_UNIQUE`` or
+        ``CUM_COUNT`` over a temporal column. The ``row_creation_time`` is
+        dropped later instead, from the feature matrix's raw passthrough
+        columns only (see
         :meth:`~tusk.database.Database.output_excluded_columns`).
 
         Args:
