@@ -53,7 +53,7 @@ class Count(AggregationPrimitive):
         """Build the row-count expression.
 
         Returns:
-            A narwhals expression counting rows.
+            A narwhals expression. It counts rows.
         """
         return nw.len()
 
@@ -191,7 +191,7 @@ class Median(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class NUnique(AggregationPrimitive):
-    """Number of distinct values in a column; a null counts as one value."""
+    """Number of distinct values in a column. A null counts as one value."""
 
     name = "n_unique"
     input_dtypes = (F.ANY,)
@@ -202,7 +202,7 @@ class NUnique(AggregationPrimitive):
     stack_on_self = False
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-count expression, counting null as a value.
+        """Build the distinct-count expression. It counts null as a value.
 
         Args:
             expr: The column to count distinct values of.
@@ -216,14 +216,14 @@ class NUnique(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class PercentTrue(AggregationPrimitive):
-    """Fraction of rows where a boolean column is true; a null counts as false."""
+    """Fraction of rows where a boolean column is true. A null counts as false."""
 
     name = "percent_true"
     input_dtypes = (F.BOOLEAN,)
     output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the true-fraction expression, treating null as false.
+        """Build the true-fraction expression. It treats null as false.
 
         Args:
             expr: The boolean column.
@@ -374,14 +374,14 @@ class TimeSinceLastFalse(NeedsCutoffTime, AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class AllTrue(AggregationPrimitive):
-    """Whether every known value of a boolean column is true."""
+    """Whether every non-null value of a boolean column is true."""
 
     name = "all_true"
     input_dtypes = (F.BOOLEAN,)
     output_dtype = nw.Boolean
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the every-value-true expression, ignoring nulls.
+        """Build the every-value-true expression. It ignores nulls.
 
         Args:
             expr: The boolean column.
@@ -395,7 +395,7 @@ class AllTrue(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class AnyTrue(AggregationPrimitive):
-    """Whether any known value of a boolean column is true."""
+    """Whether any non-null value of a boolean column is true."""
 
     name = "any_true"
     input_dtypes = (F.BOOLEAN,)
@@ -403,7 +403,7 @@ class AnyTrue(AggregationPrimitive):
     default_value = False
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the some-value-true expression, ignoring nulls.
+        """Build the some-value-true expression. It ignores nulls.
 
         Args:
             expr: The boolean column.
@@ -425,7 +425,7 @@ class NTrue(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the true-count expression; a null is not true.
+        """Build the true-count expression. A null is not true.
 
         Args:
             expr: The boolean column.
@@ -446,7 +446,7 @@ class Skew(AggregationPrimitive):
     output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the skewness expression; a constant group is null.
+        """Build the skewness expression. A constant group is null.
 
         Args:
             expr: The column to reduce.
@@ -467,7 +467,7 @@ class Kurtosis(AggregationPrimitive):
     output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the excess-kurtosis expression; a constant group is null.
+        """Build the excess-kurtosis expression. A constant group is null.
 
         Args:
             expr: The column to reduce.
@@ -522,7 +522,7 @@ class MaxMinDelta(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class IsUnique(AggregationPrimitive):
-    """Whether no value of a column repeats; a null counts as a value."""
+    """Whether no value of a column repeats. A null counts as a value."""
 
     name = "is_unique"
     input_dtypes = (F.ANY,)
@@ -550,7 +550,7 @@ class PercentUnique(AggregationPrimitive):
     output_dtype = nw.Float64
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-fraction expression; a null counts as a value and a row.
+        """Build the distinct-fraction expression. A null counts as a value and a row.
 
         Args:
             expr: The column to count distinct values of.
@@ -564,7 +564,10 @@ class PercentUnique(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class Mode(ValueCountAggregationPrimitive):
-    """Most frequent known value of a label column; a tie gives the smallest value."""
+    """Most frequent non-null value of a label column.
+
+    A tie gives the smallest value.
+    """
 
     name = "mode"
     input_dtypes = ((F.STRING,), (F.CATEGORICAL,))
@@ -674,7 +677,7 @@ class NUniqueDays(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct-date count; a null counts as one value.
+        """Build the distinct-date count. A null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -696,7 +699,7 @@ class NUniqueDaysOfCalendarYear(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct month-and-day count; a null counts as one value.
+        """Build the distinct month-and-day count. A null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -721,7 +724,7 @@ class NUniqueDaysOfMonth(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct day-of-month count; a null counts as one value.
+        """Build the distinct day-of-month count. A null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -743,7 +746,7 @@ class NUniqueMonths(AggregationPrimitive):
     default_value = 0
 
     def build(self, expr: nw.Expr) -> nw.Expr:
-        """Build the distinct year-and-month count; a null counts as one value.
+        """Build the distinct year-and-month count. A null counts as one value.
 
         Args:
             expr: The datetime column to reduce.
@@ -760,7 +763,7 @@ class NUniqueMonths(AggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class First(OrderedAggregationPrimitive):
-    """Value of a column in the group's earliest row; a null is kept."""
+    """Value of a column in the group's earliest row. A null is kept."""
 
     name = "first"
     input_dtypes = (F.ANY,)
@@ -782,7 +785,7 @@ class First(OrderedAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class Last(OrderedAggregationPrimitive):
-    """Value of a column in the group's latest row; a null is kept."""
+    """Value of a column in the group's latest row. A null is kept."""
 
     name = "last"
     input_dtypes = (F.ANY,)
@@ -804,7 +807,7 @@ class Last(OrderedAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class CountAboveMean(GroupRelativeAggregationPrimitive):
-    """Number of known values of a numeric column above the group's mean."""
+    """Number of non-null values of a numeric column above the group's mean."""
 
     name = "count_above_mean"
     input_dtypes = (F.NUMERIC,)
@@ -838,7 +841,7 @@ class CountAboveMean(GroupRelativeAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class CountBelowMean(GroupRelativeAggregationPrimitive):
-    """Number of known values of a numeric column below the group's mean."""
+    """Number of non-null values of a numeric column below the group's mean."""
 
     name = "count_below_mean"
     input_dtypes = (F.NUMERIC,)
@@ -872,9 +875,9 @@ class CountBelowMean(GroupRelativeAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class CountInsideNthStd(GroupRelativeAggregationPrimitive):
-    """Number of known values at most ``n`` standard deviations from the group's mean.
+    """Number of non-null values within ``n`` standard deviations of the group's mean.
 
-    The standard deviation is the population one, over the group's known
+    The standard deviation is the population one, over the group's non-null
     values.
 
     Attributes:
@@ -884,7 +887,7 @@ class CountInsideNthStd(GroupRelativeAggregationPrimitive):
         default_value: Zero, for a group without rows.
         stack_on_self: False, as in featuretools.
         n: How many standard deviations the band reaches either side of the
-            mean; zero or more.
+            mean. It is zero or more.
     """
 
     name = "count_inside_nth_std"
@@ -930,9 +933,9 @@ class CountInsideNthStd(GroupRelativeAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
-    """Number of known values over ``n`` standard deviations from the group's mean.
+    """Number of non-null values over ``n`` standard deviations from the group's mean.
 
-    The standard deviation is the population one, over the group's known
+    The standard deviation is the population one, over the group's non-null
     values.
 
     Attributes:
@@ -942,7 +945,7 @@ class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
         default_value: Zero, for a group without rows.
         stack_on_self: False, as in featuretools.
         n: How many standard deviations the band reaches either side of the
-            mean; zero or more.
+            mean. It is zero or more.
     """
 
     name = "count_outside_nth_std"
@@ -986,7 +989,7 @@ class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
 
 
 def _count_true_rows(expr: nw.Expr) -> nw.Expr:
-    """Build the count of rows where a boolean column is true; a null is not true.
+    """Build the count of rows where a boolean column is true. A null is not true.
 
     Args:
         expr: The boolean column.
@@ -1029,8 +1032,8 @@ def _spell_width(n: float) -> str:
         n: How many standard deviations the band reaches.
 
     Returns:
-        A whole ``n`` without its decimals, e.g. ``3``; otherwise the decimal
-        point becomes an underscore, e.g. ``1_5``.
+        A whole ``n`` without its decimals, e.g. ``3``. Otherwise, the
+        decimal point becomes an underscore, e.g. ``1_5``.
     """
     spelled = str(int(n)) if float(n).is_integer() else str(n)
     return spelled.replace(".", "_")
@@ -1055,12 +1058,10 @@ def _time_since_last_selected(
     selected: nw.Expr,
     cutoff_time: datetime,
 ) -> nw.Expr:
-    """Build the time from the latest selected row's datetime to the cutoff.
+    """Build the time from the latest selected row's datetime to the cutoff time.
 
-    Rows are blanked rather than filtered out because ``expr.filter()`` is a
-    length-changing expression, which narwhals rejects inside a lazy
-    ``group_by().agg()``. A null flag selects no row, so a group without a
-    selected row reduces to null.
+    Rows are blanked, not filtered. A null value in the selected column
+    selects no row. A group without a selected row reduces to null.
 
     Args:
         timestamps: The datetime column the elapsed time is measured from.
@@ -1082,7 +1083,7 @@ def _where_the_column_varies(expr: nw.Expr, moment: nw.Expr) -> nw.Expr:
 
     Returns:
         The moment, or null where the column's standard deviation is zero or
-        unknown.
+        null.
     """
     # A constant group divides zero by zero, which polars answers with NaN
     # and duckdb with 0.0 or null.
