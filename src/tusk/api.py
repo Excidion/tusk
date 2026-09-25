@@ -1,7 +1,7 @@
 """The public entry points.
 
-:func:`deep_feature_synthesis` builds feature definitions and computes them;
-:func:`apply_features` computes existing ones.
+:func:`deep_feature_synthesis` builds feature definitions and computes
+them. :func:`apply_features` computes existing ones.
 """
 
 from __future__ import annotations
@@ -29,49 +29,59 @@ def deep_feature_synthesis(
 ) -> Any:
     """Run deep feature synthesis over a database.
 
-    Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target table
-    is unknown or the walk generates no features at all, and
-    :class:`~tusk.exceptions.PrimitiveError` for an unknown primitive name, an
-    order-dependent primitive on a table with no ``row_creation_time``, or a
-    primitive of the wrong kind for the argument it was passed to.
+    Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target
+    table is unknown, or if the walk builds no features at all.
+
+    It raises :class:`~tusk.exceptions.PrimitiveError` in three cases:
+
+    - The primitive name is unknown.
+    - An order-dependent primitive lands on a table with no
+      ``row_creation_time``.
+    - A primitive is the wrong kind for the argument it is passed to.
+
     Compilation raises :class:`~tusk.exceptions.SchemaError` if the target
-    table has no ``primary_key``, and whatever :func:`apply_features`
-    documents for ``cutoff_time``.
+    table has no ``primary_key``. It also raises whatever
+    :func:`apply_features` documents for ``cutoff_time``.
 
     Args:
         database: The tables and relationships to synthesize over.
-        target_table: Table to build features for. The result has one
-            row per *visible* row of this table, keyed by its ``primary_key``.
-            With no ``cutoff_time`` that is every row; with one, the target is
-            filtered like any other table, so the matrix may have fewer rows.
+        target_table: The table to build features for. The result has one
+            row per *visible* row of this table, keyed by its
+            ``primary_key``. With no ``cutoff_time``, that is every row.
+            With one, the target table is filtered like any other, so the
+            feature matrix may have fewer rows.
         agg_primitives: Aggregation primitives, as names or instances. None
             selects the documented defaults.
-        trans_primitives: Transform primitives, as names or instances. Each
-            group or ordered transform primitive is applied within each
-            foreign-key group, every other one to each row. None selects the
-            defaults.
+        trans_primitives: Transform primitives, as names or instances.
+            Synthesis applies each group or ordered transform primitive
+            within its foreign-key group. It applies every other transform
+            primitive to each row. None selects the defaults.
         conditional_primitives: Aggregation primitives to compute over only
-            the rows each declared condition keeps, as names or instances. A
-            separate list from ``agg_primitives``: a primitive named here
-            yields the conditional features alone, so name it in both to get
-            the unconditional ones too. None selects ``CONDITIONAL_DEFAULTS``;
-            ``()`` computes no conditional features.
+            the rows each declared condition keeps, as names or instances.
+            This is a separate list from ``agg_primitives``. A primitive
+            named here yields only the conditional features, so name it in
+            both lists for the unconditional ones too. None selects
+            ``CONDITIONAL_DEFAULTS``. ``()`` computes no conditional
+            features.
         max_depth: Maximum number of stacked primitive applications.
-        cutoff_time: Only rows whose ``row_creation_time`` is at or before this
-            value are visible, on the target table as well as its relatives.
-            Its tz awareness must match the database's Datetime columns'.
-            A table with no ``row_creation_time`` is timeless and keeps every
-            row, so a cutoff changes nothing on a database that declares none.
-            None disables filtering. A column listed in a table's
+        cutoff_time: Only rows whose ``row_creation_time`` is at or before
+            this value are visible, on the target table as well as its
+            relatives. Its tz awareness must match the database's Datetime
+            columns'. A table with no ``row_creation_time`` is timeless and
+            keeps every row. Setting ``cutoff_time`` changes nothing on a
+            database where no table declares ``row_creation_time``. None
+            disables filtering. A column listed in a table's
             ``row_update_times`` holds the value it had before the update,
-            wherever that update happened after the cutoff. Ignored entirely
-            when ``features_only`` is true, since nothing is computed.
-        features_only: Return the feature definitions without computing them.
+            wherever that update happened after the cutoff time.
+            ``cutoff_time`` is ignored entirely when ``features_only`` is
+            true. Synthesis computes nothing in that case.
+        features_only: Return the feature definitions without computing
+            them.
 
     Returns:
-        feature_matrix: The features on the caller's backend, as a lazy
-            frame where that backend has one. Not returned when
-            ``features_only`` is true.
+        feature_matrix: The features on the caller's backend, as a
+            narwhals LazyFrame where the backend has one. It is not
+            returned when ``features_only`` is true.
         features (FeatureList): The feature definitions, reusable with
             :meth:`~tusk.FeatureList.apply` or :func:`apply_features`.
 
@@ -102,35 +112,50 @@ def apply_features(
     """Apply existing feature definitions to a database.
 
     Use this to apply a feature set fitted on training data to new data. It
-    accepts any sequence of features; a :class:`~tusk.FeatureList` can compute
-    itself with :meth:`~tusk.FeatureList.apply` instead.
+    accepts any sequence of features. A :class:`~tusk.FeatureList` can
+    compute itself with :meth:`~tusk.FeatureList.apply` instead.
 
-    Raises :class:`~tusk.exceptions.SchemaError` if ``features`` is empty,
-    spans more than one table, or targets a table with no ``primary_key``, and
-    :class:`~tusk.exceptions.PrimitiveError` if an order-dependent primitive
-    lands on a table with no ``row_creation_time``.
-    :class:`~tusk.exceptions.ValidationError` is raised if ``cutoff_time``
-    differs from the database's Datetime columns in tz awareness, or if
-    those disagree among themselves; or if a feature's primitive measures
-    against ``cutoff_time`` and none was given. ``TypeError`` is raised if
-    ``cutoff_time`` is not a ``datetime``.
+    It raises :class:`~tusk.exceptions.SchemaError` if any of these are
+    true:
+
+    - ``features`` is empty.
+    - ``features`` spans more than one table.
+    - ``features`` targets a table with no ``primary_key``.
+
+    It raises :class:`~tusk.exceptions.PrimitiveError` if an
+    order-dependent primitive lands on a table with no
+    ``row_creation_time``.
+
+    It raises :class:`~tusk.exceptions.ValidationError` if any of these are
+    true:
+
+    - ``cutoff_time`` differs from the database's Datetime columns in tz
+      awareness.
+    - The database's Datetime columns disagree with each other in tz
+      awareness.
+    - A feature's primitive measures against ``cutoff_time`` and none was
+      given.
+
+    It raises ``TypeError`` if ``cutoff_time`` is not a ``datetime``.
 
     Args:
         features: Feature definitions, all on the same target table.
         database: The database to compute over.
-        cutoff_time: Only rows whose ``row_creation_time`` is at or before this
-            value are visible, on the target table as well as its relatives, so
-            the matrix may have fewer rows than the target. Its tz awareness
-            must match the database's Datetime columns'. A table with no
-            ``row_creation_time`` is timeless and keeps every row, so a cutoff
-            changes nothing on a database that declares none. None disables
-            filtering. A column listed in a table's ``row_update_times`` holds
-            the value it had before the update, wherever that update happened
-            after the cutoff.
+        cutoff_time: Only rows whose ``row_creation_time`` is at or before
+            this value are visible, on the target table as well as its
+            relatives. The feature matrix may then have fewer rows than
+            the target. Its tz awareness must match the database's
+            Datetime columns'. A table with no ``row_creation_time`` is
+            timeless and keeps every row. Setting ``cutoff_time`` changes
+            nothing on a database where no table declares
+            ``row_creation_time``. None disables filtering. A column
+            listed in a table's ``row_update_times`` holds the value it
+            had before the update, wherever that update happened after
+            the cutoff time.
 
     Returns:
-        feature_matrix: The features on the caller's backend, as a lazy
-            frame where that backend has one, with one row per visible target
-            row.
+        feature_matrix: The features on the caller's backend, as a
+            narwhals LazyFrame where the backend has one, with one row
+            per visible target row.
     """
     return FeatureList(features).apply(database, cutoff_time)

@@ -16,7 +16,7 @@ from tusk.validation import check_cutoff_time_zone
 class FeatureList(Sequence[Feature]):
     """An immutable, non-empty, single-table collection of feature definitions.
 
-    Behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`.
+    It behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`.
     Slicing returns another ``FeatureList``.
     """
 
@@ -46,7 +46,7 @@ class FeatureList(Sequence[Feature]):
     def output_names(self) -> tuple[str, ...]:
         """Every column name the feature matrix will carry, in column order.
 
-        Wider than ``len(self)`` when any feature is multi-output.
+        It is wider than ``len(self)`` when any feature is multi-output.
         """
         return tuple(n for f in self._features for n in f.output_names)
 
@@ -57,31 +57,39 @@ class FeatureList(Sequence[Feature]):
     ) -> Any:
         """Compute these features against a database.
 
-        Raises :class:`~tusk.exceptions.SchemaError` if the target table has
-        no ``primary_key`` or two features compile to the same column name,
-        or a feature's condition key is not declared on the table it masks in
-        ``database``, :class:`~tusk.exceptions.PrimitiveError` if an
-        order-dependent primitive lands on a table with no ``row_creation_time``,
-        and :class:`~tusk.exceptions.ValidationError` if ``cutoff_time``
-        disagrees with the database's Datetime columns in tz awareness, or if a
-        feature's primitive measures against ``cutoff_time`` and none was
-        given.
+        It raises :class:`~tusk.exceptions.SchemaError` if any of these are
+        true:
+
+        - The target table has no ``primary_key``.
+        - Two features compile to the same column name.
+        - A feature's condition key is not declared on the table it masks
+          in ``database``.
+
+        It raises :class:`~tusk.exceptions.PrimitiveError` if an
+        order-dependent primitive lands on a table with no
+        ``row_creation_time``.
+
+        It raises :class:`~tusk.exceptions.ValidationError` if
+        ``cutoff_time`` disagrees with the database's Datetime columns in
+        tz awareness. It also raises that error if a feature's primitive
+        measures against ``cutoff_time`` and none was given.
 
         Args:
             database: The database to compute over.
-            cutoff_time: Only rows whose ``row_creation_time`` is at or before
-                this value are visible, on the target table as well as its
-                relatives, so the matrix may have fewer rows than the target.
-                Its tz awareness must match the database's Datetime columns'.
-                None disables filtering. A column listed in a table's
-                ``row_update_times`` holds the value it had before the update,
-                wherever that update happened after the cutoff, as declared by
+            cutoff_time: Only rows whose ``row_creation_time`` is at or
+                before this value are visible, on the target table as well
+                as its relatives. The feature matrix may then have fewer
+                rows than the target. Its tz awareness must match the
+                database's Datetime columns'. None disables filtering. A
+                column listed in a table's ``row_update_times`` holds the
+                value it had before the update, wherever that update
+                happened after the cutoff time, as declared by
                 ``database``.
 
         Returns:
-            feature_matrix: The features on the caller's backend, as a lazy
-                frame where that backend has one, with one row per visible
-                target row.
+            feature_matrix: The features on the caller's backend, as a
+                narwhals LazyFrame where the backend has one, with one row
+                per visible target row.
 
         Raises:
             TypeError: If ``cutoff_time`` is not a ``datetime``.
@@ -99,13 +107,13 @@ class FeatureList(Sequence[Feature]):
     def __getitem__(self, index: slice) -> FeatureList: ...
 
     def __getitem__(self, index: int | slice) -> Feature | FeatureList:
-        """Index to a feature; slice to a narrower ``FeatureList``.
+        """Return a feature by index, or a narrower ``FeatureList`` by slice.
 
-        A slice selecting nothing raises
+        A slice that selects nothing raises
         :class:`~tusk.exceptions.SchemaError`.
 
         Args:
-            index: Position or slice.
+            index: The position or slice.
 
         Returns:
             The feature at ``index``, or the sliced list.

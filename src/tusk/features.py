@@ -1,8 +1,9 @@
 """Feature definitions: the immutable output of phase 1.
 
-Features are frozen dataclasses with structural equality, so a feature reached
-by two different routes deduplicates in a set with no extra bookkeeping. Every
-dtype here is derived from primitive metadata, never from data.
+Features are frozen dataclasses with structural equality, so a feature
+reached by two different routes deduplicates in a set with no extra
+bookkeeping. Primitive metadata alone determines every dtype here, never
+data.
 """
 
 from __future__ import annotations
@@ -30,10 +31,10 @@ class Feature(ABC):
     def name(self) -> str:
         """The column name in the feature matrix.
 
-        A plain SQL identifier: parts are joined with ``__`` rather than the
-        dots, parentheses and spaces a conventional DFS name uses, since a
-        backend that generates SQL parses those as table qualifiers and
-        function calls rather than as part of an identifier. See
+        It is a plain SQL identifier. The name joins parts with ``__``, not
+        with the dots, parentheses and spaces a conventional DFS name
+        uses. A backend that builds SQL reads those characters as table
+        qualifiers and function calls, not as part of one identifier. See
         :attr:`display_name` for the readable form.
         """
 
@@ -43,8 +44,8 @@ class Feature(ABC):
         """The readable name, e.g. ``MEAN(transactions.amount)``.
 
         Carries the same meaning as :attr:`name` in the conventional DFS
-        notation. Used for documentation, logging and error messages; never
-        as a column name.
+        notation. It appears in documentation, logging and error messages,
+        never as a column name.
         """
 
     @property
@@ -60,16 +61,19 @@ class Feature(ABC):
     @property
     @abstractmethod
     def table(self) -> str:
-        """Table this feature is a column of."""
+        """The table this feature is a column of."""
 
     @property
     @abstractmethod
     def base_features(self) -> tuple[Feature, ...]:
-        """Features this one is computed from."""
+        """The features this one is computed from."""
 
     @property
     def output_names(self) -> tuple[str, ...]:
-        """One column name per output; more than one for multi-output primitives."""
+        """One column name per output.
+
+        A multi-output primitive has more than one name here.
+        """
         return (self.name,)
 
     @property
@@ -81,14 +85,15 @@ class Feature(ABC):
     def is_multi_output(self) -> bool:
         """Whether this feature materializes more than one column.
 
-        Only the indexed names in :attr:`output_names` are ever materialized,
-        so a multi-output feature has no single column another primitive could
-        read. It is a valid output of synthesis but never a valid input.
+        Only the indexed names in :attr:`output_names` are ever
+        materialized. A multi-output feature has no single column another
+        primitive could read. It is a valid output of synthesis. It is
+        never a valid input.
 
-        Deriving this from :attr:`output_names` rather than from a primitive's
-        ``number_of_outputs`` keeps it well defined for
+        This is derived from :attr:`output_names`, not a primitive's
+        ``number_of_outputs``. It is defined even for
         :class:`IdentityFeature` and :class:`DirectFeature`, which have no
-        primitive at all.
+        primitive.
         """
         return len(self.output_names) > 1
 
@@ -98,8 +103,8 @@ class IdentityFeature(Feature):
     """A raw column of a table.
 
     Attributes:
-        table_name: Table the column belongs to.
-        column: Column name.
+        table_name: The table the column belongs to.
+        column: The column's name.
         column_dtype: The column's narwhals dtype.
     """
 
@@ -124,12 +129,12 @@ class IdentityFeature(Feature):
 
     @property
     def depth(self) -> int:
-        """Identity features are depth zero."""
+        """Identity features have depth zero."""
         return 0
 
     @property
     def table(self) -> str:
-        """Table the column belongs to."""
+        """The table the column belongs to."""
         return self.table_name
 
     @property
@@ -153,9 +158,9 @@ class TransformFeature(Feature):
     def __post_init__(self) -> None:
         """Confirm the primitive is a transform that reads only its own row.
 
-        Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_kind`, if it does not transform, or if it is a
-        :class:`~tusk.primitives.base.GroupTransformPrimitive`.
+        This raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_require_kind`, if the primitive does not transform, or if
+        it is a :class:`~tusk.primitives.base.GroupTransformPrimitive`.
         """
         _require_kind(self.primitive, TransformPrimitive, "a transform feature")
         if isinstance(self.primitive, GroupTransformPrimitive):
@@ -167,7 +172,7 @@ class TransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``MONTH__started_at``."""
+        """Built name, e.g. ``MONTH__started_at``."""
         return self.primitive.build_name([b.name for b in self.bases])
 
     @property
@@ -230,8 +235,8 @@ class AggregationFeature(Feature):
     def __post_init__(self) -> None:
         """Confirm the primitive aggregates rather than transforms.
 
-        Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_kind`, if it does not.
+        This raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_require_kind`, if the primitive does not aggregate.
         """
         _require_kind(
             self.primitive,
@@ -241,11 +246,11 @@ class AggregationFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``MEAN__transactions__amount``.
+        """Built name, e.g. ``MEAN__transactions__amount``.
 
-        Zero-arity primitives name the child table instead of a column, giving
-        ``COUNT__transactions``. A condition adds two trailing parts, giving
-        ``COUNT__transactions__WHEN__current``.
+        Zero-arity primitives name the child table instead of a column,
+        giving ``COUNT__transactions``. A condition adds two trailing
+        parts, giving ``COUNT__transactions__WHEN__current``.
         """
         child = self.relationship.child
         if not self.bases:
@@ -257,7 +262,7 @@ class AggregationFeature(Feature):
     def display_name(self) -> str:
         """Readable name, e.g. ``MEAN(transactions.amount)``.
 
-        A condition is appended to the final argument, giving
+        A condition adds to the final argument, giving
         ``COUNT(transactions WHEN current)``.
         """
         child = self.relationship.child
@@ -291,7 +296,7 @@ class AggregationFeature(Feature):
 
     @property
     def depth(self) -> int:
-        """One deeper than the deepest input; 1 when there are none."""
+        """One deeper than the deepest input. It is 1 when there are no inputs."""
         return 1 + max((b.depth for b in self.bases), default=0)
 
     @property
@@ -329,7 +334,7 @@ class DirectFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``customers__age``."""
+        """Built name, e.g. ``customers__age``."""
         return f"{self.relationship.parent}__{self.base_feature.name}"
 
     @property
@@ -375,8 +380,8 @@ class GroupByTransformFeature(Feature):
     def __post_init__(self) -> None:
         """Confirm the primitive runs within foreign-key groups.
 
-        Raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_kind`, if it is not a
+        This raises :class:`~tusk.exceptions.PrimitiveError`, via
+        :func:`_require_kind`, if the primitive is not a
         :class:`~tusk.primitives.base.GroupTransformPrimitive`.
         """
         _require_kind(
@@ -387,7 +392,7 @@ class GroupByTransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """Generated name, e.g. ``CUM_SUM__amount__by__session_id``."""
+        """Built name, e.g. ``CUM_SUM__amount__by__session_id``."""
         stem = self.primitive.build_name([b.name for b in self.bases])
         return f"{stem}__by__{self.relationship.foreign_key}"
 
@@ -440,7 +445,7 @@ def _require_kind(
     Args:
         primitive: The primitive to check.
         required: The primitive base class required.
-        where: What is requiring it, named for the error message.
+        where: What requires it, named for the error message.
 
     Raises:
         PrimitiveError: If ``primitive`` is not an instance of ``required``.
