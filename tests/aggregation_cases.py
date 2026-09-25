@@ -94,6 +94,12 @@ EXPECTED = {
         nw.Boolean,
         [True, True, False, True, False, True, False, False],
     ),
+    "entropy": (
+        "ENTROPY__children__label",
+        nw.Float64,
+        [1.0397207708399179, 0.0, 0.0, 1.3862943611198906, None, 0.0, 0.0]
+        + [0.6931471805599453],
+    ),
     "is_unique": (
         "IS_UNIQUE__children__label",
         nw.Boolean,

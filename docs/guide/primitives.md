@@ -58,7 +58,7 @@ with no orders gets:
 | `ANY_TRUE` | `false` | No row is true. |
 | `ALL_TRUE` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but a group with no rows is left unknown. |
 | `IS_UNIQUE` | `null` | No rows to compare. Nulls are values, so a group of several nulls is `false`. |
-| `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE` | `null` | Undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
+| `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE`, `ENTROPY` | `null` | Undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
 
 `COUNT` and `SUM` report `0` because a group with no rows has nothing to count
 and nothing to add up. `MEAN` stays null, because there is no number that is

@@ -596,6 +596,48 @@ class Mode(ValueCountAggregationPrimitive):
 
 @register
 @dataclass(frozen=True)
+class Entropy(ValueCountAggregationPrimitive):
+    """Entropy of the values of a label column, with the natural logarithm.
+
+    A null counts as one value.
+    """
+
+    name = "entropy"
+    input_dtypes = ((F.STRING,), (F.CATEGORICAL,))
+    output_dtype = nw.Float64
+    stack_on_self = False
+
+    def compare_with_group(self, expr: nw.Expr, counts: nw.Expr) -> nw.Expr:
+        """Build each row's part of its group's entropy.
+
+        Args:
+            expr: The label column.
+            counts: How often each row's value occurs in its group. It is
+                null where the value is null.
+
+        Returns:
+            A narwhals expression. Its sum over a group is the group's entropy.
+        """
+        # counts leaves null rows without a count, but here null is a value
+        null_count = expr.is_null().cast(nw.Int64).sum()
+        counts_with_nulls = counts.fill_null(null_count)
+        shares = counts_with_nulls / nw.len()
+        return shares * (1 / shares).log() / counts_with_nulls
+
+    def build(self, comparisons: nw.Expr) -> nw.Expr:
+        """Build the sum of the rows' parts.
+
+        Args:
+            comparisons: Each row's part of its group's entropy.
+
+        Returns:
+            A narwhals expression.
+        """
+        return comparisons.sum()
+
+
+@register
+@dataclass(frozen=True)
 class FirstLastTimeDelta(AggregationPrimitive):
     """Time between a group's earliest and latest datetime.
 
