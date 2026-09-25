@@ -80,6 +80,8 @@
 
 ::: tusk.primitives.Mode
 
+::: tusk.primitives.Entropy
+
 ::: tusk.primitives.FirstLastTimeDelta
 
 ::: tusk.primitives.IsUnique
