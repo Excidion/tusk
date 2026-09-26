@@ -1,9 +1,8 @@
 """Deep feature synthesis as scikit-learn estimators.
 
-Both estimators take ``X`` as the target table's primary key and
-receive the database as routed metadata, so scikit-learn must be configured
-with ``sklearn.set_config(enable_metadata_routing=True)`` to use them inside
-a ``Pipeline``.
+Both estimators take ``X`` as the target table's primary key. Both receive
+the database as routed metadata. Using them inside a ``Pipeline`` needs
+``sklearn.set_config(enable_metadata_routing=True)``.
 
 :class:`DFSTransformer` synthesizes features and computes them for the keys
 in ``X``. :class:`DFSSelectorTransformer` additionally fits a supplied
@@ -53,8 +52,8 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
 
     :meth:`fit` sets ``features_``, the synthesized definitions as a
     :class:`~tusk.FeatureList`, and ``database_``, the database it was given.
-    :meth:`transform` computes those features for the keys in ``X``, returning
-    one row per key in key order.
+    :meth:`transform` computes those features for the keys in ``X``. It
+    returns one row per key, in key order.
     """
 
     __metadata_request__fit = {"database": True}
@@ -73,12 +72,14 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
 
         Args:
             target_table: Table to build features for.
-            agg_primitives: Aggregation primitives; None selects the defaults.
-            trans_primitives: Transform primitives; None selects the defaults.
+            agg_primitives: Aggregation primitives. None selects the
+                defaults.
+            trans_primitives: Transform primitives. None selects the
+                defaults.
             max_depth: Maximum stacked primitive applications.
             cutoff_time: Only rows at or before this are visible.
-            output_backend: Backend to collect the matrix to. None collects to
-                the database's own backend.
+            output_backend: Backend to collect the feature matrix to. None
+                collects to the database's own backend.
         """
         self.target_table = target_table
         self.agg_primitives = agg_primitives
@@ -95,11 +96,11 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
     ) -> DFSTransformer:
         """Synthesize feature definitions from the database's schema.
 
-        Reads no rows; :meth:`transform` does the computation.
+        This reads no rows. :meth:`transform` does the computation.
 
         Args:
             X: Ignored. Synthesis depends only on the schema.
-            y: Ignored; present for the scikit-learn signature.
+            y: Ignored. Present for the scikit-learn signature.
             database: The database, routed as metadata.
 
         Returns:
@@ -128,13 +129,13 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         """Compute the feature matrix for the keys in ``X``.
 
         Args:
-            X: The target's primary key. Its order becomes the matrix's
-                row order.
+            X: The target's primary key. Its order becomes the feature
+                matrix's row order.
             database: The database, routed as metadata. When absent, the one
                 seen at fit is used.
 
         Returns:
-            An eager native frame, one row per key, in key order.
+            An eager native table, one row per key, in key order.
         """
         check_is_fitted(self, "features_")
         # scikit-learn's scorers call predict() with no metadata, so without
@@ -165,7 +166,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             X: The target's primary key.
             y: Ignored.
             database: The database, routed as metadata.
-            **kwargs: Ignored; absorbs scikit-learn's fit parameters.
+            **kwargs: Ignored. It absorbs scikit-learn's fit parameters.
 
         Returns:
             The feature matrix.
@@ -173,13 +174,13 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         return self.fit(X, y, database=database).transform(X, database=database)
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
-        """Column names of the matrix, in column order.
+        """Return the feature matrix's column names, in column order.
 
-        A multi-output primitive contributes several names, so this is wider
-        than ``len(features_)``.
+        A multi-output primitive contributes several names. The result is
+        then wider than ``len(features_)``.
 
         Args:
-            input_features: Ignored; present for the scikit-learn signature.
+            input_features: Ignored. Present for the scikit-learn signature.
 
         Returns:
             The names, as an object array.
@@ -194,7 +195,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             database: The database to read the schema from.
 
         Returns:
-            The primary primary key name.
+            The primary key name.
 
         Raises:
             SchemaError: If the target table declares none.
@@ -209,23 +210,25 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
 
 
 class DFSSelectorTransformer(DFSTransformer):
-    """DFS whose feature list is dropped to what a selector actually kept.
+    """DFS that narrows its feature list to what a selector kept.
 
-    The point is inference cost. A run that generates eight hundred features
-    and keeps forty should compute forty when it next sees data, not eight
-    hundred.
+    For example, a run that builds eight hundred features and keeps forty
+    then computes only forty on new data.
 
-    Two column spaces meet here and must never be conflated: *tusk space*, the
-    matrix, indexed by feature ``output_names``, and *encoded space*, the
-    encoder's output, indexed by ``get_feature_names_out()``. The selector's
-    mask indexes encoded space, pruning happens in tusk space, and sentinel
-    lineage is the only bridge between them.
+    Two column spaces meet here. They must never be conflated. *tusk space*
+    is the feature matrix, indexed by feature ``output_names``. *encoded
+    space* is the encoder's output, indexed by ``get_feature_names_out()``.
+    The selector's mask indexes encoded space. Pruning happens in tusk
+    space. Sentinel lineage is the only bridge between the two spaces.
 
-    Fitting adds ``encoder_``, the encoder prefix refitted on the kept
-    columns; ``kept_names_``, the encoded-space names the selector chose, in
-    encoder order; and ``sentinels_``, the renaming that recovers lineage.
-    Like the parent's fitted attributes, none is declared at class level:
-    all three are only known once :meth:`fit` has run.
+    Fitting adds three attributes. As with the parent class's fitted
+    attributes, none is declared at class level. Each is available only
+    once :meth:`fit` has run:
+
+    - ``encoder_``, the encoder prefix refitted on the kept columns.
+    - ``kept_names_``, the encoded-space names the selector chose, in
+      encoder order.
+    - ``sentinels_``, the renaming that recovers lineage.
     """
 
     def __init__(
@@ -242,13 +245,15 @@ class DFSSelectorTransformer(DFSTransformer):
 
         Args:
             target_table: Table to build features for.
-            selection_pipeline: An estimator ending in a ``SelectorMixin``;
-                everything before it encodes.
-            agg_primitives: Aggregation primitives; None selects the defaults.
-            trans_primitives: Transform primitives; None selects the defaults.
+            selection_pipeline: An estimator ending in a ``SelectorMixin``.
+                Everything before it encodes.
+            agg_primitives: Aggregation primitives. None selects the
+                defaults.
+            trans_primitives: Transform primitives. None selects the
+                defaults.
             max_depth: Maximum stacked primitive applications.
             cutoff_time: Only rows at or before this are visible.
-            output_backend: Backend to collect to; None collects natively.
+            output_backend: Backend to collect to. None collects natively.
         """
         super().__init__(
             target_table=target_table,
@@ -278,16 +283,16 @@ class DFSSelectorTransformer(DFSTransformer):
 
         Raises:
             SchemaError: If selection eliminated every feature.
-            LineageError: If a kept column vanished from the refitted encoder,
-                meaning lineage missed a source and a feature was wrongly
-                dropped.
+            LineageError: If a kept column vanished from the refitted
+                encoder. This means lineage missed a source. A feature was
+                wrongly dropped.
 
         Warns:
-            LineageWarning: If any kept column's provenance was unrecoverable,
-                in which case nothing is dropped.
+            LineageWarning: If any kept column's provenance was
+                unrecoverable. Then nothing is dropped.
             UnencodedFeatureWarning: If a feature fed no encoded column at
-                all, so the encoder never gave the selector a chance to keep
-                it.
+                all. The encoder then never gave the selector a chance to
+                keep it.
         """
         validate_selection_pipeline(self.selection_pipeline)
         super().fit(X, y, database=database)
@@ -358,7 +363,7 @@ class DFSSelectorTransformer(DFSTransformer):
             database: The database, routed as metadata.
 
         Returns:
-            The encoded, selected matrix.
+            The encoded, selected feature matrix.
         """
         check_is_fitted(self, "kept_names_")
         db = self.database_ if database is None else database
@@ -374,10 +379,10 @@ class DFSSelectorTransformer(DFSTransformer):
         return self._select(encoded)
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
-        """Selected column names, with sentinels substituted back.
+        """Return the selected column names, with sentinels restored.
 
         Args:
-            input_features: Ignored; present for the scikit-learn signature.
+            input_features: Ignored. Present for the scikit-learn signature.
 
         Returns:
             Readable names such as ``oh__MODE__transactions__category_a``.
@@ -394,8 +399,8 @@ class DFSSelectorTransformer(DFSTransformer):
     ) -> list[Feature]:
         """Return the features with a column feeding a kept encoded column.
 
-        A feature survives if any of its output columns is a source of a kept
-        encoded column, and then contributes all of them.
+        A feature survives if any of its output columns is a source of a
+        kept encoded column. It then contributes all of its output columns.
 
         Args:
             kept: Encoded-space names the selector chose.
@@ -406,11 +411,11 @@ class DFSSelectorTransformer(DFSTransformer):
             The kept features, in their original order.
 
         Warns:
-            LineageWarning: If any kept name mentions no sentinel, in which
-                case every feature is kept.
-            UnencodedFeatureWarning: If a matrix column fed no encoded column
-                at all, so its feature is dropped for a reason the user may not
-                have intended.
+            LineageWarning: If any kept name mentions no sentinel. Then
+                every feature is kept.
+            UnencodedFeatureWarning: If a feature matrix column fed no
+                encoded column at all. Its feature is then dropped, for a
+                reason the user may not have intended.
         """
         sources = {name: sentinels.sources(name) for name in kept}
         opaque = [name for name, s in sources.items() if not s]
@@ -443,7 +448,7 @@ class DFSSelectorTransformer(DFSTransformer):
         """Return only the selected columns of the encoder's output.
 
         Args:
-            encoded: Whatever the encoder returned -- a frame or an array.
+            encoded: Whatever the encoder returned -- a table or an array.
 
         Returns:
             Only the selected columns, in encoder order.

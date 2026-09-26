@@ -1,12 +1,12 @@
-"""Materializes a lazy feature matrix for scikit-learn.
+"""Materialization of a lazy feature matrix for scikit-learn.
 
 :func:`read_keys` normalizes the primary key ``X`` to a list.
 :func:`check_keys_are_visible` rejects keys the target table has no row for.
-:func:`collect_feature_matrix` filters the matrix to those keys, collects it, and
-returns the rows in key order. :func:`backend_hint` annotates exceptions from
-a user's pipeline with the frame backend in play.
+:func:`collect_feature_matrix` filters the feature matrix to those keys,
+collects it, and returns the rows in key order. :func:`backend_hint`
+annotates exceptions from a user's pipeline with the table's backend.
 
-This is the only module in tusk that collects: scikit-learn cannot consume a
+This is the only module in tusk that collects. scikit-learn cannot consume a
 query plan.
 """
 
@@ -41,7 +41,7 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
         The key values.
 
     Raises:
-        TypeError: If ``X`` is not iterable, or its elements are not single
+        TypeError: If ``X`` is not iterable. If its elements are not single
             values.
     """
     try:
@@ -68,17 +68,17 @@ def check_keys_are_visible(
 ) -> None:
     """Fail if the target table has no row for a key at ``cutoff_time``.
 
-    Reads the target's primary key alone, so a stale key is reported without
-    computing the feature matrix first. Raises
+    It reads the target's primary key alone. This reports a stale key
+    without computing the feature matrix first. Raises
     :class:`~tusk.exceptions.SchemaError`, from :func:`_reject_missing_keys`,
     if a key names no visible row.
 
     Args:
-        database: The database holding the frames.
+        database: The database holding the tables.
         target_table: Table the features are built for.
         primary_key: The target table's primary key.
         keys: Key values the caller asked for.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
     """
     visible = (
         base_table(database, target_table, cutoff_time)
@@ -104,12 +104,13 @@ def collect_feature_matrix(
         output_backend: Backend to collect to, or None to collect natively.
 
     Returns:
-        matrix: An eager native frame with one row per key, in key order,
-            without the primary key -- it is a join key, not a feature.
+        feature_matrix: An eager native table with one row per key, in key
+            order, without the primary key -- it is a join key, not a
+            feature.
 
     Raises:
-        SchemaError: If ``keys`` repeats a value, or names a key that produced
-            no row.
+        SchemaError: If ``keys`` repeats a value. If ``keys`` names a key
+            that produced no row.
     """
     if len(set(keys)) != len(keys):
         raise SchemaError(
@@ -157,14 +158,14 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
 
 
 def _collect(table: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
-    """Collect, translating a missing backend package into a tusk error.
+    """Collect the table, translating a missing backend package into a tusk error.
 
     Args:
-        table: The filtered lazy matrix.
+        table: The filtered lazy feature matrix.
         output_backend: Backend name, or None for the database's own.
 
     Returns:
-        The collected frame.
+        The collected table.
 
     Raises:
         TuskError: If ``output_backend`` names a package that is not installed.
@@ -190,16 +191,16 @@ def _collect(table: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
 def backend_hint(table: Any) -> Iterator[None]:
     """Attach a backend hint to whatever the user's pipeline raises.
 
-    Many sklearn transformers reject non-pandas frames in ways that read as
+    Many sklearn transformers reject non-pandas tables in ways that read as
     unrelated type errors -- ``ColumnTransformer`` on pyarrow gives
     ``TypeError: Index must either be string or integer``. The hint names the
     backend and the fix.
 
-    The exception is re-raised **unchanged**. Wrapping it would change its
-    type and break a user's ``except ValueError`` around their own pipeline.
+    This context manager re-raises the exception **unchanged**.
 
     Args:
-        table: The matrix handed to the pipeline, used to name the backend.
+        table: The feature matrix handed to the pipeline, used to name the
+            backend.
 
     Yields:
         None: Control returns to the caller's ``with`` block.
