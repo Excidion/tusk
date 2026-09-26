@@ -76,8 +76,8 @@ back [the same way](deep-feature-synthesis.md#lazy-out-always).
 A database mostly trusts your declarations. When you name a column
 `primary_key`, you assert that it identifies a row, but nothing checks
 this. When the assertion is false, tusk does not fail. A duplicated key
-multiplies every join that lands on the table. `COUNT`, `SUM` and `MEAN`
-then come back inflated by a factor you cannot see.
+multiplies the rows of every join that lands on the table. `COUNT`, `SUM`
+and `MEAN` then come back inflated by a factor you cannot see.
 
 [`validate()`][tusk.Database.validate] runs real queries to check that the
 declarations hold:
@@ -89,7 +89,7 @@ database as a whole. It raises [`ValidationError`][tusk.exceptions.ValidationErr
 on the first defect.
 
 You do not have to wait until you build the whole database. You can also
-validate a table or relationship as you add it:
+pass `validate=True` when you add a table or relationship:
 ```python
 db.add_table("customers", customers_lf, primary_key="id", validate=True)
 ```
@@ -314,7 +314,7 @@ later, as the ride happens:
 Ask for features at a `cutoff_time` of 12:00, and the ride is visible,
 because it was booked two minutes earlier. So is its fare, a number nobody
 knew until 12:25. If you train on that, you train on the answer. This is
-**data leakage**, and `row_update_times` avoids it.
+**data leakage**. `row_update_times` can prevent it.
 
 `row_update_times` names the columns filled in later and says what each held
 before:
@@ -350,18 +350,18 @@ choice depends on your knowledge of your own data.
 
 ### The update time describes itself too
 
-If `picked_up_at` would be a column like any other, `MAX(rides.picked_up_at)`
+If tusk treated `picked_up_at` like any other column, `MAX(rides.picked_up_at)`
 would report a pickup that has not happened yet. tusk therefore adds
 `"picked_up_at": None` to the mapping by default. It also warns with
 [`ImplicitEarlierValueWarning`][tusk.exceptions.ImplicitEarlierValueWarning],
-so you can choose a different value. If you write the value yourself, tusk
+so you can choose a different value. If you write this entry yourself, tusk
 does not raise the warning.
 
 ### What cannot be filled in later
 
 You cannot update the primary key or the `row_creation_time`. The primary
-key is how tusk identifies a row. Every visible row already exists at or
-before the cutoff time, so neither has an earlier value that means anything.
+key identifies a row, and every visible row exists at or before the
+cutoff time. So neither has an earlier value that means anything.
 
 You can fill in a foreign key later. Imagine a driver assigned only after
 someone books the ride. If you give `driver_id` an earlier value of `None`,
