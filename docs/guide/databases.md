@@ -39,7 +39,8 @@ on it also have non-deterministic tiebreaks. Omitting `primary_key` raises a
 The [ordered transform][tusk.primitives.OrderedTransformPrimitive] and
 [ordered aggregation][tusk.primitives.OrderedAggregationPrimitive] primitives
 on a table need its `row_creation_time`. A [cutoff time](deep-feature-synthesis.md#cutoff-times)
-also filters on it. A table without one is *timeless*. A cutoff time does not filter it.
+also filters on it. A table without one is *timeless*. A cutoff time does not
+filter it.
 
 Keys are single columns. There are no composite keys, so passing a tuple or
 list raises [`SchemaError`][tusk.exceptions.SchemaError].
