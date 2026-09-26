@@ -21,7 +21,7 @@ compilation raises [`SchemaError`][tusk.exceptions.SchemaError].
 ## Lazy out, always
 
 tusk builds one query plan. The feature matrix comes back on the backend you
-give it, as that backend's native lazy table where it has one. You decide
+put in, as that backend's native lazy table where it has one. You decide
 when to compute it, the same way you compute anything else on that backend.
 
 On a backend with no separate lazy type, such as pandas or pyarrow, you
@@ -58,27 +58,28 @@ including the ones beyond the declared row creation times. A comparison
 between a tz-aware timestamp and a naive one has no defined ordering. A
 mismatch therefore raises
 [`ValidationError`][tusk.exceptions.ValidationError] up front, for the whole
-database. The cutoff reaches columns beyond the ones it filters on.
+database. The cutoff time reaches columns beyond the ones it filters on.
 `TimeSince` subtracts it from its feature's input column.
 `validate(database="consistent_time_zones")` reports the same mixing
-without a cutoff.
+without a cutoff time.
 
 It filters the target table too. The feature matrix can therefore have
-fewer rows than the target. A row that did not exist yet at the cutoff has
-no features to compute.
+fewer rows than the target. A row that did not exist yet at the cutoff time
+has no features to compute.
 
 Tables with no `row_creation_time` are timeless and pass through unfiltered.
-A cutoff on a database that declares none is therefore silently a no-op.
+A cutoff time on a database that declares none is therefore silently a
+no-op.
 
-A cutoff also reaches inside a row. A table that declares
+A cutoff time also reaches inside a row. A table that declares
 [`row_update_times`](databases.md#row-update-times) gives back the earlier
-value of every column filled in after the cutoff. A taxi fare settled at the
-end of a ride is therefore not visible from a cutoff taken while the ride
-was still running. This happens before any join or aggregation. Aggregated
-and stacked features therefore see those earlier values too.
+value of every column filled in after the cutoff time. A taxi fare settled
+at the end of a ride is therefore not visible from a cutoff time taken while
+the ride was still running. This happens before any join or aggregation.
+Aggregated and stacked features therefore see those earlier values too.
 
-With `features_only=True`, synthesis ignores the cutoff entirely. The
-compiler never runs, and feature definitions do not record it.
+With `features_only=True`, the cutoff time has no effect, because
+compilation does not run and feature definitions do not record it.
 
 ## Warnings
 

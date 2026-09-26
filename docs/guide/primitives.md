@@ -30,8 +30,8 @@ primitives featuretools uses by default, where tusk has them:
 and [`TRANS_DEFAULTS`][tusk.primitives.transform.TRANS_DEFAULTS] for
 transforms.
 
-tusk excludes arithmetic primitives from the defaults because they build
-hundreds of features on wide tables.
+The defaults exclude arithmetic primitives because they build hundreds of
+features on wide tables.
 
 ## Multi-output primitives
 
@@ -52,19 +52,19 @@ with no orders gets:
 | `COUNT` | `0` | There are zero rows to count. |
 | `N_UNIQUE` | `0` | Zero rows hold zero distinct values. A null counts as one value. A group of only nulls is therefore `1`. |
 | `SUM` | `0` | Zero is the additive identity for `SUM`. |
-| `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES`, `MODE` | `null` | These are genuinely undefined over an empty set, such as `0/0`, or the min or max of nothing. |
+| `MEAN`, `MIN`, `MAX`, `STD`, `MEDIAN`, `QUANTILES`, `MODE` | `null` | These are genuinely undefined over an empty set. Examples are `0/0` and the min or max of nothing. |
 | `PERCENT_TRUE` | `null` | This is undefined over an empty set, the same as `MEAN`. Within a non-empty group a null counts as false. An all-null group therefore computes to `0.0` rather than falling through to this default. |
 | `N_TRUE` | `0` | Zero rows hold nothing to count. |
 | `N_UNIQUE_DAYS`, `N_UNIQUE_DAYS_OF_CALENDAR_YEAR`, `N_UNIQUE_DAYS_OF_MONTH`, `N_UNIQUE_MONTHS` | `0` | Zero rows hold zero distinct values. A null date counts as one value. A group of only nulls is therefore `1`. |
 | `ANY_TRUE` | `false` | No row is true. |
-| `ALL_TRUE` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but tusk leaves a group with no rows unknown. |
+| `ALL_TRUE` | `null` | A group of only nulls is `true`, as polars and duckdb answer, but a group with no rows gives `null`. |
 | `IS_UNIQUE` | `null` | There are no rows to compare. Nulls are values. A group of several nulls is therefore `false`. |
 | `VARIANCE`, `SKEW`, `KURTOSIS`, `MAX_MIN_DELTA`, `FIRST_LAST_TIME_DELTA`, `PERCENT_UNIQUE`, `ENTROPY` | `null` | These are undefined over an empty set. `SKEW` and `KURTOSIS` are also `null` for a group whose values do not vary. |
 
 `COUNT` and `SUM` report `0` because a group with no rows has nothing to
 count and nothing to add up. `MEAN` stays null, because there is no number
 that is the average of nothing. Each value lives on the primitive as
-`default_value`. Your own primitives set theirs the same way.
+`default_value`, so your own primitives set theirs the same way.
 
 featuretools agrees on `COUNT` and `SUM`. It also leaves `MEAN`, `MIN` and
 `MAX` null. It differs on `N_UNIQUE`. featuretools leaves an empty group as
@@ -73,9 +73,8 @@ ignores a null value entirely, where tusk counts it as one distinct value.
 
 ## Nulls in `and` and `or`
 
-A null is an unknown value, not a third truth value. An unknown input
-therefore makes the answer unknown only when it could have changed the
-answer:
+A null is an unknown value, not a third truth value. A null input therefore
+makes the answer null only when it could have changed the answer:
 
 | | `true` | `false` | `null` |
 |---|---|---|---|
@@ -86,35 +85,35 @@ answer:
 | **`OR`** `false` | `true` | `false` | `null` |
 | **`OR`** `null` | `true` | `null` | `null` |
 
-`false AND null` is `false` because nothing the unknown turns out to be makes
-the conjunction true. This is what polars, duckdb and every SQL system
+`false AND null` is `false` because nothing the null value turns out to be
+makes the conjunction true. This is what polars, duckdb and every SQL system
 answer, and tusk builds the operator rather than working around it.
 
 featuretools instead propagates the null in every one of those cells. `NOT`
-agrees on both sides: the negation of an unknown is unknown.
+agrees on both sides: the negation of a null is null.
 
 ## Comparing two columns
 
 The comparison primitives accept a pair of numbers or a pair of datetimes,
-never one of each. A primitive may declare several input shapes, and tusk
-matches each shape as a whole:
+never one of each. A primitive may declare several input shapes. Each shape
+matches as a whole:
 
 ```py
 input_dtypes = ((F.NUMERIC, F.NUMERIC), (F.HAS_DATE, F.HAS_DATE))
 ```
 
 `equal` and `not_equal` also accept a pair of booleans or a pair of strings.
-A null on either side gives a null answer, as in SQL. An unknown value
-cannot be shown equal to anything, nor greater than it. See [primitive
+A null on either side gives a null answer, as in SQL. A null value cannot be
+shown equal to anything, nor greater than it. See [primitive
 coverage](primitive-coverage.md) for how this holds up against featuretools,
 column by column.
 
-Labels are a separate case. You compare `Categorical` and `Enum` columns
-with `equal_categorical` and `not_equal_categorical`, which compare the
-labels themselves rather than their encodings. On polars, two `Enum` columns
-with different member lists cannot be compared directly at all. A null
-label follows the same rule as everything else on this page. It makes the
-comparison unknown rather than simply unequal.
+Labels are a separate case. `equal_categorical` and `not_equal_categorical`
+compare `Categorical` and `Enum` columns. They compare the labels themselves
+rather than their encodings. On polars, two `Enum` columns with different
+member lists cannot be compared directly at all. A null label follows the
+same rule as everything else on this page. It makes the comparison null
+rather than simply unequal.
 
 `(F.HAS_DATE, F.HAS_DATE)` matches a `Datetime` column or a `Date` column,
 regardless of time zone. A table holding a `Date` column and a tz-aware
@@ -143,14 +142,14 @@ one by its class:
 
 A group or ordered transform gives one feature per parent relationship of the
 table, named after the foreign key it groups by, such as
-`CUM_SUM__amount__by__session_id`. It never runs across the whole table. A
-running total or a rank over every row would therefore mix rows from
-different parents and change with whichever rows are in the dataset, such as
-a test split. This is a data-leakage risk. It looks only at the rows sharing
-its row's foreign key, the same rows an aggregation sees.
+`CUM_SUM__amount__by__session_id`. A running total or a rank over every row
+would mix rows from different parent rows and change with whichever rows
+are in the dataset, such as a test split, which is a data-leakage risk.
+This is why it never runs across the whole table. It looks only at the rows
+sharing its row's foreign key, the same rows an aggregation sees.
 
-A group does not always correspond to a single parent. Grouping by a shared
-parent, such as drivers when the target is customers, puts several
+A group does not always hold the rows of only one target row. Grouping by a
+shared parent, such as drivers when the target is customers, puts several
 customers' rows in one group, exactly as an aggregation over drivers does.
 
 A primitive of your own picks its behavior the same way, through the class
