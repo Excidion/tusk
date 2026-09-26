@@ -1,11 +1,10 @@
 """Draws a database's schema as a Mermaid entity-relationship diagram.
 
-:class:`SchemaDiagram` is the whole public surface: it builds itself from a
+:class:`SchemaDiagram` is the whole public surface. It builds itself from a
 :class:`tusk.Database`, displays itself in a notebook, and writes itself to a
 file. :meth:`tusk.Database.plot` is a shortcut for its constructor. Everything
-below it is the escaping that keeps generated source parseable, because
-Mermaid's grammar is narrower than narwhals' dtypes and a dataframe's column
-names.
+below it escapes narwhals dtypes and column names to fit Mermaid's narrower
+grammar.
 """
 
 from __future__ import annotations
@@ -26,9 +25,9 @@ class SchemaDiagram:
     Build one with :meth:`from_database`, or with
     :meth:`tusk.Database.plot`, which is a shortcut for it.
 
-    Printing it, or reading :attr:`source`, gives the Mermaid source, which is
-    the escape hatch for any renderer: this class only knows how to build
-    itself, display itself, and write a file.
+    Printing it, or reading :attr:`source`, gives the Mermaid source. This
+    is the escape hatch for any renderer: this class only knows how to
+    build itself, display itself, and write a file.
 
     Attributes:
         lines: The diagram's Mermaid lines, starting with the ``erDiagram``
@@ -47,10 +46,10 @@ class SchemaDiagram:
 
         Args:
             database: The database to draw.
-            columns: True lists every column, False lists none, and
-                ``"structural"`` lists only the primary key, the foreign keys,
-                the ``row_creation_time``, the ``row_update_times``, and the
-                columns they update.
+            columns: True lists every column. False lists no columns.
+                ``"structural"`` lists only the primary key, the foreign
+                keys, the ``row_creation_time``, the ``row_update_times``,
+                and the columns they update.
 
         Returns:
             The diagram.
@@ -72,15 +71,15 @@ class SchemaDiagram:
         return diagram
 
     def __init__(self) -> None:
-        """Start an empty diagram, holding only the header."""
+        """Start an empty diagram. It holds only the header."""
         self.lines = ["erDiagram"]
 
     def _add_lines(self, *new_lines: str, indent: int = 2) -> None:
         """Append lines to the diagram.
 
         Args:
-            *new_lines: The lines to append
-            indent: Spaces to prepend to each line.
+            *new_lines: The lines to append.
+            indent: The number of spaces to prepend to each line.
         """
         self.lines.extend(" " * indent + line for line in new_lines)
 
@@ -118,12 +117,13 @@ class SchemaDiagram:
         """Write the diagram to a file.
 
         The suffix selects the format. ``.mmd`` writes the bare source and
-        ``.md`` writes it in a ``mermaid`` code fence; both need nothing
-        installed. ``.svg``, ``.png`` and ``.pdf`` render the diagram and need
-        ``tusk-ml[plot]``, raising ``ImportError`` if it is not installed.
+        ``.md`` writes it in a ``mermaid`` code fence. Both need nothing
+        installed. ``.svg``, ``.png`` and ``.pdf`` render the diagram and
+        need ``tusk-ml[plot]``. They raise ``ImportError`` if it is not
+        installed.
 
         Args:
-            path: Where to write, including the suffix.
+            path: The file path to write to, including the suffix.
 
         Raises:
             ValueError: If the suffix names no supported format.
@@ -147,7 +147,7 @@ class SchemaDiagram:
         """Render the diagram to an image file.
 
         Args:
-            path: Where to write, including the suffix.
+            path: The file path to write to, including the suffix.
 
         Raises:
             ImportError: If the renderer is not installed.
@@ -246,15 +246,15 @@ def render_attributes(database: Database, name: str, columns: bool | str) -> lis
 def collect_parents_by_foreign_key(
     database: Database, name: str
 ) -> dict[str, list[str]]:
-    """Group a table's parents by the foreign key column pointing at them.
+    """Group a table's parents by the foreign key column that points at them.
 
     Args:
         database: The database the table belongs to.
         name: The table's name.
 
     Returns:
-        One entry per foreign key column, holding the parent tables it points
-        at, in insertion order.
+        One entry per foreign key column. Each holds the parent tables it
+        points at, in insertion order.
     """
     parents: dict[str, list[str]] = {}
     for relationship in database.parents_of(name):
@@ -310,10 +310,12 @@ def describe_comments(
 ) -> list[str]:
     """Describe everything about a column that Mermaid has no marker for.
 
-    Mermaid knows only PK, FK and UK, and its ``classDef`` styling cannot
-    target an individual attribute, so the tables a foreign key points at, the
-    ``row_creation_time``, and every ``row_update_times`` role all have to
-    travel in the comment slot.
+    Mermaid supports only the PK, FK and UK markers, so three kinds of
+    information travel in the comment slot instead:
+
+    - the tables a foreign key points at
+    - the ``row_creation_time``
+    - any ``row_update_times`` role
 
     Args:
         column: The column's name.
@@ -375,17 +377,18 @@ def render_dtype(dtype: Any) -> str:
 def render_table_name(name: str) -> str:
     """Render a table name as a Mermaid entity name.
 
-    Any double quote in the name is dropped before quoting: an embedded quote
-    would close the entity name early and break the whole diagram, not just
-    this one label. A name left empty by that, or empty to start with, would
-    quote to `` "" ``, which Mermaid also rejects, so it falls back to `` "_" ``.
+    Any double quote in the name is dropped before quoting. An embedded
+    quote would close the entity name early and break the whole diagram,
+    not just this one label. A name that becomes empty from this, or a
+    name that starts empty, would quote to `` "" ``, which Mermaid also
+    rejects. The function then uses `` "_" `` instead.
 
     Args:
         name: The table's name.
 
     Returns:
-        The name, quote-stripped, unsafe-character-substituted and wrapped in
-        double quotes, which is what allows it to contain spaces.
+        The name, with quotes stripped, unsafe characters replaced, and
+        double quotes added around it. This lets it contain spaces.
     """
     quote_stripped = name.replace(chr(34), "")
     # The only characters a quoted entity name still rejects.
@@ -396,18 +399,18 @@ def render_table_name(name: str) -> str:
 def render_column_name(name: str) -> str:
     """Render a column name as a Mermaid attribute name.
 
-    Attribute names cannot be quoted, so a name Mermaid would reject is
-    rewritten rather than escaped. The rewrite is lossy: two columns differing
-    only by a space, or only by an unsafe character, collapse to the same
-    token. The diagram is for visual inspection, so that is preferred to
-    refusing to draw it.
+    Attribute names cannot be quoted, so a name that Mermaid would reject
+    is rewritten rather than escaped. The rewrite is lossy: two columns
+    that differ only by a space, or only by an unsafe character, collapse
+    to the same token. The diagram is for visual inspection, so a lossy
+    rewrite is better than refusing to draw it.
 
     Args:
         name: The column's name.
 
     Returns:
-        A name Mermaid's attribute slot parses, as close to the original as
-        the grammar allows.
+        A name that Mermaid's attribute slot parses, as close to the
+        original as the grammar allows.
     """
     # Found empirically
     safe = re.sub(r"""[:;#'|/\\<=>+&!?@$~^`{}%"\t\n]""", "_", name)
