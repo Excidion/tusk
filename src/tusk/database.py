@@ -25,7 +25,7 @@ from tusk.validation import (
 
 @dataclass(frozen=True)
 class TableSchema:
-    """Everything phase 1 knows about a table.
+    """The declared schema of one table.
 
     Attributes:
         name: The table's name within the database.
@@ -93,7 +93,7 @@ class Database:
     """A collection of related tables that DFS can synthesize features over."""
 
     def __init__(self, name: str) -> None:
-        """Create an empty database.
+        """Start an empty database.
 
         Args:
             name: A name for this database that people can read.
@@ -143,7 +143,7 @@ class Database:
             row_creation_time: The column that records when a row became
                 knowable. Required for order-dependent primitives on this
                 table.
-            row_update_times: Maps each column recording when a row was
+            row_update_times: Maps each column that holds when a row was
                 updated to the columns that update rewrote, each mapped to the
                 value it held before. Computing a feature matrix under a
                 ``cutoff_time`` gives those columns their earlier value on
@@ -174,7 +174,7 @@ class Database:
         Warns:
             MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
             ImplicitEarlierValueWarning: If a ``row_update_times`` key
-                does not list itself, so tusk gave it a null value.
+                does not list itself, so tusk gives it a null value.
         """
         if name in self._schemas:
             raise SchemaError(f"table {name!r} is already in this database")
@@ -294,7 +294,7 @@ class Database:
     ) -> Database:
         """Run validation checks against the database.
 
-        Runs checks in this order:
+        It runs the checks in this order:
 
         1. Table checks against every table, in insertion order.
         2. Relationship checks against every relationship.
@@ -400,11 +400,10 @@ class Database:
         return [r for r in self._relationships if r.child == name]
 
     def input_excluded_columns(self, name: str) -> frozenset[str]:
-        """Return columns that may not be fed to a primitive as an input.
+        """Return the columns that no primitive takes as an input.
 
-        Only join keys: the primary key and every foreign key. They identify
-        rows, not measurements: ``MEAN(customer_id)`` would be noise.
-        Foreign keys remain usable as groupby keys.
+        Only join keys: the primary key and every foreign key. Foreign keys
+        remain usable as groupby keys.
 
         The ``row_creation_time`` is not included here. Primitives can
         still use it, for example for ``MONTH(signed_up_at)``-style
@@ -429,10 +428,10 @@ class Database:
         """Return raw columns that never appear in the feature matrix.
 
         Everything in :meth:`input_excluded_columns`, plus the
-        ``row_creation_time``. This also matches what featuretools drops
-        from the feature matrix, to avoid target leakage. Derived features
-        *over* the row creation time, such as ``MONTH(signed_up_at)``, are
-        not affected. Only the raw column is dropped.
+        ``row_creation_time``. featuretools also drops this column from its
+        feature matrix. Derived features *over* the row creation time, such
+        as ``MONTH(signed_up_at)``, are not affected. Only the raw column is
+        dropped.
 
         Args:
             name: The table's name.

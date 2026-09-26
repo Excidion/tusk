@@ -1,4 +1,4 @@
-"""Draws a database's schema as a Mermaid entity-relationship diagram.
+"""A Mermaid entity-relationship diagram of a database's schema.
 
 :class:`SchemaDiagram` is the whole public surface. It builds itself from a
 :class:`tusk.Database`, displays itself in a notebook, and writes itself to a
@@ -25,9 +25,8 @@ class SchemaDiagram:
     Build one with :meth:`from_database`, or with
     :meth:`tusk.Database.plot`, which is a shortcut for it.
 
-    Printing it, or reading :attr:`source`, gives the Mermaid source. This
-    is the escape hatch for any renderer: this class only knows how to
-    build itself, display itself, and write a file.
+    Printing it, or reading :attr:`source`, gives the Mermaid source. Any
+    Mermaid renderer accepts this source directly.
 
     Attributes:
         lines: The diagram's Mermaid lines, starting with the ``erDiagram``
@@ -119,8 +118,8 @@ class SchemaDiagram:
         The suffix selects the format. ``.mmd`` writes the bare source and
         ``.md`` writes it in a ``mermaid`` code fence. Both need nothing
         installed. ``.svg``, ``.png`` and ``.pdf`` render the diagram and
-        need ``tusk-ml[plot]``. They raise ``ImportError`` if it is not
-        installed.
+        need ``tusk-ml[plot]``. Saving to these formats raises
+        ``ImportError`` if ``tusk-ml[plot]`` is not installed.
 
         Args:
             path: The file path to write to, including the suffix.
@@ -315,7 +314,7 @@ def describe_comments(
 
     - the tables a foreign key points at
     - the ``row_creation_time``
-    - any ``row_update_times`` role
+    - every ``row_update_times`` role
 
     Args:
         column: The column's name.
@@ -377,18 +376,17 @@ def render_dtype(dtype: Any) -> str:
 def render_table_name(name: str) -> str:
     """Render a table name as a Mermaid entity name.
 
-    Any double quote in the name is dropped before quoting. An embedded
-    quote would close the entity name early and break the whole diagram,
-    not just this one label. A name that becomes empty from this, or a
-    name that starts empty, would quote to `` "" ``, which Mermaid also
-    rejects. The function then uses `` "_" `` instead.
+    Any double quote in the name is dropped before quoting. A name that
+    becomes empty from this, or a name that starts empty, would quote to
+    `` "" ``, which Mermaid also rejects. The function then uses `` "_" ``
+    instead.
 
     Args:
         name: The table's name.
 
     Returns:
         The name, with quotes stripped, unsafe characters replaced, and
-        double quotes added around it. This lets it contain spaces.
+        double quotes added around it.
     """
     quote_stripped = name.replace(chr(34), "")
     # The only characters a quoted entity name still rejects.
@@ -402,8 +400,7 @@ def render_column_name(name: str) -> str:
     Attribute names cannot be quoted, so a name that Mermaid would reject
     is rewritten rather than escaped. The rewrite is lossy: two columns
     that differ only by a space, or only by an unsafe character, collapse
-    to the same token. The diagram is for visual inspection, so a lossy
-    rewrite is better than refusing to draw it.
+    to the same token.
 
     Args:
         name: The column's name.
