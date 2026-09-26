@@ -29,7 +29,10 @@ class ValidationError(TuskError):
 
 
 class MissingPrimaryKeyWarning(UserWarning):
-    """Warning issued when a table without a primary key has reduced capabilities."""
+    """Warning issued when a table is added without a primary key.
+
+    A table without one has reduced capabilities.
+    """
 
 
 class ImplicitEarlierValueWarning(UserWarning):

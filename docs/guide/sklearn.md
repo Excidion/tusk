@@ -81,8 +81,6 @@ over the features.
 To avoid this error, filter `X` and `y` to the keys that existed at the
 cutoff time. Then hand them to the pipeline.
 
-`transform` checks the keys before it computes the feature matrix.
-
 ## Cross-validation and search
 
 Because `X` is an ordinary column of values, the usual tools work:

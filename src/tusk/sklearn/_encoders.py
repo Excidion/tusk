@@ -175,8 +175,8 @@ def _reject_explicit_columns(estimator: Any) -> None:
                 raise EncoderError(
                     f"ColumnTransformer step {name!r} names its columns "
                     f"explicitly ({list(columns)[:3]}...), which cannot be "
-                    "refit once selection narrows the matrix, and DFS "
-                    "generates its column names so they cannot be known in "
+                    "refit once selection narrows the feature matrix, and DFS "
+                    "builds its column names so they cannot be known in "
                     "advance anyway. Use a callable instead, such as "
                     "tusk.sklearn.dtype_selector('numeric') or "
                     "dtype_selector('string').",

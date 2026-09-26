@@ -15,7 +15,7 @@ from tusk.primitives import AggregationPrimitive, register
 class Range(AggregationPrimitive):
     """Difference between the largest and smallest value."""
 
-    name = "range"  # identifier and also the stem of generated column names
+    name = "range"  # identifier and also the stem of the column names it builds
     input_dtypes = (F.NUMERIC,)  # one per input; empty means zero-arity, like count
     output_dtype = nw.Float64  # build()'s result is cast to this
     default_value = None  # empty group has no range

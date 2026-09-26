@@ -1333,7 +1333,7 @@ def _count_unless_empty(words: nw.Expr, count: nw.Expr) -> nw.Expr:
 
     Returns:
         A narwhals expression of the count. It is zero where ``words`` is
-        empty. An empty string splits into one word, not zero.
+        empty. An empty string splits into one empty word, not zero.
     """
     return nw.when(words == "").then(nw.lit(0)).otherwise(count)
 

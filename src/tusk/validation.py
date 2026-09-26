@@ -170,7 +170,7 @@ def check_never_updated_row_creation_time(
     raise ValidationError(
         f"row_creation_time {schema.row_creation_time!r} of {schema.name!r} "
         f"is listed under row_update_time {update_time!r}; every visible row "
-        f"was created at or before the cutoff already",
+        f"was created at or before the cutoff time already",
     )
 
 
@@ -194,7 +194,7 @@ def check_unchained_row_update_times(table: nw.LazyFrame, schema: TableSchema) -
         raise ValidationError(
             f"row_update_time {column!r} of {schema.name!r} is itself listed "
             f"under row_update_time {update_time!r}; an update time cannot say "
-            f"what other columns held before if it is unknown itself",
+            f"what other columns held before if it is null itself",
         )
 
 

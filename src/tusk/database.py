@@ -33,9 +33,9 @@ class TableSchema:
         row_creation_time: The column that records when a row became
             knowable.
         dtypes: A mapping of column name to narwhals dtype.
-        row_update_times: A mapping of each column recording an update time
-            to the columns that update rewrote, each mapped to the value it
-            held before the update.
+        row_update_times: A mapping of each column that holds when a row was
+            updated to the columns that update rewrote, each mapped to the
+            value it held before the update.
         where: Named row conditions as narwhals expressions.
         when: Named row conditions as callables that take the cutoff time
             and return a narwhals expression.

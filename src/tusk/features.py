@@ -159,9 +159,10 @@ class TransformFeature(Feature):
         """Confirm the primitive is a transform that reads only its own row.
 
         Raises:
-            PrimitiveError: If the primitive does not transform, raised via
-                :func:`_require_kind`. If the primitive is a
-                :class:`~tusk.primitives.base.GroupTransformPrimitive`.
+            PrimitiveError: If the primitive does not transform, or if it is
+                a :class:`~tusk.primitives.base.GroupTransformPrimitive`,
+                which reads other rows and belongs in a
+                :class:`GroupByTransformFeature` instead.
         """
         _require_kind(self.primitive, TransformPrimitive, "a transform feature")
         if isinstance(self.primitive, GroupTransformPrimitive):

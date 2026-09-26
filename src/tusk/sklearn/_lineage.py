@@ -42,7 +42,7 @@ class Sentinels:
 
         This collects every match, not only the first. A multi-input
         transformer, such as ``PolynomialFeatures``, then reports each
-        source column, and the feature of each source column stays kept.
+        source column, and tusk keeps the feature of every source column.
 
         Args:
             name: One name from the encoder's ``get_feature_names_out()``.

@@ -38,7 +38,7 @@ later:
 
 ```python
 features = tusk.deep_feature_synthesis(db, "customers", features_only=True)
-matrix = features.apply(db_new)
+feature_matrix = features.apply(db_new)
 ```
 
 This is how you apply a feature set fitted on training data to new data. All

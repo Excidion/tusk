@@ -30,8 +30,8 @@ primitives featuretools uses by default, where tusk has them:
 and [`TRANS_DEFAULTS`][tusk.primitives.transform.TRANS_DEFAULTS] for
 transforms.
 
-The defaults exclude arithmetic primitives because they build hundreds of
-features on wide tables.
+The defaults exclude arithmetic primitives because arithmetic primitives
+build hundreds of features on wide tables.
 
 ## Multi-output primitives
 
