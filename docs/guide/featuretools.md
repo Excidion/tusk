@@ -1,8 +1,9 @@
 # Differences from featuretools
 
 tusk borrows several concepts from [featuretools](https://featuretools.alteryx.com/),
-including relationships, primitives and cutoff times. tusk differs where a lazy
-frame gives a benefit, or where an SQL backend needs a different answer.
+including relationships, primitives and cutoff times. tusk differs where it
+can benefit from lazy frames, or where an SQL backend needs a different
+answer.
 
 - **Renamed container and entry points.** tusk keeps concepts similar to
   featuretools but renames them. A collection of tables joined by primary and
@@ -24,18 +25,18 @@ frame gives a benefit, or where an SQL backend needs a different answer.
 - **Almost any backend you like.** Just keep it consistent within one
   database.
 
-- **Feature names are SQL identifiers.** Featuretools writes
+- **Feature names are SQL identifiers.** featuretools writes
   `MEAN(orders.quantity)`. tusk writes `MEAN__orders__quantity`. A backend
   that produces SQL treats dots and parentheses as table qualifiers and
   function calls, not as parts of a column name.
-  [`Feature.display_name`][tusk.features.Feature.display_name] keeps the
-  conventional form for logs, docs and error messages.
+  [`Feature.display_name`][tusk.features.Feature.display_name] is the only
+  place that keeps the conventional form, for logs, docs and error messages.
 
 - **`primary_key` and `row_creation_time`** rather than `index` and
   `time_index`. Narwhals has no index concept. `row_creation_time` names
   what the column means: when the row became knowable.
 
-- **`row_update_times` keeps the column's earlier value.** featuretools'
+- **`row_update_times` asks you what the column held before.** featuretools'
   `set_secondary_time_index` always makes it null instead. See [row update
   times](databases.md#row-update-times).
 
@@ -45,9 +46,10 @@ frame gives a benefit, or where an SQL backend needs a different answer.
 
 - **Opt-in [validation](databases.md#validation).**
   You can use tusk to check whether your definitions match the real datasets.
-  By default, tusk enables only the checks that need the table schema. If you
-  can spend compute time on the full datasets, run `db.validate()`, or set
-  `validate=True` on `db.add_table(...)` or `db.add_relationship(...)`.
+  By default, tusk enables only the checks that need nothing but the table
+  schema. If you are willing to spend compute time on the full datasets, run
+  `db.validate()`, or set `validate=True` on `db.add_table(...)` or
+  `db.add_relationship(...)`.
 
 - **One global `cutoff_time`** applies to the target table too. tusk leaves
   out a row that did not yet exist at the cutoff time. tusk treats a table
