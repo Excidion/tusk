@@ -70,6 +70,10 @@ markers = [
 ]
 addopts = "-m 'not differential and not benchmark'"
 
+[tool.ruff]
+# .claude/ holds a git submodule (the STE skill), not tusk code.
+extend-exclude = [".claude"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "D"]
 
