@@ -144,8 +144,8 @@ A group or ordered transform gives one feature per parent relationship of the
 table, named after the foreign key it groups by, such as
 `CUM_SUM__amount__by__session_id`. A running total or a rank over every row
 would mix rows from different parent rows. It would also change with
-whichever rows are in the dataset, such as a test split. That is a
-data-leakage risk, which is why it never runs across the whole table. It
+whichever rows are in the dataset, such as a test split. Both effects are a
+data-leakage risk. This is why it never runs across the whole table. It
 looks only at the rows sharing its row's foreign key, the same rows an
 aggregation sees.
 
