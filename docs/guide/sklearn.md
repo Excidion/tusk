@@ -150,7 +150,7 @@ Two cases change what you get:
 - If an encoder names its outputs without reference to its inputs, tusk
   cannot tell which feature produced an output. For example, `PCA` produces
   `pca0`, `pca1`.
-  It keeps every feature and warns with `LineageWarning`.
+  tusk keeps every feature and warns with `LineageWarning`.
   Selection still applies to the model. You lose only the saving at inference
   time.
   Consider placing the `PCA` further downstream in the main `Pipeline` and
@@ -191,8 +191,8 @@ every backend a tusk database can use.
 ## Frame backends
 
 tusk collects the feature matrix to whatever backend the database already
-uses, so narwhals-native transformers get the frame type they want. Set
-`output_backend` to change it:
+uses, so narwhals-native transformers get the native table type they want.
+Set `output_backend` to change it:
 
 ```python
 DFSTransformer(target_table="customers", output_backend="pandas")
@@ -203,6 +203,6 @@ not include it. Two cases need it:
 
 - `ColumnTransformer` cannot read pyarrow tables, which is what a duckdb
   database collects to. Use `"pandas"` or `"polars"` in that case.
-- scikit-learn reads polars frames through a dataframe interchange protocol
-  that polars deprecated, so fitting one emits harmless
+- scikit-learn reads polars DataFrames through a dataframe interchange
+  protocol that polars deprecated, so fitting one emits harmless
   `DeprecationWarning`s. `"pandas"` avoids them.

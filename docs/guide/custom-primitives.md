@@ -28,7 +28,7 @@ Then pass `"range"` or `Range()` to `deep_feature_synthesis()`. Parameters are
 ordinary dataclass fields.
 
 Every primitive needs `@dataclass(frozen=True)`, since features deduplicate
-by value. A primitive without it raises `PrimitiveError`.
+by value. Passing a primitive without it raises `PrimitiveError`.
 
 See [empty groups](primitives.md#empty-groups) for how the compiler uses
 `default_value`.
@@ -46,12 +46,14 @@ same number of inputs.
 Subclass [`AggregationPrimitive`][tusk.primitives.AggregationPrimitive] for
 something that reduces a child table to one row per parent. Subclass
 [`OrderedAggregationPrimitive`][tusk.primitives.OrderedAggregationPrimitive]
-when it reads the rows in `row_creation_time` order, as `first` does.
+when the aggregation reads the rows in `row_creation_time` order, as `first`
+does.
 
 An aggregation that measures each row against its own group first, as
 `count_above_mean` does, subclasses
 [`GroupRelativeAggregationPrimitive`][tusk.primitives.GroupRelativeAggregationPrimitive].
-SQL backends reject an aggregate nested in an aggregate.
+This base class exists because SQL backends reject an aggregate nested in an
+aggregate.
 
 An aggregation that needs to know how often each value occurs in its group
 subclasses
@@ -144,9 +146,9 @@ the built-in transforms of each kind.
 ## Primitives that measure against the cutoff time
 
 Mix in [`NeedsCutoffTime`][tusk.primitives.NeedsCutoffTime] for a primitive
-whose value depends on the moment the compiler builds the feature matrix, not
-just its input column. `time_since` is the built-in example. `build()` takes
-`cutoff_time` as a keyword alongside the usual input expressions:
+whose value depends on the moment the compiler computes the feature matrix,
+not just its input column. `time_since` is the built-in example. `build()`
+takes `cutoff_time` as a keyword alongside the usual input expressions:
 
 ```python
 from dataclasses import dataclass
