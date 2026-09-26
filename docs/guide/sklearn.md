@@ -8,7 +8,7 @@ uv add "tusk-ml[sklearn]"
 ```
 
 `X` is the target table's primary key: one value per row, in the order you
-want the rows back. The database is passed separately, as scikit-learn
+want the rows back. You pass the database separately, as scikit-learn
 metadata:
 
 ```python
@@ -39,15 +39,15 @@ pipeline.fit([1, 2, 3], y_train, database=db)
 pipeline.predict([4, 5], database=db)
 ```
 
-`fit` reads the schema and synthesizes feature definitions; it touches no
+`fit` reads the schema and synthesizes feature definitions. It touches no
 rows. `transform` computes them and returns one row per key, in key order.
 
 `sklearn.set_config(enable_metadata_routing=True)` is what lets `database=`
 reach the transformer through the pipeline. Set it once per process.
 
-The matrix holds whatever dtypes synthesis produced, so it can carry strings
-and nulls, which most estimators do not take. How to encode them, and what to
-fill in for a null, is yours to choose.
+The feature matrix holds whatever dtypes synthesis produced, so it can carry
+strings and nulls, which most estimators do not take. How to encode them, and
+what value to substitute for a null, is yours to choose.
 
 Pass `database=` to `predict` to score a different set of keys, from either
 the same database or another one built to the same schema.
@@ -62,26 +62,26 @@ pipeline.fit(np.array([1, 2, 3]), y_train, database=db)
 ```
 
 Each element is one key. A key with no matching row raises, as does a
-repeated key: both would misalign the matrix against `y`.
+repeated key. Both would misalign the feature matrix against `y`.
 
 ## Cutoff time and the target table
 
 `cutoff_time` filters every table, the target included. A target row that
-did not exist yet at the cutoff will have no row in the matrix. Therefore,
-any key in `X` identifying such a row raises `SchemaError`:
+did not exist yet at the cutoff time will have no row in the feature matrix.
+Therefore, any key in `X` identifying such a row raises `SchemaError`:
 ```
 no row for 3 of 100 keys, e.g. [17, 41, 88]; they are absent from
 'customer_id' or were excluded by cutoff_time
 ```
-The error is raised before the full feature matrix is computed.
-`transform` first reads the target table's primary key alone,
-under the same cutoff, so a stale key costs a one-column scan
-rather than a full pass over the features.
+`transform` raises this error before it computes the full feature matrix. It
+first reads the target table's primary key alone, under the same cutoff
+time. A stale key therefore costs a one-column scan, rather than a full pass
+over the features.
 
-To avoid this error, filter `X` and `y` down to the keys that existed at the
-cutoff, before handing them to the pipeline.
+To avoid this error, filter `X` and `y` to the keys that existed at the
+cutoff time. Then hand them to the pipeline.
 
-The keys are checked before the matrix is computed:
+`transform` checks the keys before it computes the feature matrix.
 
 ## Cross-validation and search
 
@@ -98,13 +98,13 @@ search.fit(keys, y_train, database=db)
 
 ## Automatic feature selection
 
-Synthesis generates many more features than a model needs, and computing all
-of them again at inference time is wasted work.
+Synthesis builds many more features than a model needs. Recomputing them all
+at inference time wastes work.
 
 `DFSSelectorTransformer` takes a pipeline that encodes and selects. It fits
-that pipeline once, works out which tusk features the selector kept, and drops
-the others from its feature list. Every later call computes only what is
-left:
+that pipeline once, determines which tusk features the selector kept, and
+drops the others from its feature list. Every later call computes only what
+remains:
 
 ```python
 from sklearn.feature_selection import SelectKBest
@@ -141,26 +141,30 @@ selector.fit(keys, y_train, database=db)
 `get_support()` mask. Everything before it encodes.
 
 After fitting, `features_` holds the kept feature definitions as a
-[`FeatureList`][tusk.FeatureList], and
-`get_feature_names_out()` gives the encoded column names with tusk's names
-substituted back, such as `categories__MODE__orders__products__category_a`.
+[`FeatureList`][tusk.FeatureList]. `get_feature_names_out()` gives the encoded
+column names with tusk's names substituted back, such as
+`categories__MODE__orders__products__category_a`.
 
 Two cases change what you get:
 
-- If an encoder names its outputs without reference to its inputs tusk cannot tell which feature an output came from - e. g. `PCA` produces `pca0`, `pca1`.
+- If an encoder names its outputs without reference to its inputs, tusk
+  cannot tell which feature produced an output. For example, `PCA` produces
+  `pca0`, `pca1`.
   It keeps every feature and warns with `LineageWarning`.
-  Selection still applies to the model; only the saving at inference time is lost.
-  Consider placing the `PCA` further downstream in the main `Pipeline` and not in the `selection_pipeline`.
-- If a feature reaches no encoder, it is dropped and tusk warns with
+  Selection still applies to the model. You lose only the saving at inference
+  time.
+  Consider placing the `PCA` further downstream in the main `Pipeline` and
+  not in the `selection_pipeline`.
+- If a feature reaches no encoder, tusk drops it and warns with
   `UnencodedFeatureWarning` naming how many. Cover every dtype in your
-  matrix, or set `remainder="passthrough"`.
+  feature matrix, or set `remainder="passthrough"`.
 
 ## Choosing columns with `dtype_selector`
 
-Synthesis generates the matrix's column names, so you cannot know them all in advance.
-Which features exist depends on your schema, your primitives and
-`max_depth`. A `ColumnTransformer` given an explicit list of names is
-therefore rejected with `EncoderError`.
+Synthesis builds the feature matrix's column names, so you cannot know them
+all in advance. Which features exist depends on your schema, your primitives
+and `max_depth`. tusk therefore rejects a `ColumnTransformer` given an
+explicit list of names, raising `EncoderError`.
 
 `dtype_selector` picks columns by dtype instead. It takes a
 [`DtypeFamily`](../api/dtypes.md), the same families that decide which
@@ -170,8 +174,8 @@ primitives apply to which columns:
 | --- | --- |
 | `"numeric"` | integers and floats |
 | `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` (every temporal dtype) |
-| `"has_date"` | `Date`, `Datetime` (columns a calendar position can be read from) |
-| `"has_time"` | `Datetime`, `Time` (columns an hour or minute can be read from) |
+| `"has_date"` | `Date`, `Datetime` (columns you can read a calendar position from) |
+| `"has_time"` | `Datetime`, `Time` (columns you can read an hour or minute from) |
 | `"duration"` | `Duration` |
 | `"string"` | `String` |
 | `"categorical"` | `Categorical`, `Enum` |
@@ -186,7 +190,7 @@ every backend a tusk database can use.
 
 ## Frame backends
 
-The feature matrix is collected to whatever backend the database already
+tusk collects the feature matrix to whatever backend the database already
 uses, so narwhals-native transformers get the frame type they want. Set
 `output_backend` to change it:
 
@@ -194,11 +198,11 @@ uses, so narwhals-native transformers get the frame type they want. Set
 DFSTransformer(target_table="customers", output_backend="pandas")
 ```
 
-Install pandas yourself for `output_backend="pandas"`; `tusk[sklearn]` does not
-pull it in. Two cases call for it:
+Install pandas yourself for `output_backend="pandas"`. `tusk[sklearn]` does
+not include it. Two cases need it:
 
 - `ColumnTransformer` cannot read pyarrow tables, which is what a duckdb
-  database collects to. Use `"pandas"` or `"polars"` there.
+  database collects to. Use `"pandas"` or `"polars"` in that case.
 - scikit-learn reads polars frames through a dataframe interchange protocol
-  that polars has deprecated, so fitting one emits harmless
+  that polars deprecated, so fitting one emits harmless
   `DeprecationWarning`s. `"pandas"` avoids them.
