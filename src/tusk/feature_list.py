@@ -88,8 +88,8 @@ class FeatureList(Sequence[Feature]):
 
         Returns:
             feature_matrix: The features on the caller's backend, as the
-                backend's native lazy table where the backend has one,
-                with one row per visible target row.
+                backend's native lazy table, if the backend supports lazy
+                tables, with one row per visible target row.
 
         Raises:
             TypeError: If ``cutoff_time`` is not a ``datetime``.

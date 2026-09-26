@@ -81,8 +81,8 @@ def deep_feature_synthesis(
 
     Returns:
         feature_matrix: The features on the caller's backend, as the
-            backend's native lazy table where the backend has one. It is
-            not returned when ``features_only`` is true.
+            backend's native lazy table, if the backend supports lazy
+            tables. It is not returned when ``features_only`` is true.
         features (FeatureList): The feature definitions, reusable with
             :meth:`~tusk.FeatureList.apply` or :func:`apply_features`.
 
@@ -156,7 +156,7 @@ def apply_features(
 
     Returns:
         feature_matrix: The features on the caller's backend, as the
-            backend's native lazy table where the backend has one, with
-            one row per visible target row.
+            backend's native lazy table, if the backend supports lazy
+            tables, with one row per visible target row.
     """
     return FeatureList(features).apply(database, cutoff_time)

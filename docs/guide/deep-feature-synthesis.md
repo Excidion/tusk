@@ -21,12 +21,14 @@ compilation raises [`SchemaError`][tusk.exceptions.SchemaError].
 ## Lazy out, always
 
 tusk builds one query plan. The feature matrix comes back on the backend you
-put in, as that backend's native lazy table where it has one. You decide
-when to compute it, the same way you compute anything else on that backend.
+put in, as that backend's native lazy table, if the backend supports lazy
+tables. You decide when to compute it, the same way you compute anything
+else on that backend.
 
-On a backend with no separate lazy type, such as pandas or pyarrow, you
-already have your table. [Validation](databases.md#validation) is the only
-part of tusk that computes on its own, and only for the checks you ask for.
+On a backend with no separate lazy type, such as pandas or pyarrow, the
+feature matrix comes back already computed. [Validation](databases.md#validation)
+is the only part of tusk that computes on its own, and only for the checks
+you ask for.
 
 ## Definitions without computation
 
