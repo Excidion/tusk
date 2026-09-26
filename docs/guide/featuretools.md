@@ -2,7 +2,7 @@
 
 tusk borrows several concepts from [featuretools](https://featuretools.alteryx.com/),
 including relationships, primitives and cutoff times. tusk differs where it
-can benefit from lazy frames, or where an SQL backend needs a different
+can benefit from lazy tables, or where an SQL backend needs a different
 answer.
 
 - **Renamed container and entry points.** tusk keeps concepts similar to
@@ -18,8 +18,8 @@ answer.
   | `calculate_feature_matrix(features, entityset)` | `apply_features(features, database)` |
 
 - **Lazy output**, wherever possible. tusk builds a query plan for the feature
-  matrix. You can pass eager or lazy frames as input. If your backend supports
-  it, tusk returns an uncomputed lazy frame. Eager backends, like pandas,
+  matrix. You can pass eager or lazy tables as input. If your backend supports
+  it, tusk returns an uncomputed lazy table. Eager backends, like pandas,
   always compute directly.
 
 - **Almost any backend you like.** Just keep it consistent within one

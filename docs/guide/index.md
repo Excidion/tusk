@@ -5,7 +5,7 @@ always follows the same three steps:
 
 1. **Describe your data.** Build a [database](databases.md). Register each
    table. Name its primary key column and the column that records when a row
-   becomes visible. Then link the tables with relationships. tusk takes these
+   becomes knowable. Then link the tables with relationships. tusk takes these
    declarations on trust. Call [`validate()`](databases.md#validation) if
    you want to check them against the data.
 2. **Synthesize.** Call [`deep_feature_synthesis()`](deep-feature-synthesis.md).

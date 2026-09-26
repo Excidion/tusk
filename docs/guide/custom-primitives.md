@@ -146,8 +146,8 @@ the built-in transforms of each kind.
 ## Primitives that measure against the cutoff time
 
 Mix in [`NeedsCutoffTime`][tusk.primitives.NeedsCutoffTime] for a primitive
-whose value depends on the moment the compiler computes the feature matrix,
-not just its input column. `time_since` is the built-in example. `build()`
+whose value depends on the moment the compiler builds the feature matrix's
+query, not just its input column. `time_since` is the built-in example. `build()`
 takes `cutoff_time` as a keyword alongside the usual input expressions:
 
 ```python

@@ -28,7 +28,7 @@ Both `add_table` and `add_relationship` return the database, so they chain.
 ## Keys
 
 `primary_key` identifies a row. `row_creation_time` records when the row
-becomes visible.
+becomes knowable.
 
 `primary_key` is **optional**. A table without one cannot be a relationship
 parent or a DFS target. The [ordered transform][tusk.primitives.OrderedTransformPrimitive]
@@ -236,7 +236,7 @@ feature_matrix, features = tusk.deep_feature_synthesis(
 #   SUM(orders.amount WHEN open)
 ```
 
-The expressions run when the compiler computes the feature matrix. A
+The expressions run when the backend computes the feature matrix. A
 misspelled column name then surfaces as an error from your backend.
 
 ### A condition only filters its own table
