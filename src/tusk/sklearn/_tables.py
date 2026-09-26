@@ -6,8 +6,7 @@
 collects it, and returns the rows in key order. :func:`backend_hint`
 annotates exceptions from a user's pipeline with the table's backend.
 
-This is the only module in tusk that collects. scikit-learn cannot consume a
-query plan.
+This is the only module in tusk that collects.
 """
 
 from __future__ import annotations
@@ -35,7 +34,8 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
     The order given becomes the feature matrix's row order.
 
     Args:
-        X: An iterable of key values -- a list, a 1-D array, a Series.
+        X: An iterable of key values. For example, a list, a 1-D array or a
+            Series.
 
     Returns:
         The key values.
@@ -68,8 +68,8 @@ def check_keys_are_visible(
 ) -> None:
     """Fail if the target table has no row for a key at ``cutoff_time``.
 
-    It reads the target's primary key alone. This reports a stale key
-    without computing the feature matrix first. Raises
+    It reads the target's primary key alone. The function reports a stale
+    key before it computes the feature matrix. Raises
     :class:`~tusk.exceptions.SchemaError`, from :func:`_reject_missing_keys`,
     if a key names no visible row.
 
@@ -105,8 +105,7 @@ def collect_feature_matrix(
 
     Returns:
         feature_matrix: An eager native table with one row per key, in key
-            order, without the primary key -- it is a join key, not a
-            feature.
+            order. The primary key column is not in the result.
 
     Raises:
         SchemaError: If ``keys`` repeats a value. If ``keys`` names a key
@@ -145,7 +144,7 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
         primary_key: The target table's primary key, named in the message.
 
     Raises:
-        SchemaError: If a key is missing.
+        SchemaError: If a key produced no row.
     """
     missing = [k for k in keys if k not in found]
     if not missing:
@@ -158,7 +157,7 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
 
 
 def _collect(table: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
-    """Collect the table, translating a missing backend package into a tusk error.
+    """Collect the table. Raise a tusk error if the backend package is not installed.
 
     Args:
         table: The filtered lazy feature matrix.
@@ -196,7 +195,8 @@ def backend_hint(table: Any) -> Iterator[None]:
     ``TypeError: Index must either be string or integer``. The hint names the
     backend and the fix.
 
-    This context manager re-raises the exception **unchanged**.
+    This context manager re-raises the exception **unchanged**, with its
+    original type.
 
     Args:
         table: The feature matrix handed to the pipeline, used to name the
@@ -207,7 +207,8 @@ def backend_hint(table: Any) -> Iterator[None]:
 
     Raises:
         Exception: Whatever the wrapped block raised, unchanged, with a
-            backend hint attached as a note (or, on Python 3.10, warned).
+            backend hint attached as a note. On Python 3.10, the hint is
+            issued as a warning instead.
     """
     try:
         yield

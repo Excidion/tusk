@@ -6,8 +6,8 @@ the database as routed metadata. Using them inside a ``Pipeline`` needs
 
 :class:`DFSTransformer` synthesizes features and computes them for the keys
 in ``X``. :class:`DFSSelectorTransformer` additionally fits a supplied
-encode-and-select pipeline, drops the features whose columns the selector did
-not keep, and computes only the rest thereafter.
+encode-and-select pipeline. It drops the features whose columns the selector
+did not keep. It then computes only the rest.
 """
 
 from __future__ import annotations
@@ -215,7 +215,7 @@ class DFSSelectorTransformer(DFSTransformer):
     For example, a run that builds eight hundred features and keeps forty
     then computes only forty on new data.
 
-    Two column spaces meet here. They must never be conflated. *tusk space*
+    Two column spaces meet here. Do not mix them. *tusk space*
     is the feature matrix, indexed by feature ``output_names``. *encoded
     space* is the encoder's output, indexed by ``get_feature_names_out()``.
     The selector's mask indexes encoded space. Pruning happens in tusk
@@ -291,8 +291,7 @@ class DFSSelectorTransformer(DFSTransformer):
             LineageWarning: If any kept column's provenance was
                 unrecoverable. Then nothing is dropped.
             UnencodedFeatureWarning: If a feature fed no encoded column at
-                all. The encoder then never gave the selector a chance to
-                keep it.
+                all. The selector cannot keep that feature.
         """
         validate_selection_pipeline(self.selection_pipeline)
         super().fit(X, y, database=database)
@@ -363,7 +362,7 @@ class DFSSelectorTransformer(DFSTransformer):
             database: The database, routed as metadata.
 
         Returns:
-            The encoded, selected feature matrix.
+            The selected columns of the encoder's output.
         """
         check_is_fitted(self, "kept_names_")
         db = self.database_ if database is None else database

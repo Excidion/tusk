@@ -21,7 +21,8 @@ class Sentinels:
 
     Attributes:
         prefix: Random per-fit token prefix.
-        width: Zero-padded index width. No sentinel is a prefix of another.
+        width: Zero-padded index width. The width is the same for each
+            sentinel, so no sentinel is a prefix of another.
         columns: The tusk-space column names, positionally indexed.
         mapping: Column name to sentinel.
     """
@@ -40,9 +41,8 @@ class Sentinels:
         """Return the columns an encoded name derives from.
 
         This collects every match, not only the first. A multi-input
-        transformer, such as ``PolynomialFeatures``, can name more than one
-        source column. Collecting every match reports all of them and keeps
-        every one of its features.
+        transformer, such as ``PolynomialFeatures``, then reports each
+        source column, and the feature of each source column stays kept.
 
         Args:
             name: One name from the encoder's ``get_feature_names_out()``.
