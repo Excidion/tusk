@@ -1,4 +1,4 @@
-"""Deep feature synthesis for narwhals dataframes."""
+"""Deep feature synthesis for narwhals-backed tables."""
 
 from __future__ import annotations
 

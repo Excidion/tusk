@@ -1,4 +1,4 @@
-"""Inspects and validates a selection pipeline.
+"""Inspection and validation of a selection pipeline.
 
 :func:`get_last_step` and :func:`get_encoder_prefix` split a pipeline into the
 part that encodes and the selector that ends it.
@@ -22,18 +22,18 @@ from tusk.exceptions import EncoderError
 
 
 class dtype_selector:  # noqa: N801
-    """Select columns by :class:`~tusk.dtypes.DtypeFamily`, on any backend.
+    """A selector of columns by :class:`~tusk.dtypes.DtypeFamily`, on any backend.
 
-    Serves the same role as scikit-learn's ``make_column_selector``, but reads
-    the schema through narwhals, so it works on every backend a tusk database
-    can use rather than pandas alone.
+    It serves the same role as scikit-learn's ``make_column_selector``. It
+    reads the schema through narwhals. This lets it work on every backend a
+    tusk database can use, not pandas alone.
 
-    Families are :class:`~tusk.dtypes.DtypeFamily` values, so ``"string"``
-    means here what it means to a primitive: ``String``, not ``Categorical``
-    or ``Enum``.
+    Families are :class:`~tusk.dtypes.DtypeFamily` values. ``"string"`` here
+    means what it means to a primitive: ``String``, not ``Categorical`` or
+    ``Enum``.
 
-    Being a callable, it re-evaluates against whatever frame it is given, so a
-    narrowed matrix narrows the selection.
+    It is callable. Each call re-evaluates the family match against the
+    table it is given. A narrowed feature matrix then narrows the selection.
 
     Attributes:
         family: The :class:`~tusk.dtypes.DtypeFamily` to select.
@@ -42,7 +42,7 @@ class dtype_selector:  # noqa: N801
     family: DtypeFamily
 
     def __init__(self, family: DtypeFamily | str) -> None:
-        """Create a selector for one dtype family.
+        """Build a selector for one dtype family.
 
         Args:
             family: A ``DtypeFamily`` or its string value, such as
@@ -55,16 +55,16 @@ class dtype_selector:  # noqa: N801
         """Return the matching column names.
 
         Args:
-            X: The frame the encoder is being fitted on.
+            X: The table the encoder is being fitted on.
 
         Returns:
-            Matching column names, in frame order.
+            Matching column names, in table order.
         """
         schema = nw.from_native(X, eager_only=True).schema
         return [c for c, d in schema.items() if matches(d, self.family)]
 
     def __repr__(self) -> str:
-        """Show the family, so cloned estimators print readably."""
+        """Show the family value. A cloned estimator then prints readably."""
         return f"dtype_selector({self.family.value!r})"
 
 
@@ -76,8 +76,8 @@ def get_last_step(selection_pipeline: Any) -> Any:
 
     Returns:
         step: Its last step if it is a pipeline, else ``selection_pipeline``
-            itself. After :func:`validate_selection_pipeline` this is the
-            selector, but this function does not check that.
+            itself. After :func:`validate_selection_pipeline` runs, this is
+            the selector. This function does not check that.
     """
     return (
         selection_pipeline[-1]
@@ -89,14 +89,14 @@ def get_last_step(selection_pipeline: Any) -> Any:
 def get_encoder_prefix(selection_pipeline: Any) -> Any:
     """Return everything in ``selection_pipeline`` before its final step.
 
-    A bare selector, or a one-step pipeline wrapping one, has no encoder; an
+    A bare selector, or a one-step pipeline wrapping one, has no encoder. An
     identity transformer stands in for it.
 
     Args:
         selection_pipeline: The user's encode-and-select estimator.
 
     Returns:
-        An unfitted estimator producing encoded space from tusk space.
+        An unfitted estimator that produces encoded space from tusk space.
     """
     # Slicing a one-step pipeline yields an empty one, which cannot be fitted,
     # hence the length check rather than an unconditional [:-1].
@@ -112,7 +112,7 @@ def validate_selection_pipeline(selection_pipeline: Any) -> None:
         selection_pipeline: The user's encode-and-select estimator.
 
     Raises:
-        EncoderError: If it does not end in a ``SelectorMixin``, or if any
+        EncoderError: If it does not end in a ``SelectorMixin``. If any
             ``ColumnTransformer`` within it names its columns explicitly.
     """
     if not isinstance(get_last_step(selection_pipeline), SelectorMixin):

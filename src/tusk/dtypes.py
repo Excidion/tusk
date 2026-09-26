@@ -1,9 +1,9 @@
 """Dtype families used to decide which primitives apply to which columns.
 
-Matching is done on narwhals dtypes alone. There are no logical types and no
-semantic tags: the cost is losing the distinction between an integer that is a
-quantity and one that is a category; the benefit is identical behaviour on
-every backend with no extra dependencies.
+tusk matches columns to families using narwhals dtypes alone. It has no
+logical types and no semantic tags. This costs the distinction between an
+integer that is a quantity and one that is a category. It gains identical
+behaviour on every backend with no extra dependencies.
 """
 
 from __future__ import annotations
@@ -16,26 +16,19 @@ import narwhals as nw
 class DtypeFamily(Enum):
     """A group of narwhals dtypes that a primitive can accept.
 
-    ``STRING`` and ``CATEGORICAL`` are disjoint: a ``String`` column is not a
-    ``Categorical`` or ``Enum`` one, even though all three hold text-like
-    values. That distinction is deliberate -- it is what
-    :class:`~tusk.exceptions.CategoricalDtypeWarning` reports -- and it is why
-    both families exist rather than one wider one.
+    ``STRING`` and ``CATEGORICAL`` are disjoint. A ``String`` column is not
+    a ``Categorical`` or ``Enum`` one, even though all three hold
+    text-like values. :class:`~tusk.exceptions.CategoricalDtypeWarning`
+    reports this distinction.
 
-    ``TEMPORAL``, ``HAS_DATE``, ``HAS_TIME``, and ``DURATION`` exist as four
-    separate families for the same kind of reason: ``TEMPORAL`` matches
-    everything the narrow families do, plus every dtype that is temporal at
-    all, and is kept broad for ``dtype_selector``. ``HAS_DATE`` and
-    ``HAS_TIME`` are named for the operation a primitive needs rather than
-    for a single dtype, because no single narwhals dtype carries exactly what
-    a calendar primitive like ``year`` or a time-of-day primitive like
-    ``hour`` requires: ``HAS_DATE`` matches ``Datetime`` and ``Date``, the
-    dtypes a calendar position can be read from; ``HAS_TIME`` matches
-    ``Datetime`` and ``Time``, the dtypes an hour or minute can be read from.
-    They deliberately overlap on ``Datetime`` rather than partition the
-    temporal dtypes, since a ``Datetime`` genuinely supports both operations.
-    ``DURATION`` is elapsed time, which neither operation applies to even
-    though it is temporal.
+    ``TEMPORAL`` matches every dtype the narrower temporal families match,
+    plus every dtype that is temporal. It stays broad for
+    ``dtype_selector``. ``HAS_DATE`` matches ``Datetime`` and ``Date``,
+    the dtypes a calendar position can be read from. ``HAS_TIME`` matches
+    ``Datetime`` and ``Time``, the dtypes an hour or minute can be read
+    from. Both families match ``Datetime``. ``DURATION`` is elapsed time.
+    Neither ``HAS_DATE`` nor ``HAS_TIME`` matches it, even though it is
+    temporal.
     """
 
     NUMERIC = "numeric"

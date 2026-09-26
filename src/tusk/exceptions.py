@@ -8,107 +8,114 @@ class TuskError(Exception):
 
 
 class SchemaError(TuskError):
-    """Raised when a database's schema is invalid or inconsistent."""
+    """Exception raised when a database's schema is invalid or inconsistent."""
 
 
 class PrimitiveError(TuskError):
-    """Raised when a primitive is unknown or cannot be applied."""
+    """Exception raised when a primitive is unknown or cannot be applied."""
 
 
 class ValidationError(TuskError):
-    """Raised when a validation check finds a defect in a table's data.
+    """Exception raised when a validation check finds a defect in a table's data.
 
     Distinct from :class:`SchemaError`, which reports a malformed database
     before any row is read. A ``ValidationError`` means the declarations are
-    well-formed but the data contradicts them.
+    well-formed. The data contradicts them.
 
-    An unknown check *name* is a caller mistake rather than a data defect and
-    raises :class:`ValueError`, so ``except ValidationError`` never silently
-    swallows a typo.
+    An unknown check *name* is a caller mistake, not a data defect. It
+    raises :class:`ValueError` instead of ``ValidationError``. This means
+    ``except ValidationError`` never silently swallows a typo.
     """
 
 
 class MissingPrimaryKeyWarning(UserWarning):
-    """Warns that a table without a primary key has reduced capabilities."""
+    """Warning issued when a table without a primary key has reduced capabilities."""
 
 
 class ImplicitEarlierValueWarning(UserWarning):
-    """Warns that a row update time was given a null pre-update value.
+    """Warning issued when a row update time was given a null pre-update value.
 
-    An update time listed under no update time is read straight from the
-    table, so ``MAX(updated_at)`` returns a timestamp from after the cutoff.
-    tusk fills the gap rather than serving that leak, but a null is only its
-    guess at what the column held before. Its own class, so it can be filtered
-    independently.
+    A row update time not listed under any update time is read straight
+    from the table. ``MAX(updated_at)`` can then return a timestamp from
+    after the cutoff time. tusk fills the gap instead of allowing that
+    leak. The null value that tusk returns is only a guess at what the
+    column held before. This warning has its own class. A caller can
+    filter it independently of the others.
     """
 
 
 class CategoricalDtypeWarning(UserWarning):
-    """Warns that a Categorical or Enum column was skipped by a string primitive."""
+    """Warning issued when a string primitive skips a Categorical or Enum column."""
 
 
 class UnmatchedPrimitiveWarning(UserWarning):
-    """Warns that a requested primitive found no column of its input dtypes.
+    """Warning issued when a requested primitive finds no column of its input dtypes.
 
-    Skipping such a primitive is correct -- raising would break a
-    zero-configuration ``deep_feature_synthesis()`` on any schema that happens
-    to lack a dtype family. Skipping it *silently* is not: the user asked for
-    a primitive and got no column and no explanation. Its own class, so it
-    can be filtered independently.
+    tusk skips such a primitive instead of raising an error. This keeps
+    zero-configuration ``deep_feature_synthesis()`` calls working on any
+    schema, even one that lacks a dtype family. The skip would otherwise
+    happen silently, with no explanation. This warning reports it. This
+    warning has its own class. A caller can filter it independently of
+    the others.
     """
 
 
 class UnmatchedConditionWarning(UserWarning):
-    """Warns that no table declares a condition for ``conditional_primitives``.
+    """Warning issued when no table declares a condition for ``conditional_primitives``.
 
-    Distinct from :class:`UnmatchedPrimitiveWarning`, which is keyed on
-    dtype-matching a primitive to a column. A conditional primitive such as
-    ``count`` or ``sum`` is ordinarily also in ``agg_primitives`` and so is
-    already marked matched there, which would suppress that warning even
-    though it produced zero conditional features. This warns on the condition
-    dimension instead: no table declared a ``where`` or ``when`` at all, so
-    ``conditional_primitives`` had nothing to mask. Its own class, so it can be
-    filtered independently.
+    This differs from :class:`UnmatchedPrimitiveWarning`, which matches a
+    primitive to a column by dtype alone. A conditional primitive such as
+    ``count`` or ``sum`` is usually also in ``agg_primitives``. There it
+    is already marked matched. This holds even when it built zero
+    conditional features. That marking suppresses
+    :class:`UnmatchedPrimitiveWarning`. This warning checks the condition
+    dimension instead. It fires when no table declares a ``where`` or
+    ``when`` condition. Then ``conditional_primitives`` has nothing to
+    mask. This warning has its own class. A caller can filter it
+    independently of the others.
     """
 
 
 class LineageError(TuskError):
-    """Raised when a kept encoded column has no counterpart after the refit.
+    """Exception raised when a kept encoded column has no counterpart after the refit.
 
-    The only way sentinel lineage can *under*-keep is by missing a source, so
-    this is the tripwire for that case: if a feature was wrongly pruned, a name
-    the frozen mask needs goes missing from the refitted encoder's output.
-    Failing here is the alternative to silently serving different columns than
-    the ones the selector chose.
+    Sentinel lineage can only under-keep by omitting a source. This
+    exception is the check for that case. A wrongly pruned feature can
+    leave a name the frozen mask needs absent from the refitted
+    encoder's output. This exception then fires. Raising it replaces
+    silently serving different columns than the ones the selector chose.
     """
 
 
 class EncoderError(TuskError):
-    """Raised when the supplied encoder cannot be refit on a column subset.
+    """Exception raised when the supplied encoder cannot refit on a column subset.
 
-    Pruning narrows the matrix, so the encoder is refit on fewer columns than
-    it first saw. A ``ColumnTransformer`` naming its columns explicitly cannot
-    survive that -- and after DFS it is already a mistake for two other
-    reasons, so it is refused rather than worked around.
+    Pruning narrows the feature matrix. The encoder then refits on fewer
+    columns than it first saw. A ``ColumnTransformer`` that names its
+    columns explicitly cannot handle that change. tusk refuses such a
+    ``ColumnTransformer`` instead of working around it.
     """
 
 
 class UnencodedFeatureWarning(UserWarning):
-    """Warns that a feature fed no encoded column, so it was pruned.
+    """Warning issued when a feature feeds no encoded column, so tusk prunes it.
 
-    The encoder simply never looked at it -- most often a ``ColumnTransformer``
-    covering only some dtypes while ``remainder`` stays at its ``"drop"``
-    default. Pruning it is self-consistent, but doing so silently would let a
-    user lose every numeric feature without a word. Its own class, so it can be
-    filtered independently.
+    The encoder never looked at that feature. The most common cause is a
+    ``ColumnTransformer`` that covers only some dtypes while
+    ``remainder`` stays at its default of ``"drop"``. Pruning the
+    feature is self-consistent. Doing so silently could let a user lose
+    every numeric feature without notice. This warning has its own
+    class. A caller can filter it independently of the others.
     """
 
 
 class LineageWarning(UserWarning):
-    """Warns that lineage was unrecoverable, so nothing was pruned.
+    """Warning issued when lineage is unrecoverable, so tusk prunes nothing.
 
-    An encoder whose output names do not mention their inputs -- ``PCA`` gives
-    ``pca0`` -- severs the link between kept columns and tusk features. Keeping
-    every feature is the correct fallback, since pruning is an optimization and
-    no result depends on it. Its own class, so it can be filtered independently.
+    An encoder whose output names do not mention their inputs severs the
+    link between kept columns and tusk features. ``PCA`` is an example:
+    it gives names such as ``pca0``. Keeping every feature is the
+    correct fallback. Pruning is only an optimization. No result depends
+    on it. This warning has its own class. A caller can filter it
+    independently of the others.
     """

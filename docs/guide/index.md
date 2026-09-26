@@ -1,18 +1,17 @@
 # Guide
 
-tusk turns a set of related tables into a single wide feature matrix. The
-workflow is always the same three steps:
+tusk turns a set of related tables into one wide feature matrix. The workflow
+always follows the same three steps:
 
-1. **Describe your data.** Build a [database](databases.md): register each
-   table, say which column is its primary key and which column records when a
-   row became knowable, then link the tables with relationships. Those are
-   declarations tusk takes on trust. Call
-   [`validate()`](databases.md#validation) when you want them checked against
-   the data.
+1. **Describe your data.** Build a [database](databases.md). Register each
+   table. Name its primary key column and the column that records when a row
+   becomes visible. Then link the tables with relationships. tusk takes these
+   declarations on trust. Call [`validate()`](databases.md#validation) if
+   you want to check them against the data.
 2. **Synthesize.** Call [`deep_feature_synthesis()`](deep-feature-synthesis.md).
-   It walks the relationship graph, stacking [primitives](primitives.md) up to
-   `max_depth`, and returns both the feature matrix and the feature definitions
-   that produced it.
+   It walks the relationship graph, stacks [primitives](primitives.md) up to
+   `max_depth`, and returns the feature matrix and the feature definitions
+   used to compute it.
 3. **Re-apply.** Feed those definitions back to `apply_features()` to
    compute the same columns on new data.
 

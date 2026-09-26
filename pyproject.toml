@@ -97,6 +97,10 @@ check-return-types = false
 # whenever the class also has a docstring.
 allow-init-docstring = true
 
+[tool.ty.src]
+# .claude/ holds a git submodule (the STE skill), not tusk code.
+exclude = [".claude"]
+
 [[tool.ty.overrides]]
 include = ["src/tusk/primitives/**", "tests/**"]
 

@@ -18,13 +18,13 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard
     from tusk.database import Database, Relationship, TableSchema
 
 
-def check_non_null_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_non_null_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared primary key holds no null.
 
     A table with no ``primary_key`` is skipped.
 
     Args:
-        frame: The table's lazy frame.
+        table: The table, as a narwhals LazyFrame.
         schema: The table's schema, naming the column to check.
 
     Raises:
@@ -34,7 +34,7 @@ def check_non_null_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None
     if key is None:
         return
 
-    nulls = frame.select(nulls=nw.col(key).is_null().sum()).collect()["nulls"].item()
+    nulls = table.select(nulls=nw.col(key).is_null().sum()).collect()["nulls"].item()
     if not nulls:
         return
 
@@ -43,14 +43,14 @@ def check_non_null_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None
     )
 
 
-def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_unique_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared primary key holds no repeated value.
 
     A table with no ``primary_key`` is skipped. Nulls count as one distinct
     value, so repeated nulls fail and a single null passes.
 
     Args:
-        frame: The table's lazy frame.
+        table: The table, as a narwhals LazyFrame.
         schema: The table's schema, naming the column to check.
 
     Raises:
@@ -60,7 +60,7 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     if key is None:
         return
 
-    counts = frame.select(total=nw.len(), distinct=nw.col(key).n_unique()).collect()
+    counts = table.select(total=nw.len(), distinct=nw.col(key).n_unique()).collect()
     total, distinct = counts["total"].item(), counts["distinct"].item()
     if total <= 1:
         # narwhals lowers n_unique on SQL backends to
@@ -79,13 +79,13 @@ def check_unique_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
     )
 
 
-def check_dtype_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_dtype_row_creation_time(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared row creation time is a Datetime, not a Date.
 
-    A table with no ``row_creation_time`` is skipped. Reads the schema only.
+    A table with no ``row_creation_time`` is skipped. The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the column to check.
 
     Raises:
@@ -104,13 +104,13 @@ def check_dtype_row_creation_time(frame: nw.LazyFrame, schema: TableSchema) -> N
     )
 
 
-def check_dtype_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_dtype_row_update_times(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm every declared row update time is a Datetime, not a Date.
 
-    A table with no ``row_update_times`` is skipped. Reads the schema only.
+    A table with no ``row_update_times`` is skipped. The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the columns to check.
 
     Raises:
@@ -126,13 +126,13 @@ def check_dtype_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> No
         )
 
 
-def check_never_updated_primary_key(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_never_updated_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row update time rewrites the primary key.
 
-    A table with no ``primary_key`` is skipped. Reads the schema only.
+    A table with no ``primary_key`` is skipped. The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the column to check.
 
     Raises:
@@ -150,14 +150,14 @@ def check_never_updated_primary_key(frame: nw.LazyFrame, schema: TableSchema) ->
 
 
 def check_never_updated_row_creation_time(
-    frame: nw.LazyFrame, schema: TableSchema
+    table: nw.LazyFrame, schema: TableSchema
 ) -> None:
     """Confirm no row update time rewrites the row creation time.
 
-    A table with no ``row_creation_time`` is skipped. Reads the schema only.
+    A table with no ``row_creation_time`` is skipped. The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the column to check.
 
     Raises:
@@ -174,14 +174,14 @@ def check_never_updated_row_creation_time(
     )
 
 
-def check_unchained_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_unchained_row_update_times(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row update time is rewritten by another row update time.
 
-    The entry ``add_table`` adds for an update time that says nothing about
-    itself is not a chain. Reads the schema only.
+    The entry that ``add_table`` adds when an update time does not list
+    itself does not count as a chain. The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the updates.
 
     Raises:
@@ -198,14 +198,14 @@ def check_unchained_row_update_times(frame: nw.LazyFrame, schema: TableSchema) -
         )
 
 
-def check_singly_updated_columns(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_singly_updated_columns(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no column is rewritten by two row update times.
 
-    The entry ``add_table`` adds for an update time that says nothing about
-    itself counts like any other. Reads the schema only.
+    The entry that ``add_table`` adds when an update time does not list
+    itself counts like any other. The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the updates.
 
     Raises:
@@ -223,14 +223,14 @@ def check_singly_updated_columns(frame: nw.LazyFrame, schema: TableSchema) -> No
 
 
 def check_matching_earlier_value_dtypes(
-    frame: nw.LazyFrame, schema: TableSchema
+    table: nw.LazyFrame, schema: TableSchema
 ) -> None:
     """Confirm every declared pre-update value fits the column it replaces.
 
-    Reads the schema only. A null fits every column.
+    The check reads the schema only. A null fits every column.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, naming the updates.
 
     Raises:
@@ -246,26 +246,26 @@ def check_matching_earlier_value_dtypes(
         )
 
 
-def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
-    """Confirm no row was updated before it was created.
+def check_ordered_row_times(table: nw.LazyFrame, schema: TableSchema) -> None:
+    """Confirm no row's update time comes before its row creation time.
 
-    Scans the table. A table with no ``row_creation_time`` or no
-    ``row_update_times`` is skipped, as is a row whose update time is null:
-    a row that was never updated has no order to check.
+    The check scans the table. A table with no ``row_creation_time`` or no
+    ``row_update_times`` is skipped. A row whose update time is null is
+    also skipped.
 
     Args:
-        frame: The table's lazy frame.
+        table: The table, as a narwhals LazyFrame.
         schema: The table's schema, naming the columns to compare.
 
     Raises:
         ValidationError: If an update time is before the row creation time.
     """
-    created = schema.row_creation_time
-    if created is None or not schema.row_update_times:
+    row_creation_time = schema.row_creation_time
+    if row_creation_time is None or not schema.row_update_times:
         return
 
-    early = frame.select(
-        (nw.col(update_time) < nw.col(created)).sum().alias(update_time)
+    early = table.select(
+        (nw.col(update_time) < nw.col(row_creation_time)).sum().alias(update_time)
         for update_time in schema.row_update_times
     ).collect()
 
@@ -275,20 +275,20 @@ def check_ordered_row_times(frame: nw.LazyFrame, schema: TableSchema) -> None:
             continue
         raise ValidationError(
             f"row_update_time {update_time!r} of {schema.name!r} is before "
-            f"row_creation_time {created!r} in {rows} rows",
+            f"row_creation_time {row_creation_time!r} in {rows} rows",
         )
 
 
 def check_where_conditions_are_expressions(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     schema: TableSchema,
 ) -> None:
     """Confirm every ``where`` condition is a narwhals expression.
 
-    Reads the schema only.
+    The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, holding the conditions to check.
 
     Raises:
@@ -304,15 +304,15 @@ def check_where_conditions_are_expressions(
 
 
 def check_when_conditions_are_callable(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     schema: TableSchema,
 ) -> None:
     """Confirm every ``when`` condition is callable.
 
-    Reads the schema only.
+    The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, holding the conditions to check.
 
     Raises:
@@ -327,13 +327,13 @@ def check_when_conditions_are_callable(
         )
 
 
-def check_condition_keys(frame: nw.LazyFrame, schema: TableSchema) -> None:
+def check_condition_keys(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no condition key holds the feature name separator.
 
-    Reads the schema only.
+    The check reads the schema only.
 
     Args:
-        frame: The table's lazy frame. Unused.
+        table: The table, as a narwhals LazyFrame. Unused.
         schema: The table's schema, holding the keys to check.
 
     Raises:
@@ -349,30 +349,31 @@ def check_condition_keys(frame: nw.LazyFrame, schema: TableSchema) -> None:
 
 
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
-    """Confirm a cutoff matches the tz awareness of the database's Datetime columns.
+    """Confirm a cutoff time's tz awareness matches the database's Datetime columns.
 
-    Reads the schemas only. A database with no Datetime column accepts any
-    cutoff.
+    The check reads the schemas only. A database with no Datetime column accepts any
+    cutoff time.
 
     Args:
-        database: The database the cutoff will measure against.
-        cutoff_time: The cutoff.
+        database: The database the cutoff time will measure against.
+        cutoff_time: The cutoff time.
 
     Raises:
-        ValidationError: If the cutoff's time zone awareness differs from the
-            columns', or if those columns disagree among themselves.
+        ValidationError: If the cutoff time's time zone awareness differs
+            from the columns', or if those columns disagree among
+            themselves.
     """
     database_aware = is_time_zone_aware(database)
     if database_aware is None:
         return
 
-    cutoff_aware = cutoff_time.utcoffset() is not None
-    if cutoff_aware == database_aware:
+    cutoff_time_aware = cutoff_time.utcoffset() is not None
+    if cutoff_time_aware == database_aware:
         return
 
     raise ValidationError(
         f"cutoff_time {cutoff_time!r} is "
-        f"tz-{'aware' if cutoff_aware else 'naive'}, but the database's "
+        f"tz-{'aware' if cutoff_time_aware else 'naive'}, but the database's "
         f"datetimes are tz-{'aware' if database_aware else 'naive'}",
     )
 
@@ -380,7 +381,7 @@ def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
 def is_time_zone_aware(database: Database) -> bool | None:
     """Reduce every Datetime column in the database to one time zone awareness.
 
-    Reads the schemas only. Time zone *values* may differ; only mixing aware
+    The check reads the schemas only. Time zone *values* may differ. Only mixing aware
     with naive fails.
 
     Args:
@@ -397,7 +398,7 @@ def is_time_zone_aware(database: Database) -> bool | None:
     """
     aware, naive = [], []
     for table in database.table_names:
-        for column, dtype in database.schema(table).dtypes.items():
+        for column, dtype in database.get_schema(table).dtypes.items():
             if dtype == nw.Datetime:
                 name = f"{table}.{column}"
                 if dtype.time_zone:
@@ -421,11 +422,14 @@ def is_time_zone_aware(database: Database) -> bool | None:
 def check_matching_key_dtypes(database: Database, relationship: Relationship) -> None:
     """Confirm a foreign key has the same dtype as the primary key it points at.
 
-    Reads the schemas only. The dtypes must match exactly: pyarrow refuses to
-    join Int64 to Int32, polars refuses Int64 to Float64 and refuses every
-    String/Categorical/Enum crossing, and polars also refuses two Enums whose
-    categories differ. Anything looser passes validation here and then fails
-    the join.
+    The check reads the schemas only. The dtypes must match exactly:
+
+    - pyarrow refuses to join Int64 to Int32.
+    - polars refuses Int64 to Float64, and refuses every
+      String/Categorical/Enum crossing.
+    - polars also refuses two Enums whose categories differ.
+
+    Anything looser passes validation here and then fails the join.
 
     Args:
         database: The database holding both tables.
@@ -434,8 +438,8 @@ def check_matching_key_dtypes(database: Database, relationship: Relationship) ->
     Raises:
         ValidationError: If the two dtypes differ.
     """
-    parent = database.schema(relationship.parent)
-    child = database.schema(relationship.child)
+    parent = database.get_schema(relationship.parent)
+    child = database.get_schema(relationship.child)
     if parent.primary_key is None:
         return
 
@@ -454,9 +458,9 @@ def check_matching_key_dtypes(database: Database, relationship: Relationship) ->
 def check_overlapping_keys(database: Database, relationship: Relationship) -> None:
     """Confirm the foreign key matches at least one of the parent's primary keys.
 
-    Stops at the first match rather than proving every foreign key resolves.
-    Orphan rows are ordinary in real data; no overlap at all means the link
-    itself is wrong -- the wrong column, or two id spaces that never met.
+    The check stops at the first match rather than confirming that every
+    foreign key resolves. Orphan rows pass. The check fails only when no
+    foreign key value overlaps with the parent at all.
 
     Null foreign keys are ignored, and a child holding no non-null foreign key
     is skipped: it has nothing to match.
@@ -469,16 +473,16 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
         ValidationError: If no foreign key value appears in the parent.
     """
     foreign_key = relationship.foreign_key
-    primary_key = database.schema(relationship.parent).primary_key
+    primary_key = database.get_schema(relationship.parent).primary_key
     if primary_key is None:
         return
 
     children = (
-        database.frame(relationship.child)
+        database.get_table(relationship.child)
         .select(nw.col(foreign_key))
         .filter(~nw.col(foreign_key).is_null())
     )
-    parents = database.frame(relationship.parent).select(nw.col(primary_key))
+    parents = database.get_table(relationship.parent).select(nw.col(primary_key))
     matched = children.join(
         parents,
         left_on=foreign_key,
@@ -501,10 +505,10 @@ def _updating_row_update_time(schema: TableSchema, column: str | None) -> str | 
 
     Args:
         schema: The table's schema.
-        column: The column to look for, or None.
+        column: The column to find, or None.
 
     Returns:
-        The first row update time listing it, or None when nothing does.
+        The first row update time that lists it, or None if none does.
     """
     if column is None:
         return None
@@ -515,10 +519,10 @@ def _updating_row_update_time(schema: TableSchema, column: str | None) -> str | 
 
 
 def _fits_dtype(value: Any, dtype: Any) -> bool:
-    """Decide whether a Python value can stand in for a narwhals dtype.
+    """Decide whether a Python value fits a narwhals dtype.
 
-    A null fits every column. A value of a Python type this function does not
-    check for fits every dtype.
+    A null fits every column. A value of a Python type that this function
+    does not recognize fits every dtype.
 
     Args:
         value: The declared pre-update value.
@@ -629,24 +633,24 @@ def _select_checks(checks: bool | str | Iterable[str], registry: dict) -> list[s
 
 
 def validate_table(
-    frame: nw.LazyFrame,
+    table: nw.LazyFrame,
     schema: TableSchema,
     checks: bool | str | Iterable[str] = True,
 ) -> None:
     """Run the selected table checks against one table.
 
-    Checks run in the order given; the first failure raises
+    Checks run in the order given. The first failure raises
     :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
     is not in :data:`TABLE_CHECKS` raises :class:`ValueError`.
 
     Args:
-        frame: The table's lazy frame.
+        table: The table, as a narwhals LazyFrame.
         schema: The table's schema.
         checks: ``True`` for every table check, ``False`` for none, a check
             name, or an iterable of check names.
     """
     for name in _select_checks(checks, TABLE_CHECKS):
-        TABLE_CHECKS[name](frame, schema)
+        TABLE_CHECKS[name](table, schema)
 
 
 def validate_relationship(
@@ -656,7 +660,7 @@ def validate_relationship(
 ) -> None:
     """Run the selected relationship checks against one relationship.
 
-    Checks run in the order given; the first failure raises
+    Checks run in the order given. The first failure raises
     :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
     is not in :data:`RELATIONSHIP_CHECKS` raises :class:`ValueError`.
 
@@ -679,11 +683,15 @@ def validate_database(
 ) -> None:
     """Run the selected checks against a database.
 
-    Table checks run against every table in insertion order, then relationship
-    checks against every relationship, then database-wide checks once. The
-    first failure raises :class:`~tusk.exceptions.ValidationError` and stops
-    the run. A name outside the registry its selector draws from raises
-    :class:`ValueError`.
+    It runs the checks in this order:
+
+    1. Table checks against every table, in insertion order.
+    2. Relationship checks against every relationship.
+    3. Database-wide checks, once.
+
+    The first failure raises :class:`~tusk.exceptions.ValidationError` and
+    stops the run. A name outside the registry its selector draws from
+    raises :class:`ValueError`.
 
     Args:
         database: The database to check.
@@ -696,7 +704,7 @@ def validate_database(
     wide = _select_checks(database_checks, DATABASE_CHECKS)
 
     for name in database.table_names:
-        validate_table(database.frame(name), database.schema(name), tables)
+        validate_table(database.get_table(name), database.get_schema(name), tables)
     for relationship in database.relationships:
         validate_relationship(database, relationship, relationships)
     for name in wide:

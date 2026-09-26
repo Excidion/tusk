@@ -25,19 +25,20 @@ from tusk.validation import (
 
 @dataclass(frozen=True)
 class TableSchema:
-    """Everything phase 1 knows about a table.
+    """The declared schema of one table.
 
     Attributes:
-        name: Table name within the database.
-        primary_key: Column uniquely identifying a row, if declared.
-        row_creation_time: Column recording when a row became knowable.
-        dtypes: Mapping of column name to narwhals dtype.
-        row_update_times: Mapping of each column recording an update time to
-            the columns that update rewrote, each mapped to the value it held
-            before the update.
+        name: The table's name within the database.
+        primary_key: The column that identifies a row uniquely, if declared.
+        row_creation_time: The column that records when a row became
+            knowable.
+        dtypes: A mapping of column name to narwhals dtype.
+        row_update_times: A mapping of each column recording an update time
+            to the columns that update rewrote, each mapped to the value it
+            held before the update.
         where: Named row conditions as narwhals expressions.
-        when: Named row conditions as callables taking the cutoff time and
-            returning a narwhals expression.
+        when: Named row conditions as callables that take the cutoff time
+            and return a narwhals expression.
     """
 
     name: str
@@ -59,7 +60,10 @@ class TableSchema:
 
     @property
     def conditions(self) -> tuple[tuple[str, str], ...]:
-        """Every declared condition as a (kind, key) pair, where first."""
+        """Every declared condition as a (kind, key) pair.
+
+        The where conditions come first.
+        """
         return tuple(
             [("where", key) for key in self.where]
             + [("when", key) for key in self.when],
@@ -70,13 +74,14 @@ class TableSchema:
 class Relationship:
     """A one-to-many link from a parent table to a child table.
 
-    The parent side is always the parent's ``primary_key``; ``foreign_key``
+    The parent side is always the parent's ``primary_key``. ``foreign_key``
     names the child's column.
 
     Attributes:
-        parent: Name of the parent table.
-        child: Name of the child table.
-        foreign_key: Column on the child pointing at the parent's primary key.
+        parent: The name of the parent table.
+        child: The name of the child table.
+        foreign_key: The column on the child that points at the parent's
+            primary key.
     """
 
     parent: str
@@ -88,20 +93,20 @@ class Database:
     """A collection of related tables that DFS can synthesize features over."""
 
     def __init__(self, name: str) -> None:
-        """Create an empty database.
+        """Start an empty database.
 
         Args:
-            name: Human-readable identifier for this database.
+            name: A name for this database that people can read.
         """
         self.name = name
-        self._frames: dict[str, nw.LazyFrame] = {}
+        self._tables: dict[str, nw.LazyFrame] = {}
         self._schemas: dict[str, TableSchema] = {}
         self._relationships: list[Relationship] = []
         self._backend: Any = None
 
     @property
     def table_names(self) -> tuple[str, ...]:
-        """Names of every table in the database."""
+        """The names of every table in the database."""
         return tuple(self._schemas)
 
     @property
@@ -127,27 +132,31 @@ class Database:
         :class:`~tusk.exceptions.ValidationError`.
 
         Args:
-            name: Name to register the table under.
-            table: A native frame or a narwhals frame, eager or lazy.
-                It is lazified on the way in, so the two forms are
-                interchangeable and may be mixed within one database.
-            primary_key: Column uniquely identifying a row. Required for a
-                table used as a relationship parent or as the DFS target.
-            row_creation_time: Column recording when a row became knowable.
-                Required for order-dependent primitives on this table.
-            row_update_times: Maps each column recording when a row was
+            name: The name to register the table under.
+            table: A native table object or a narwhals table object, eager
+                or lazy. It becomes a lazy narwhals object on input, so
+                eager and lazy tables are interchangeable, and one database
+                may mix both.
+            primary_key: The column that identifies a row uniquely.
+                Required for a table used as a relationship parent or as
+                the DFS target.
+            row_creation_time: The column that records when a row became
+                knowable. Required for order-dependent primitives on this
+                table.
+            row_update_times: Maps each column that holds when a row was
                 updated to the columns that update rewrote, each mapped to the
                 value it held before. Computing a feature matrix under a
                 ``cutoff_time`` gives those columns their earlier value on
-                every row updated after the cutoff. An update time column that
-                does not list itself is added to its own mapping with a null
-                value.
+                every row updated after the cutoff time. An update time
+                column that does not list itself is added to its own mapping
+                with a null value.
             where: Named row conditions as narwhals expressions, used to mask
                 a child table's rows before an aggregation groups them. Each
                 key becomes a feature name part.
-            when: Named row conditions as callables receiving the cutoff time
-                and returning a narwhals expression. Use this for a condition
-                measured against the cutoff, such as a validity interval.
+            when: Named row conditions as callables that take the cutoff
+                time and return a narwhals expression. Use this for a
+                condition measured against the cutoff time, such as a
+                validity interval.
             validate: Pick a string or list of strings from
                 [here](validation/#tusk.validation.TABLE_CHECKS)
                 to enable specific checks.
@@ -158,13 +167,14 @@ class Database:
             This database, to allow chaining.
 
         Raises:
-            SchemaError: If the name is taken, a declared column is missing,
-                a key is composite, or the backend differs from earlier tables.
+            SchemaError: If the name is taken, a declared column does not
+                exist, a key is composite, or the backend differs from
+                earlier tables.
 
         Warns:
             MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
             ImplicitEarlierValueWarning: If a ``row_update_times`` key
-                does not list itself, so tusk gave it a null value.
+                does not list itself, so tusk gives it a null value.
         """
         if name in self._schemas:
             raise SchemaError(f"table {name!r} is already in this database")
@@ -226,7 +236,7 @@ class Database:
         )
         validate_table(lazy, schema, validate)
 
-        self._frames[name] = lazy
+        self._tables[name] = lazy
         self._schemas[name] = schema
         self._backend = backend
         return self
@@ -242,9 +252,10 @@ class Database:
         """Link a parent table to a child table.
 
         Args:
-            parent: Name of the parent table. Must have a ``primary_key``.
-            child: Name of the child table.
-            foreign_key: The child's column pointing at the parent's primary key.
+            parent: The name of the parent table. Must have a ``primary_key``.
+            child: The name of the child table.
+            foreign_key: The child's column that points at the parent's
+                primary key.
             validate: Pick a string or list of strings from
                 [here](validation/#tusk.validation.RELATIONSHIP_CHECKS)
                 to enable specific checks.
@@ -283,17 +294,22 @@ class Database:
     ) -> Database:
         """Run validation checks against the database.
 
-        Table checks run against every table in insertion order, then
-        relationship checks against every relationship, then database-wide
-        checks once. The first failure raises.
+        It runs the checks in this order:
+
+        1. Table checks against every table, in insertion order.
+        2. Relationship checks against every relationship.
+        3. Database-wide checks, once.
+
+        The first failure raises.
 
         Args:
-            database: [Checks](validation/#tusk.validation.DATABASE_CHECKS)
-                spanning the whole database.
-            tables: [Checks](validation/#tusk.validation.TABLE_CHECKS)
-                run against each table.
-            relationships: [Checks](validation/#tusk.validation.RELATIONSHIP_CHECKS)
-                run against each relationship.
+            database: The [checks](validation/#tusk.validation.DATABASE_CHECKS)
+                that span the whole database.
+            tables: The [checks](validation/#tusk.validation.TABLE_CHECKS)
+                that run against each table.
+            relationships: The
+                [checks](validation/#tusk.validation.RELATIONSHIP_CHECKS)
+                that run against each relationship.
 
         Returns:
             This database, to allow chaining.
@@ -309,28 +325,29 @@ class Database:
     def plot(self, columns: bool | str = True) -> SchemaDiagram:
         """Draw the database's schema as an entity-relationship diagram.
 
-        Reads no rows: the diagram is built entirely from declared schema.
+        Reads no rows. The diagram is built entirely from the declared
+        schema.
 
         A ``columns`` value other than True, False, or ``"structural"`` raises
         :class:`ValueError`.
 
         Args:
-            columns: True lists every column, False lists none, and
-                ``"structural"`` lists only the primary key, the foreign keys,
-                the ``row_creation_time``, the ``row_update_times``, and the
-                columns they update.
+            columns: True lists every column. False lists no columns.
+                ``"structural"`` lists only the primary key, the foreign
+                keys, the ``row_creation_time``, the ``row_update_times``,
+                and the columns they update.
 
         Returns:
-            The diagram, which renders itself in a notebook and writes itself
+            The diagram. It renders itself in a notebook and writes itself
             to a file with :meth:`~tusk.SchemaDiagram.save`.
         """
         return SchemaDiagram.from_database(self, columns)
 
-    def schema(self, name: str) -> TableSchema:
+    def get_schema(self, name: str) -> TableSchema:
         """Return a table's schema.
 
         Args:
-            name: Table name.
+            name: The table's name.
 
         Returns:
             The table's schema.
@@ -343,20 +360,20 @@ class Database:
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 
-    def frame(self, name: str) -> nw.LazyFrame:
-        """Return a table's lazy frame.
+    def get_table(self, name: str) -> nw.LazyFrame:
+        """Return a table as a narwhals LazyFrame.
 
         Args:
-            name: Table name.
+            name: The table's name.
 
         Returns:
-            The table's narwhals LazyFrame.
+            The table as a narwhals LazyFrame.
 
         Raises:
             SchemaError: If the table is unknown.
         """
         try:
-            return self._frames[name]
+            return self._tables[name]
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 
@@ -364,7 +381,7 @@ class Database:
         """Return relationships where this table is the parent.
 
         Args:
-            name: Table name.
+            name: The table's name.
 
         Returns:
             Matching relationships, in insertion order.
@@ -375,7 +392,7 @@ class Database:
         """Return relationships where this table is the child.
 
         Args:
-            name: Table name.
+            name: The table's name.
 
         Returns:
             Matching relationships, in insertion order.
@@ -383,27 +400,24 @@ class Database:
         return [r for r in self._relationships if r.child == name]
 
     def input_excluded_columns(self, name: str) -> frozenset[str]:
-        """Return columns that may not be fed to a primitive as an input.
+        """Return the columns that no primitive takes as an input.
 
-        Join keys only: the primary key and every foreign key. They identify
-        rows rather than measure anything, so ``MEAN(customer_id)`` is noise.
-        Foreign keys remain usable as groupby keys.
+        Only join keys: the primary key and every foreign key. Foreign keys
+        remain usable as groupby keys.
 
-        The ``row_creation_time`` is deliberately **not** here. It is a real
-        measurement — ``MONTH(signed_up_at)``-style temporal transforms, and
-        ``N_UNIQUE`` or ``CUM_COUNT`` over a temporal column, are exactly the
-        features this split unblocks — and excluding it would leave
-        a zero-configuration run with no transform features at all. Contrast
-        :meth:`output_excluded_columns`, which does exclude it; conflating the
-        two sets is a bug this split exists to prevent.
+        The ``row_creation_time`` is not included here. Primitives can
+        still use it, for example for ``MONTH(signed_up_at)``-style
+        temporal transforms, or for ``N_UNIQUE`` or ``CUM_COUNT`` over a
+        temporal column. Contrast :meth:`output_excluded_columns`, which
+        does exclude it.
 
         Args:
-            name: Table name.
+            name: The table's name.
 
         Returns:
             The table's join-key column names.
         """
-        schema = self.schema(name)
+        schema = self.get_schema(name)
         keys: set[str] = set()
         if schema.primary_key is not None:
             keys.add(schema.primary_key)
@@ -414,19 +428,18 @@ class Database:
         """Return raw columns that never appear in the feature matrix.
 
         Everything in :meth:`input_excluded_columns`, plus the
-        ``row_creation_time``: passing the time index through as a feature
-        invites target leakage, and featuretools drops it from the matrix for
-        the same reason. Derived features *over* the row creation time, such as
-        ``MONTH(signed_up_at)``, are unaffected — only the raw column is
+        ``row_creation_time``. featuretools also drops this column from its
+        feature matrix. Derived features *over* the row creation time, such
+        as ``MONTH(signed_up_at)``, are not affected. Only the raw column is
         dropped.
 
         Args:
-            name: Table name.
+            name: The table's name.
 
         Returns:
             Column names to omit from the feature matrix.
         """
-        schema = self.schema(name)
+        schema = self.get_schema(name)
         keys = set(self.input_excluded_columns(name))
         if schema.row_creation_time is not None:
             keys.add(schema.row_creation_time)
@@ -434,11 +447,11 @@ class Database:
 
 
 def _reject_composite(value: Any, label: str) -> None:
-    """Raise if a key was given as a sequence.
+    """Raise if the key is a sequence.
 
     Args:
         value: The declared key.
-        label: Parameter name, used in the message.
+        label: The parameter name, used in the message.
 
     Raises:
         SchemaError: If the value is a list or tuple.
@@ -455,10 +468,10 @@ def _normalize_row_update_times(
 
     Args:
         row_update_times: The declaration, or None.
-        table: Table name, used in the message.
+        table: The table's name, used in the message.
 
     Returns:
-        The declaration as nested dicts, empty when None was given.
+        The declaration as nested dicts, or an empty dict if None is given.
 
     Raises:
         SchemaError: If it is not a mapping of column name to mapping.
@@ -492,7 +505,7 @@ def _reject_unknown_updated_columns(
     Args:
         row_update_times: The normalized declaration.
         dtypes: The table's columns.
-        table: Table name, used in the message.
+        table: The table's name, used in the message.
 
     Raises:
         SchemaError: If an update time or an updated column is not a column of
@@ -529,9 +542,9 @@ def _warn_about_incomplete_row_update_times(incomplete: list[str], table: str) -
     """Warn that tusk will read each named column as null before its update.
 
     Args:
-        incomplete: Update time columns nothing gives a value, as built by
-            :func:`_row_update_times_without_a_value`.
-        table: Table name, used in the message.
+        incomplete: The update time columns that have no given value, as
+            built by :func:`_row_update_times_without_a_value`.
+        table: The table's name, used in the message.
     """
     for update_time in incomplete:
         warnings.warn(
@@ -551,7 +564,7 @@ def _insert_own_values(
 
     Args:
         row_update_times: The normalized declaration.
-        incomplete: Update time columns nothing gives a value.
+        incomplete: The update time columns that have no given value.
 
     Returns:
         The declaration with a null entry added for each of them.

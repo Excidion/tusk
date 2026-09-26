@@ -1,9 +1,9 @@
-"""Maps encoded column names back to the matrix columns they came from.
+"""Mapping of encoded column names to their source feature matrix columns.
 
-:func:`make_sentinels` renames a matrix's columns to opaque tokens.
+:func:`make_sentinels` renames a feature matrix's columns to opaque tokens.
 :class:`Sentinels` then reads those tokens back out of an encoder's
-``get_feature_names_out()``: :meth:`Sentinels.sources` reports which matrix
-columns an encoded name derives from, and :meth:`Sentinels.restore`
+``get_feature_names_out()``. :meth:`Sentinels.sources` reports which feature
+matrix columns an encoded name derives from. :meth:`Sentinels.restore`
 substitutes the real names back for display.
 """
 
@@ -17,12 +17,12 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Sentinels:
-    """An opaque renaming of matrix columns, and the map back.
+    """An opaque renaming of feature matrix columns, and the map back.
 
     Attributes:
         prefix: Random per-fit token prefix.
-        width: Zero-padded index width, fixed so no sentinel is a prefix of
-            another.
+        width: Zero-padded index width. The width is the same for each
+            sentinel, so no sentinel is a prefix of another.
         columns: The tusk-space column names, positionally indexed.
         mapping: Column name to sentinel.
     """
@@ -38,11 +38,11 @@ class Sentinels:
         return re.compile(rf"{re.escape(self.prefix)}(\d{{{self.width}}})")
 
     def sources(self, name: str) -> list[str]:
-        """Columns an encoded name derives from.
+        """Return the columns an encoded name derives from.
 
-        Every match is collected rather than the first, so a multi-input
-        transformer such as ``PolynomialFeatures`` correctly reports both of
-        its sources and keeps both features alive.
+        This collects every match, not only the first. A multi-input
+        transformer, such as ``PolynomialFeatures``, then reports each
+        source column, and the feature of each source column stays kept.
 
         Args:
             name: One name from the encoder's ``get_feature_names_out()``.
@@ -56,19 +56,19 @@ class Sentinels:
         return [self.columns[i] for i in sorted(found) if i < len(self.columns)]
 
     def restore(self, name: str) -> str:
-        """Substitute sentinels back to real column names.
+        """Replace each sentinel with its real column name.
 
         Args:
             name: One name from the encoder's ``get_feature_names_out()``.
 
         Returns:
-            name: The same name with every sentinel replaced, so users read
-                ``oh__N_UNIQUE__transactions__category`` rather than
+            name: The same name with every sentinel replaced. Users then
+                read ``oh__N_UNIQUE__transactions__category`` instead of
                 ``oh___t9f3a_0001``.
         """
 
         def replace(match: re.Match[str]) -> str:
-            """Map one matched sentinel back to its source column name.
+            """Map a matched sentinel to its source column name.
 
             Args:
                 match: A single regex match of ``_pattern`` against ``name``.
@@ -87,7 +87,7 @@ def make_sentinels(columns: Sequence[str]) -> Sentinels:
     """Build an opaque renaming of ``columns`` for one fit.
 
     Args:
-        columns: The matrix's column names, in order.
+        columns: The feature matrix's column names, in order.
 
     Returns:
         The sentinel mapping and the map back.
