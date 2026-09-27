@@ -56,6 +56,23 @@ def test_missing_primary_key_warns():
         tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}))
 
 
+def test_get_keys_returns_the_keys_that_exist_at_the_cutoff_time(db):
+    # Sessions 10, 20 and 30 start on 2024-03-04, -05 and -06.
+    keys = db.get_keys("sessions", dt.datetime(2024, 3, 5)).collect()
+    assert sorted(keys["id"].to_list()) == [10, 20]
+
+
+def test_get_keys_returns_the_backends_native_lazy_table(db):
+    assert isinstance(db.get_keys("customers"), pl.LazyFrame)
+
+
+def test_get_keys_on_a_table_without_a_primary_key_raises():
+    with pytest.warns(MissingPrimaryKeyWarning):
+        db = tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}))
+    with pytest.raises(SchemaError, match="primary_key"):
+        db.get_keys("t")
+
+
 def test_unknown_column_raises():
     with pytest.raises(SchemaError, match="nope"):
         tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}), primary_key="nope")

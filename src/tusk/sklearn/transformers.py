@@ -1,8 +1,8 @@
 """Deep feature synthesis as scikit-learn estimators.
 
 Both estimators take ``X`` as the target table's primary key. Both receive
-the database as routed metadata. Using them inside a ``Pipeline`` needs
-``sklearn.set_config(enable_metadata_routing=True)``.
+the database and the cutoff time as routed metadata. Using them inside a
+``Pipeline`` needs ``sklearn.set_config(enable_metadata_routing=True)``.
 
 :class:`DFSTransformer` synthesizes features and computes them for the keys
 in ``X``. :class:`DFSSelectorTransformer` additionally fits a supplied
@@ -43,21 +43,24 @@ from tusk.sklearn._tables import (
     check_keys_are_visible,
     collect_feature_matrix,
     read_keys,
+    require_primary_key,
 )
 from tusk.synthesis import synthesize
+from tusk.validation import check_cutoff_time
 
 
 class DFSTransformer(TransformerMixin, BaseEstimator):
     """Deep feature synthesis as a pipeline step.
 
     :meth:`fit` sets ``features_``, the synthesized definitions as a
-    :class:`~tusk.FeatureList`, and ``database_``, the database it was given.
-    :meth:`transform` computes those features for the keys in ``X``. It
-    returns one row per key, in key order.
+    :class:`~tusk.FeatureList`, ``database_``, the database it was given, and
+    ``cutoff_time_``, the cutoff time it was given. :meth:`transform` computes
+    those features for the keys in ``X``. It returns one row per key, in key
+    order.
     """
 
-    __metadata_request__fit = {"database": True}
-    __metadata_request__transform = {"database": True}
+    __metadata_request__fit = {"database": True, "cutoff_time": True}
+    __metadata_request__transform = {"database": True, "cutoff_time": True}
 
     def __init__(
         self,
@@ -65,7 +68,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         agg_primitives: Iterable[str | Primitive] | None = None,
         trans_primitives: Iterable[str | Primitive] | None = None,
         max_depth: int = 2,
-        cutoff_time: datetime | None = None,
         output_backend: str | None = None,
     ) -> None:
         """Configure synthesis.
@@ -77,7 +79,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             trans_primitives: Transform primitives. None selects the
                 defaults.
             max_depth: Maximum stacked primitive applications.
-            cutoff_time: Only rows at or before this are visible.
             output_backend: Backend to collect the feature matrix to. None
                 collects to the database's own backend.
         """
@@ -85,7 +86,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         self.agg_primitives = agg_primitives
         self.trans_primitives = trans_primitives
         self.max_depth = max_depth
-        self.cutoff_time = cutoff_time
         self.output_backend = output_backend
 
     def fit(
@@ -93,6 +93,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         X: Any,
         y: Any = None,
         database: Database | None = None,
+        cutoff_time: datetime | None = None,
     ) -> DFSTransformer:
         """Synthesize feature definitions from the database's schema.
 
@@ -102,6 +103,8 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             X: Ignored. Synthesis depends only on the schema.
             y: Ignored. Present for the scikit-learn signature.
             database: The database, routed as metadata.
+            cutoff_time: The cutoff time, routed as metadata. Only rows at or
+                before this are visible. None makes every row visible.
 
         Returns:
             This estimator.
@@ -115,7 +118,9 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
                 "sklearn.set_config(enable_metadata_routing=True) when fitting "
                 "inside a Pipeline",
             )
+        check_cutoff_time(database, cutoff_time)
         self.database_ = database
+        self.cutoff_time_ = cutoff_time
         self.features_ = synthesize(
             database=database,
             target_table=self.target_table,
@@ -125,7 +130,12 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         )
         return self
 
-    def transform(self, X: Any, database: Database | None = None) -> Any:
+    def transform(
+        self,
+        X: Any,
+        database: Database | None = None,
+        cutoff_time: datetime | None = None,
+    ) -> Any:
         """Compute the feature matrix for the keys in ``X``.
 
         Args:
@@ -133,21 +143,23 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
                 matrix's row order.
             database: The database, routed as metadata. When absent, the one
                 seen at fit is used.
+            cutoff_time: The cutoff time, routed as metadata. When absent,
+                the one seen at fit is used.
 
         Returns:
             An eager native table, one row per key, in key order.
         """
         check_is_fitted(self, "features_")
         # scikit-learn's scorers call predict() with no metadata, so without
-        # this fallback every cross-validated score would come back nan.
+        # these fallbacks every cross-validated score would come back nan.
         db = self.database_ if database is None else database
-        primary_key = self._require_primary_key(db)
+        cutoff = self.cutoff_time_ if cutoff_time is None else cutoff_time
+        check_cutoff_time(db, cutoff)
+        primary_key = require_primary_key(db, self.target_table)
         keys = read_keys(X)
-        check_keys_are_visible(
-            db, self.target_table, primary_key, keys, self.cutoff_time
-        )
+        check_keys_are_visible(db, self.target_table, primary_key, keys, cutoff)
         return collect_feature_matrix(
-            feature_matrix=self.features_.apply(db, self.cutoff_time),
+            feature_matrix=self.features_.apply(db, cutoff),
             primary_key=primary_key,
             keys=keys,
             output_backend=self.output_backend,
@@ -158,20 +170,24 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         X: Any,
         y: Any = None,
         database: Database | None = None,
+        cutoff_time: datetime | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Fit, then transform, passing ``database`` to both.
+        """Fit, then transform, passing ``database`` and ``cutoff_time`` to both.
 
         Args:
             X: The target's primary key.
             y: Ignored.
             database: The database, routed as metadata.
+            cutoff_time: The cutoff time, routed as metadata.
             **kwargs: Ignored. It absorbs scikit-learn's fit parameters.
 
         Returns:
             The feature matrix.
         """
-        return self.fit(X, y, database=database).transform(X, database=database)
+        return self.fit(X, y, database=database, cutoff_time=cutoff_time).transform(
+            X, database=database, cutoff_time=cutoff_time
+        )
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
         """Return the feature matrix's column names, in column order.
@@ -187,26 +203,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         """
         check_is_fitted(self, "features_")
         return np.asarray(self.features_.output_names, dtype=object)
-
-    def _require_primary_key(self, database: Database) -> str:
-        """Return the target table's primary key.
-
-        Args:
-            database: The database to read the schema from.
-
-        Returns:
-            The primary key name.
-
-        Raises:
-            SchemaError: If the target table declares none.
-        """
-        primary_key = database.get_schema(self.target_table).primary_key
-        if primary_key is None:
-            raise SchemaError(
-                f"target table {self.target_table!r} needs a primary_key: "
-                "it is what X names",
-            )
-        return primary_key
 
 
 class DFSSelectorTransformer(DFSTransformer):
@@ -238,7 +234,6 @@ class DFSSelectorTransformer(DFSTransformer):
         agg_primitives: Iterable[str | Primitive] | None = None,
         trans_primitives: Iterable[str | Primitive] | None = None,
         max_depth: int = 2,
-        cutoff_time: datetime | None = None,
         output_backend: str | None = None,
     ) -> None:
         """Configure synthesis and selection.
@@ -252,7 +247,6 @@ class DFSSelectorTransformer(DFSTransformer):
             trans_primitives: Transform primitives. None selects the
                 defaults.
             max_depth: Maximum stacked primitive applications.
-            cutoff_time: Only rows at or before this are visible.
             output_backend: Backend to collect to. None collects natively.
         """
         super().__init__(
@@ -260,7 +254,6 @@ class DFSSelectorTransformer(DFSTransformer):
             agg_primitives=agg_primitives,
             trans_primitives=trans_primitives,
             max_depth=max_depth,
-            cutoff_time=cutoff_time,
             output_backend=output_backend,
         )
         self.selection_pipeline = selection_pipeline
@@ -270,6 +263,7 @@ class DFSSelectorTransformer(DFSTransformer):
         X: Any,
         y: Any = None,
         database: Database | None = None,
+        cutoff_time: datetime | None = None,
     ) -> DFSSelectorTransformer:
         """Synthesize features, fit the selection pipeline, drop the rest.
 
@@ -277,6 +271,8 @@ class DFSSelectorTransformer(DFSTransformer):
             X: The target's primary key.
             y: Training targets, passed to the selector.
             database: The database, routed as metadata.
+            cutoff_time: The cutoff time, routed as metadata. The selector
+                is fitted on the feature matrix at this time.
 
         Returns:
             This estimator.
@@ -294,12 +290,9 @@ class DFSSelectorTransformer(DFSTransformer):
                 all. The selector cannot keep that feature.
         """
         validate_selection_pipeline(self.selection_pipeline)
-        super().fit(X, y, database=database)
-        db = self.database_ if database is None else database
+        super().fit(X, y, database=database, cutoff_time=cutoff_time)
 
-        feature_matrix = nw.from_native(
-            super().transform(X, database=db), eager_only=True
-        )
+        feature_matrix = nw.from_native(super().transform(X), eager_only=True)
         sentinels = make_sentinels(list(feature_matrix.columns))
         renamed = feature_matrix.rename(sentinels.mapping)
         probe = renamed.to_native()
@@ -354,20 +347,28 @@ class DFSSelectorTransformer(DFSTransformer):
         self.kept_names_ = [n for n in refit if n in set(kept)]
         return self
 
-    def transform(self, X: Any, database: Database | None = None) -> Any:
+    def transform(
+        self,
+        X: Any,
+        database: Database | None = None,
+        cutoff_time: datetime | None = None,
+    ) -> Any:
         """Compute the kept features, encode them, apply the frozen mask.
 
         Args:
             X: The target's primary key.
-            database: The database, routed as metadata.
+            database: The database, routed as metadata. When absent, the one
+                seen at fit is used.
+            cutoff_time: The cutoff time, routed as metadata. When absent,
+                the one seen at fit is used.
 
         Returns:
             The selected columns of the encoder's output.
         """
         check_is_fitted(self, "kept_names_")
-        db = self.database_ if database is None else database
         feature_matrix = nw.from_native(
-            super().transform(X, database=db), eager_only=True
+            super().transform(X, database=database, cutoff_time=cutoff_time),
+            eager_only=True,
         )
         kept_columns = list(self.features_.output_names)
         probe = feature_matrix.select(kept_columns).rename(

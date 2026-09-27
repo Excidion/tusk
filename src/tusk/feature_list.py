@@ -10,7 +10,7 @@ from tusk.compiler import compile_features
 from tusk.database import Database
 from tusk.exceptions import SchemaError
 from tusk.features import Feature
-from tusk.validation import check_cutoff_time_zone
+from tusk.validation import check_cutoff_time
 
 
 class FeatureList(Sequence[Feature]):
@@ -69,6 +69,8 @@ class FeatureList(Sequence[Feature]):
         order-dependent primitive lands on a table with no
         ``row_creation_time``.
 
+        It raises ``TypeError`` if ``cutoff_time`` is not a ``datetime``.
+
         It raises :class:`~tusk.exceptions.ValidationError` if
         ``cutoff_time`` disagrees with the database's Datetime columns in
         tz awareness. It also raises that error if a feature's primitive
@@ -90,14 +92,8 @@ class FeatureList(Sequence[Feature]):
             feature_matrix: The features on the caller's backend, as the
                 backend's native lazy table, if the backend supports lazy
                 tables, with one row per visible target row.
-
-        Raises:
-            TypeError: If ``cutoff_time`` is not a ``datetime``.
         """
-        if cutoff_time is not None:
-            if not isinstance(cutoff_time, datetime):
-                raise TypeError("'cutoff_time' must be a datetime.")
-            check_cutoff_time_zone(database, cutoff_time)
+        check_cutoff_time(database, cutoff_time)
         return compile_features(self, database, cutoff_time).to_native()
 
     @overload

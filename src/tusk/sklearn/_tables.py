@@ -6,7 +6,7 @@
 collects it, and returns the rows in key order. :func:`backend_hint`
 annotates exceptions from a user's pipeline with the table's backend.
 
-This is the only module in tusk that collects.
+This is the only module in tusk that collects a feature matrix.
 """
 
 from __future__ import annotations
@@ -26,6 +26,27 @@ from tusk.database import Database
 from tusk.exceptions import SchemaError
 
 _POSITION = "__tusk_position"
+
+
+def require_primary_key(database: Database, target_table: str) -> str:
+    """Return the target table's primary key.
+
+    Args:
+        database: The database to read the schema from.
+        target_table: Table whose primary key is returned.
+
+    Returns:
+        The primary key name.
+
+    Raises:
+        SchemaError: If the target table declares none.
+    """
+    primary_key = database.get_schema(target_table).primary_key
+    if primary_key is None:
+        raise SchemaError(
+            f"target table {target_table!r} needs a primary_key: it is what X names",
+        )
+    return primary_key
 
 
 def read_keys(X: Iterable[Any]) -> list[Any]:

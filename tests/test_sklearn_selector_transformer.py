@@ -218,6 +218,12 @@ def test_transform_width_equals_the_selectors_choice(shop):
     assert out.shape == (12, 2)
 
 
+def test_fitting_computes_the_matrix_at_the_cutoff_time(shop):
+    # Every customer signed up in 2021 or 2022, so 2021-06-01 excludes some.
+    with pytest.raises(SchemaError, match="cutoff_time"):
+        _transformer().fit(KEYS, Y, database=shop, cutoff_time=dt.datetime(2021, 6, 1))
+
+
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
 def test_pruned_features_are_never_computed(shop):
     everything = DFSTransformer(target_table="customers", max_depth=2).fit(

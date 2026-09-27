@@ -221,10 +221,54 @@ def _database_whose_matrix_cannot_be_computed():
 
 
 def test_a_key_excluded_by_cutoff_time_raises_before_the_matrix_is_computed():
-    fitted = DFSTransformer(
-        target_table="customers",
-        max_depth=2,
+    fitted = _transformer().fit(
+        [1],
+        database=_database_whose_matrix_cannot_be_computed(),
         cutoff_time=dt.datetime(2024, 3, 1),
-    ).fit([1], database=_database_whose_matrix_cannot_be_computed())
+    )
     with pytest.raises(SchemaError, match="cutoff_time"):
         fitted.transform([1, 2])
+
+
+# Customer 1's sessions start on 2024-03-04 and 2024-03-05.
+BEFORE_SECOND_SESSION = dt.datetime(2024, 3, 4, 12)
+AFTER_SECOND_SESSION = dt.datetime(2024, 3, 6)
+
+
+def _session_counts(feature_matrix):
+    return nw.from_native(feature_matrix)["COUNT__sessions"].to_list()
+
+
+def test_transform_computes_at_the_cutoff_time_it_is_given(db):
+    fitted = _transformer().fit(KEYS, database=db, cutoff_time=BEFORE_SECOND_SESSION)
+    later = fitted.transform([1], database=db, cutoff_time=AFTER_SECOND_SESSION)
+    assert _session_counts(later) == [2]
+
+
+def test_transform_falls_back_to_the_cutoff_time_seen_at_fit(db):
+    fitted = _transformer().fit(KEYS, database=db, cutoff_time=BEFORE_SECOND_SESSION)
+    assert _session_counts(fitted.transform([1])) == [1]
+
+
+def test_it_routes_the_cutoff_time_through_a_pipeline(db):
+    with sklearn.config_context(enable_metadata_routing=True):
+        pipe = Pipeline([("dfs", _transformer())])
+        pipe.fit(KEYS, database=db, cutoff_time=BEFORE_SECOND_SESSION)
+        fit_time = pipe.transform([1])
+        scoring_time = pipe.transform(
+            [1], database=db, cutoff_time=AFTER_SECOND_SESSION
+        )
+    assert _session_counts(fit_time) == [1]
+    assert _session_counts(scoring_time) == [2]
+
+
+def test_fit_transform_forwards_the_cutoff_time(db):
+    feature_matrix = _transformer().fit_transform(
+        [1], database=db, cutoff_time=BEFORE_SECOND_SESSION
+    )
+    assert _session_counts(feature_matrix) == [1]
+
+
+def test_fit_rejects_a_cutoff_time_that_is_not_a_datetime(db):
+    with pytest.raises(TypeError, match="datetime"):
+        _transformer().fit(KEYS, database=db, cutoff_time=dt.date(2024, 3, 4))

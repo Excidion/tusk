@@ -52,6 +52,8 @@ what value to substitute for a null, is yours to choose.
 Pass `database=` to `predict` to score a different set of keys, from either
 the same database or another one built to the same schema.
 
+Give `cutoff_time=` in the same way. See [Cutoff time](#cutoff-time).
+
 ## What `X` may be
 
 Any iterable of key values, such as a list, a 1-D array or a Series:
@@ -64,22 +66,46 @@ pipeline.fit(np.array([1, 2, 3]), y_train, database=db)
 Each element is one key. A key with no matching row raises, as does a
 repeated key. Both would misalign the feature matrix against `y`.
 
-## Cutoff time and the target table
+## Cutoff time
 
-`cutoff_time` filters every table, the target included. A target row that
-did not exist yet at the cutoff time will have no row in the feature matrix.
-Therefore, any key in `X` identifying such a row raises `SchemaError`:
+Give `cutoff_time` to `fit` and to `predict`, together with `database`:
+
+```python
+X_train = db.get_keys("customers", train_cutoff_time)
+y_train = compute_labels(X_train)
+
+pipeline.fit(
+    X_train,
+    y_train,
+    database=db,
+    cutoff_time=train_cutoff_time,
+)
+pipeline.predict(new_keys, database=db, cutoff_time=now)
+```
+
+[`Database.get_keys`][tusk.Database.get_keys] returns the primary key column
+of a table at a cutoff time, as the backend's native (lazy) table. Compute
+the labels based on this table. `X` and `y` have to have the same row order.
+
+If `transform` gets no cutoff time, it uses the cutoff time from `fit`.
+scikit-learn's scorers give no metadata to `predict`. Thus cross-validation
+uses the training cutoff time.
+
+Always give `cutoff_time` to `predict`. If you do not, `predict` uses the
+training cutoff time.
+
+
+### Keys that did not exist at the cutoff time
+
+`cutoff_time` also filters the target table. A key that has no row at the
+cutoff time raises `SchemaError`:
 ```
 no row for 3 of 100 keys, e.g. [17, 41, 88]; they are absent from
 'customer_id' or were excluded by cutoff_time
 ```
-`transform` raises this error before it computes the full feature matrix. It
-first reads the target table's primary key alone, under the same cutoff
-time. A stale key therefore costs a one-column scan, rather than a full pass
-over the features.
-
-To avoid this error, filter `X` and `y` to the keys that existed at the
-cutoff time. Then hand them to the pipeline.
+`transform` finds these keys before it computes the features. It reads only
+the primary key column to do this. To prevent this error, get `X` from
+`db.get_keys` at the same cutoff time.
 
 ## Cross-validation and search
 

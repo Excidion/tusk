@@ -348,6 +348,27 @@ def check_condition_keys(table: nw.LazyFrame, schema: TableSchema) -> None:
         )
 
 
+def check_cutoff_time(database: Database, cutoff_time: datetime | None) -> None:
+    """Confirm a cutoff time is a ``datetime`` that the database can compare against.
+
+    None passes. It raises :class:`~tusk.exceptions.ValidationError`, from
+    :func:`check_cutoff_time_zone`, if the cutoff time's tz awareness differs
+    from the database's Datetime columns'.
+
+    Args:
+        database: The database the cutoff time will measure against.
+        cutoff_time: The cutoff time, or None.
+
+    Raises:
+        TypeError: If ``cutoff_time`` is not a ``datetime``.
+    """
+    if cutoff_time is None:
+        return
+    if not isinstance(cutoff_time, datetime):
+        raise TypeError("'cutoff_time' must be a datetime.")
+    check_cutoff_time_zone(database, cutoff_time)
+
+
 def check_cutoff_time_zone(database: Database, cutoff_time: datetime) -> None:
     """Confirm a cutoff time's tz awareness matches the database's Datetime columns.
 

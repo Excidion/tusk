@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import narwhals as nw
@@ -17,6 +18,7 @@ from tusk.exceptions import (
 from tusk.plotting import SchemaDiagram
 from tusk.validation import (
     DEFAULT_TABLE_CHECKS,
+    check_cutoff_time,
     validate_database,
     validate_relationship,
     validate_table,
@@ -376,6 +378,38 @@ class Database:
             return self._tables[name]
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
+
+    def get_keys(self, name: str, cutoff_time: datetime | None = None) -> Any:
+        """Return a table's primary key column at ``cutoff_time``.
+
+        For the target table, these are the keys the feature matrix at
+        ``cutoff_time`` has rows for.
+
+        It raises :class:`~tusk.exceptions.ValidationError` if
+        ``cutoff_time`` disagrees with the database's Datetime columns in tz
+        awareness, and ``TypeError`` if it is not a ``datetime``.
+
+        Args:
+            name: The table's name.
+            cutoff_time: Only rows whose ``row_creation_time`` is at or before
+                this are returned. None returns every row.
+
+        Returns:
+            The primary key column on the caller's backend, as the backend's
+            native lazy table, if the backend supports lazy tables.
+
+        Raises:
+            SchemaError: If the table is unknown or has no ``primary_key``.
+        """
+        # The compiler imports this module, so a module-level import would
+        # be circular.
+        from tusk.compiler import base_table
+
+        primary_key = self.get_schema(name).primary_key
+        if primary_key is None:
+            raise SchemaError(f"table {name!r} has no primary_key to read keys from")
+        check_cutoff_time(self, cutoff_time)
+        return base_table(self, name, cutoff_time).select(primary_key).to_native()
 
     def children_of(self, name: str) -> list[Relationship]:
         """Return relationships where this table is the parent.
