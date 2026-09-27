@@ -321,10 +321,8 @@ def test_a_wider_band_takes_in_values_the_default_leaves_out():
     ],
 )
 def test_the_band_width_is_spelled_into_the_feature_name(primitive, stem):
-    assert primitive.generate_name(["children", "value"]) == f"{stem}__children__value"
-    assert (
-        primitive.generate_display_name(["children.value"]) == f"{stem}(children.value)"
-    )
+    assert primitive.build_name(["children", "value"]) == f"{stem}__children__value"
+    assert primitive.build_display_name(["children.value"]) == f"{stem}(children.value)"
 
 
 def test_two_band_widths_give_two_features():

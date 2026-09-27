@@ -1,13 +1,12 @@
-"""Materializes a lazy feature matrix for scikit-learn.
+"""Materialization of a lazy feature matrix for scikit-learn.
 
 :func:`read_keys` normalizes the primary key ``X`` to a list.
 :func:`check_keys_are_visible` rejects keys the target table has no row for.
-:func:`collect_matrix` filters the matrix to those keys, collects it, and
-returns the rows in key order. :func:`backend_hint` annotates exceptions from
-a user's pipeline with the frame backend in play.
+:func:`collect_feature_matrix` filters the feature matrix to those keys,
+collects it, and returns the rows in key order. :func:`backend_hint`
+annotates exceptions from a user's pipeline with the table's backend.
 
-This is the only module in tusk that collects: scikit-learn cannot consume a
-query plan.
+This is the only module in tusk that collects.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from typing import Any
 import narwhals as nw
 from narwhals.typing import IntoLazyFrame
 
-from tusk.compiler import base_frame
+from tusk.compiler import base_table
 from tusk.database import Database
 from tusk.exceptions import SchemaError
 
@@ -35,13 +34,14 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
     The order given becomes the feature matrix's row order.
 
     Args:
-        X: An iterable of key values -- a list, a 1-D array, a Series.
+        X: An iterable of key values. For example, a list, a 1-D array or a
+            Series.
 
     Returns:
         The key values.
 
     Raises:
-        TypeError: If ``X`` is not iterable, or its elements are not single
+        TypeError: If ``X`` is not iterable. If its elements are not single
             values.
     """
     try:
@@ -68,20 +68,20 @@ def check_keys_are_visible(
 ) -> None:
     """Fail if the target table has no row for a key at ``cutoff_time``.
 
-    Reads the target's primary key alone, so a stale key is reported without
-    computing the feature matrix first. Raises
+    It reads the target's primary key alone. The function reports a stale
+    key before it computes the feature matrix. Raises
     :class:`~tusk.exceptions.SchemaError`, from :func:`_reject_missing_keys`,
     if a key names no visible row.
 
     Args:
-        database: The database holding the frames.
+        database: The database holding the tables.
         target_table: Table the features are built for.
         primary_key: The target table's primary key.
         keys: Key values the caller asked for.
-        cutoff_time: The cutoff, or None.
+        cutoff_time: The cutoff time, or None.
     """
     visible = (
-        base_frame(database, target_table, cutoff_time)
+        base_table(database, target_table, cutoff_time)
         .select(primary_key)
         .filter(nw.col(primary_key).is_in(keys))
         .collect()
@@ -89,8 +89,8 @@ def check_keys_are_visible(
     _reject_missing_keys(keys, set(visible[primary_key].to_list()), primary_key)
 
 
-def collect_matrix(
-    matrix: IntoLazyFrame,
+def collect_feature_matrix(
+    feature_matrix: IntoLazyFrame,
     primary_key: str,
     keys: list[Any],
     output_backend: str | None,
@@ -98,18 +98,18 @@ def collect_matrix(
     """Materialize the feature matrix for ``keys``, in ``keys`` order.
 
     Args:
-        matrix: The uncomputed feature matrix from ``apply_features``.
+        feature_matrix: The uncomputed feature matrix from ``apply_features``.
         primary_key: The target table's primary key.
         keys: Key values selecting and ordering the rows.
         output_backend: Backend to collect to, or None to collect natively.
 
     Returns:
-        matrix: An eager native frame with one row per key, in key order,
-            without the primary key -- it is a join key, not a feature.
+        feature_matrix: An eager native table with one row per key, in key
+            order. The primary key column is not in the result.
 
     Raises:
-        SchemaError: If ``keys`` repeats a value, or names a key that produced
-            no row.
+        SchemaError: If ``keys`` repeats a value. If ``keys`` names a key
+            that produced no row.
     """
     if len(set(keys)) != len(keys):
         raise SchemaError(
@@ -117,8 +117,8 @@ def collect_matrix(
             "target's primary key, so each row must be requested at most once",
         )
 
-    frame = nw.from_native(matrix)
-    filtered = frame.filter(nw.col(primary_key).is_in(keys))
+    table = nw.from_native(feature_matrix)
+    filtered = table.filter(nw.col(primary_key).is_in(keys))
     collected = _collect(filtered, output_backend)
 
     _reject_missing_keys(keys, set(collected[primary_key].to_list()), primary_key)
@@ -144,7 +144,7 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
         primary_key: The target table's primary key, named in the message.
 
     Raises:
-        SchemaError: If a key is missing.
+        SchemaError: If a key produced no row.
     """
     missing = [k for k in keys if k not in found]
     if not missing:
@@ -156,15 +156,15 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
     )
 
 
-def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
-    """Collect, translating a missing backend package into a tusk error.
+def _collect(table: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
+    """Collect the table. Raise a tusk error if the backend package is not installed.
 
     Args:
-        frame: The filtered lazy matrix.
+        table: The filtered lazy feature matrix.
         output_backend: Backend name, or None for the database's own.
 
     Returns:
-        The collected frame.
+        The collected table.
 
     Raises:
         TuskError: If ``output_backend`` names a package that is not installed.
@@ -172,13 +172,13 @@ def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
     from tusk.exceptions import TuskError
 
     if output_backend is None:
-        return frame.collect()
+        return table.collect()
     try:
         # narwhals types `backend` as a 3-way Literal but accepts a plain
         # string. It rejects an unknown name itself, with a ValueError listing
         # what it accepts; this clause is for a name it accepts whose package
         # is not installed.
-        return frame.collect(backend=output_backend)  # ty: ignore[invalid-argument-type]
+        return table.collect(backend=output_backend)  # ty: ignore[invalid-argument-type]
     except ModuleNotFoundError as exc:
         raise TuskError(
             f"output_backend={output_backend!r} needs the {output_backend} "
@@ -187,31 +187,33 @@ def _collect(frame: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
 
 
 @contextlib.contextmanager
-def backend_hint(frame: Any) -> Iterator[None]:
+def backend_hint(table: Any) -> Iterator[None]:
     """Attach a backend hint to whatever the user's pipeline raises.
 
-    Many sklearn transformers reject non-pandas frames in ways that read as
+    Many sklearn transformers reject non-pandas tables in ways that read as
     unrelated type errors -- ``ColumnTransformer`` on pyarrow gives
     ``TypeError: Index must either be string or integer``. The hint names the
     backend and the fix.
 
-    The exception is re-raised **unchanged**. Wrapping it would change its
-    type and break a user's ``except ValueError`` around their own pipeline.
+    This context manager re-raises the exception **unchanged**, with its
+    original type.
 
     Args:
-        frame: The matrix handed to the pipeline, used to name the backend.
+        table: The feature matrix handed to the pipeline, used to name the
+            backend.
 
     Yields:
         None: Control returns to the caller's ``with`` block.
 
     Raises:
         Exception: Whatever the wrapped block raised, unchanged, with a
-            backend hint attached as a note (or, on Python 3.10, warned).
+            backend hint attached as a note. On Python 3.10, the hint is
+            issued as a warning instead.
     """
     try:
         yield
     except Exception as exc:
-        backend = nw.from_native(frame, eager_only=True, pass_through=True)
+        backend = nw.from_native(table, eager_only=True, pass_through=True)
         name = getattr(getattr(backend, "implementation", None), "name", "unknown")
         hint = (
             f"the feature matrix was collected as {name}; if this pipeline "

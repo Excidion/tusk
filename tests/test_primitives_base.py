@@ -50,7 +50,7 @@ class Pair(AggregationPrimitive):
 
 
 def test_name_generation():
-    assert Doubled().generate_name(("amount",)) == "DOUBLED__amount"
+    assert Doubled().build_name(("amount",)) == "DOUBLED__amount"
 
 
 def test_single_output_names():

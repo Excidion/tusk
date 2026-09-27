@@ -17,7 +17,7 @@ from tusk.exceptions import (
 
 
 def test_schema_is_read_from_the_frame(db):
-    schema = db.schema("transactions")
+    schema = db.get_schema("transactions")
     assert schema.primary_key == "id"
     assert schema.row_creation_time == "occurred_at"
     assert schema.dtypes["amount"] == nw.Float64
@@ -95,7 +95,7 @@ def test_unknown_foreign_key_raises(db):
 )
 def test_every_input_frame_form_is_lazified(table):
     db = tusk.Database("x").add_table("t", table, primary_key="a")
-    assert isinstance(db.frame("t"), nw.LazyFrame)
+    assert isinstance(db.get_table("t"), nw.LazyFrame)
 
 
 def test_self_reference_is_allowed():
@@ -133,7 +133,7 @@ def test_row_update_times_land_on_the_schema():
         primary_key="id",
         row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
     )
-    assert db.schema("orders").row_update_times == {
+    assert db.get_schema("orders").row_update_times == {
         "updated_at": {"status": "pending", "updated_at": None},
     }
 
@@ -151,7 +151,7 @@ def test_column_updates_flattens_the_declaration():
         primary_key="id",
         row_update_times={"updated_at": {"status": "pending", "updated_at": None}},
     )
-    assert db.schema("orders").column_updates == (
+    assert db.get_schema("orders").column_updates == (
         ("updated_at", "status", "pending"),
         ("updated_at", "updated_at", None),
     )
@@ -161,8 +161,8 @@ def test_a_table_without_row_update_times_has_an_empty_mapping():
     db = tusk.Database("d").add_table(
         "orders", pl.LazyFrame({"id": [1]}), primary_key="id"
     )
-    assert db.schema("orders").row_update_times == {}
-    assert db.schema("orders").column_updates == ()
+    assert db.get_schema("orders").row_update_times == {}
+    assert db.get_schema("orders").column_updates == ()
 
 
 def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
@@ -179,7 +179,7 @@ def test_an_update_time_that_does_not_list_itself_is_completed_and_warned():
             primary_key="id",
             row_update_times={"updated_at": {"status": "pending"}},
         )
-    assert db.schema("orders").row_update_times["updated_at"]["updated_at"] is None
+    assert db.get_schema("orders").row_update_times["updated_at"]["updated_at"] is None
 
 
 def test_an_update_time_that_lists_itself_warns_nothing():
@@ -275,7 +275,7 @@ def test_the_declaration_is_copied_not_aliased():
         row_update_times=declared,
     )
     declared["updated_at"]["status"] = "mutated"
-    assert db.schema("orders").row_update_times["updated_at"]["status"] == "pending"
+    assert db.get_schema("orders").row_update_times["updated_at"]["status"] == "pending"
 
 
 def test_add_table_rejects_a_date_row_update_time_by_default():
@@ -373,14 +373,14 @@ def test_add_table_stores_where_and_when_conditions(db):
         when={"current": current},
     )
 
-    schema = database.schema("transactions")
+    schema = database.get_schema("transactions")
     assert schema.where["verified"] is verified
     assert schema.when["current"] is current
 
 
 def test_add_table_defaults_conditions_to_empty_mappings(db):
     """A table declaring no condition has two empty mappings, never None."""
-    schema = db.schema("transactions")
+    schema = db.get_schema("transactions")
     assert schema.where == {}
     assert schema.when == {}
 

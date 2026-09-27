@@ -412,7 +412,7 @@ def test_empty_mask_falls_back_to_the_primitive_default_on_polars():
 def test_condition_sees_pre_update_values(updating_db):
     """A condition on an updated column reads the value restored by the cutoff."""
     database = updating_db
-    schema = database.schema("orders")
+    schema = database.get_schema("orders")
     database._schemas["orders"] = replace(
         schema,
         where={"delivered": nw.col("status") == "delivered"},

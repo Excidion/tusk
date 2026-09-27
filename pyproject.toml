@@ -70,6 +70,10 @@ markers = [
 ]
 addopts = "-m 'not differential and not benchmark'"
 
+[tool.ruff]
+# .claude/ holds a git submodule (the STE skill), not tusk code.
+extend-exclude = [".claude"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "D"]
 
@@ -96,6 +100,10 @@ check-return-types = false
 # docstring; without this flag pydoclint's DOC301 forbids exactly that
 # whenever the class also has a docstring.
 allow-init-docstring = true
+
+[tool.ty.src]
+# .claude/ holds a git submodule (the STE skill), not tusk code.
+exclude = [".claude"]
 
 [[tool.ty.overrides]]
 include = ["src/tusk/primitives/**", "tests/**"]

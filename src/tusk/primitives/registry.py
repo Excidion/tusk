@@ -43,8 +43,8 @@ def resolve(spec: str | Primitive) -> Primitive:
         A primitive instance.
 
     Raises:
-        PrimitiveError: If the name is not registered, or the primitive is not
-            a frozen dataclass with equality enabled.
+        PrimitiveError: If the name is not registered. If the primitive is
+            not a frozen dataclass with equality enabled.
     """
     if isinstance(spec, Primitive):
         primitive = spec
@@ -52,8 +52,8 @@ def resolve(spec: str | Primitive) -> Primitive:
         try:
             primitive = _REGISTRY[spec]()
         except KeyError:
-            known = ", ".join(sorted(_REGISTRY))
-            msg = f"unknown primitive {spec!r}; available: {known}"
+            available = ", ".join(sorted(_REGISTRY))
+            msg = f"unknown primitive {spec!r}; available: {available}"
             raise PrimitiveError(msg) from None
     _require_frozen_dataclass(primitive)
     return primitive

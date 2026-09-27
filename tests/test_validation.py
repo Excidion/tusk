@@ -168,7 +168,7 @@ def spy(monkeypatch):
     """
     calls = []
     registry = {name: validation.TABLE_CHECKS[name] for name in DEFAULT_TABLE_CHECKS}
-    registry["unique_primary_key"] = lambda frame, schema: calls.append(schema.name)
+    registry["unique_primary_key"] = lambda table, schema: calls.append(schema.name)
     monkeypatch.setattr("tusk.validation.TABLE_CHECKS", registry)
     return calls
 
@@ -216,7 +216,7 @@ def test_a_failed_add_table_leaves_the_database_unchanged():
         db.add_table("t", dupes(), primary_key="id", validate=True)
     assert db.table_names == ()
     with pytest.raises(tusk.exceptions.SchemaError):
-        db.frame("t")
+        db.get_table("t")
 
 
 def test_schema_errors_still_precede_validation():
@@ -987,7 +987,7 @@ def test_add_table_rejects_a_chained_row_update_time():
     # 'updated_at' masks 'shipped_at', which in turn masks 'status'. A single
     # with_columns reads every mask's condition off the original frame, so
     # 'status' would leak shipped_at's raw post-cutoff value; add_table must
-    # refuse this declaration rather than let base_frame produce it.
+    # refuse this declaration rather than let base_table produce it.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
         with pytest.raises(ValidationError, match="'shipped_at'"):

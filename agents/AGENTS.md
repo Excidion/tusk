@@ -8,3 +8,7 @@ Superpowers plans and specs live at the repository root:
 
 They must stay out of `docs/`, because zensical builds every markdown file under
 `docs/` into the published site and offers no way to exclude a folder.
+
+## Terms
+Use the terms in `agents/GLOSSARY.md` in docs, docstrings and identifiers.
+Check its "Allowed exceptions" section before flagging a term as banned.

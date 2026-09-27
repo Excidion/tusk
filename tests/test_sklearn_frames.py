@@ -6,9 +6,9 @@ import polars as pl
 import pytest
 
 from tusk.exceptions import SchemaError
-from tusk.sklearn._frames import (
+from tusk.sklearn._tables import (
     check_keys_are_visible,
-    collect_matrix,
+    collect_feature_matrix,
     read_keys,
 )
 
@@ -49,32 +49,32 @@ def test_read_keys_rejects_something_that_is_not_iterable():
 
 def test_collect_matrix_returns_rows_in_key_order():
     frame = pl.LazyFrame({"id": [1, 2, 3, 4], "a": [10.0, 20.0, 30.0, 40.0]})
-    out = nw.from_native(collect_matrix(frame, "id", [3, 1, 4], None))
+    out = nw.from_native(collect_feature_matrix(frame, "id", [3, 1, 4], None))
     assert out["a"].to_list() == [30.0, 10.0, 40.0]
 
 
 def test_collect_matrix_drops_the_primary_key():
     frame = pl.LazyFrame({"id": [1, 2], "a": [10.0, 20.0]})
-    out = nw.from_native(collect_matrix(frame, "id", [1, 2], None))
+    out = nw.from_native(collect_feature_matrix(frame, "id", [1, 2], None))
     assert out.columns == ["a"]
 
 
 def test_collect_matrix_rejects_a_duplicate_key():
     frame = pl.LazyFrame({"id": [1, 2], "a": [10.0, 20.0]})
     with pytest.raises(SchemaError, match="duplicate"):
-        collect_matrix(frame, "id", [1, 1], None)
+        collect_feature_matrix(frame, "id", [1, 1], None)
 
 
 def test_collect_matrix_rejects_a_key_with_no_row():
     frame = pl.LazyFrame({"id": [1, 2], "a": [10.0, 20.0]})
     with pytest.raises(SchemaError, match="no row"):
-        collect_matrix(frame, "id", [1, 99], None)
+        collect_feature_matrix(frame, "id", [1, 99], None)
 
 
 def test_backend_hint_reraises_the_original_exception_type():
     import warnings
 
-    from tusk.sklearn._frames import backend_hint
+    from tusk.sklearn._tables import backend_hint
 
     # Below 3.11, backend_hint warns instead of using add_note (no such
     # method exists yet); catch_warnings keeps that expected UserWarning
@@ -89,7 +89,7 @@ def test_backend_hint_reraises_the_original_exception_type():
 def test_backend_hint_names_the_backend_and_the_fix():
     import warnings
 
-    from tusk.sklearn._frames import backend_hint
+    from tusk.sklearn._tables import backend_hint
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
