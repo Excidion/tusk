@@ -6,6 +6,7 @@ keep. Later calls then compute only the rest.
 :class:`dtype_selector` picks columns by dtype for a ``ColumnTransformer``.
 :class:`NarwhalsMixin` makes any estimator accept a table narwhals can read.
 :class:`NarwhalsEncoder` converts a table to what ``set_output`` asks for.
+The column encoders encode the columns of one narwhals dtype.
 
 This package needs the ``sklearn`` extra: ``pip install "tusk[sklearn]"``.
 :mod:`tusk` does not import this package. Import it by name.
@@ -13,6 +14,15 @@ This package needs the ``sklearn`` extra: ``pip install "tusk[sklearn]"``.
 
 from __future__ import annotations
 
+from tusk.sklearn._column_encoders import (
+    DateEncoder,
+    DatetimeEncoder,
+    DurationEncoder,
+    EnumEncoder,
+    StringEncoder,
+    TemporalEncoder,
+    TimeEncoder,
+)
 from tusk.sklearn._encoders import dtype_selector
 from tusk.sklearn._narwhals import NarwhalsEncoder, NarwhalsMixin
 from tusk.sklearn.transformers import DFSSelectorTransformer, DFSTransformer
@@ -20,7 +30,14 @@ from tusk.sklearn.transformers import DFSSelectorTransformer, DFSTransformer
 __all__ = [
     "DFSSelectorTransformer",
     "DFSTransformer",
+    "DateEncoder",
+    "DatetimeEncoder",
+    "DurationEncoder",
+    "EnumEncoder",
     "NarwhalsEncoder",
     "NarwhalsMixin",
+    "StringEncoder",
+    "TemporalEncoder",
+    "TimeEncoder",
     "dtype_selector",
 ]
