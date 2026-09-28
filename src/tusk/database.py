@@ -379,7 +379,12 @@ class Database:
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 
-    def get_keys(self, name: str, cutoff_time: datetime | None = None) -> Any:
+    def get_keys(
+        self,
+        name: str,
+        cutoff_time: datetime | None = None,
+        sort: bool = True,
+    ) -> Any:
         """Return a table's primary key column at ``cutoff_time``.
 
         For the target table, these are the keys the feature matrix at
@@ -393,6 +398,8 @@ class Database:
             name: The table's name.
             cutoff_time: Only rows whose ``row_creation_time`` is at or before
                 this are returned. None returns every row.
+            sort: Wether keys should be sorted. Ensure consistent results with
+                lazy backends.
 
         Returns:
             The primary key column on the caller's backend, as the backend's
@@ -409,7 +416,10 @@ class Database:
         if primary_key is None:
             raise SchemaError(f"table {name!r} has no primary_key to read keys from")
         check_cutoff_time(self, cutoff_time)
-        return base_table(self, name, cutoff_time).select(primary_key).to_native()
+        keys = base_table(self, name, cutoff_time).select(primary_key)
+        if sort:
+            keys = keys.sort(primary_key)
+        return keys.to_native()
 
     def children_of(self, name: str) -> list[Relationship]:
         """Return relationships where this table is the parent.
