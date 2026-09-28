@@ -47,6 +47,8 @@ class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
   estimator fitted on numpy still reports the real names. The mixin does not
   set `feature_names_in_`: scikit-learn would then warn at every `transform`
   that numpy input has no feature names.
+- Input narwhals cannot read, such as a numpy array from an earlier step,
+  reaches the estimator unchanged.
 - If `convert_to` names pandas or polars and the package is not installed, it
   raises (see [Errors](#errors)). Neither package is a dependency of the
   `sklearn` extra.
@@ -64,9 +66,12 @@ narwhals-native encoder a user writes:
   collect. It sets `feature_names_in_`, `n_features_in_` and `schema_in_`
   (column name to narwhals dtype). Here `feature_names_in_` is safe to set,
   because `transform` receives a table with names.
-- Subclasses override `_fit(table: nw.LazyFrame | nw.DataFrame, y)` and
-  `_transform(table: nw.DataFrame) -> nw.DataFrame`. The defaults do nothing
-  and return the table unchanged.
+- Subclasses override `_fit(table, y)`, `_expressions()`, `_output_names()`
+  and, if they need values, `_transform(table)`. `_fit` and `_transform`
+  receive the table as given, lazy or eager; `transform` collects the result
+  of `_transform`. The default `_transform` selects `_expressions()`, and the
+  default `_expressions()` selects every input column, so the base class
+  returns the table unchanged.
 - `set_output(transform=...)` accepts `"default"` (numpy), `"pandas"` and
   `"polars"`, the values scikit-learn accepts. The base class converts the
   narwhals result itself instead of through scikit-learn's output wrapper. A
@@ -108,7 +113,10 @@ name is always part of the output name.
 `Categorical(ordered=True)` reaches narwhals as `Enum`, so it is encoded the
 same way. Output name: `{column}_code`.
 
-The four temporal encoders take `components: Sequence[str]`. The allowed
+The four temporal encoders subclass the public base `TemporalEncoder`, which
+holds the shared logic. A subclass sets the class attributes
+`accepted_dtype` and `allowed_components`. They take `components:
+Sequence[str]`. The allowed
 components are the numeric results of narwhals' `dt` namespace:
 
 | Encoder | Allowed | Default |
@@ -137,6 +145,15 @@ is zero. The output width is always `n_components`. Output name:
 
 Schema-only encoders carry the class attribute `_fits_on_schema = True`.
 
+Backend limits, found by the prototype:
+
+- pandas has no `Date` or `Time` dtype. A pandas date column reads as
+  `Datetime`, a time column as `Object` (group `other`).
+- duckdb's `TIME` reads as narwhals `Unknown` (group `other`).
+- duckdb raises `NotImplementedError` for the `timestamp` and
+  `total_nanoseconds` components. Neither is a default.
+- A pyarrow dictionary column reads as `Categorical`, not `Enum`.
+
 ### `TableEncoder`
 
 `TableEncoder(NarwhalsEncoder)` has one parameter per dtype group. Each
@@ -156,9 +173,11 @@ each column has exactly one owner.
 | `duration` | `Duration` | `DurationEncoder()` |
 | `other` | `Binary`, `List`, `Array`, `Struct`, `Object`, `Unknown` | `"drop"` |
 
-The defaults are estimator instances in the signature, as in skrub. `fit`
-clones them, so instances are never shared or mutated, and nested parameters
-such as `date__components` work with `set_params`.
+The defaults are estimator instances in the signature, as in skrub, so
+nested parameters such as `date__components` work with `set_params`. Every
+`TableEncoder` shares these instances. `fit` clones them, and `set_params`
+clones a shared default before it sets a nested parameter on it, so no
+`TableEncoder` changes another's defaults.
 
 An estimator with `NarwhalsMixin` receives the narwhals table and converts
 it to its own `convert_to`. Any other estimator receives numpy, and
@@ -270,8 +289,8 @@ matters:
 - `DFSSelectorTransformer` with a `TableEncoder` followed by a selector, on
   duckdb: lineage keeps the right features, and the refit on the narrowed
   matrix succeeds.
-- scikit-learn's `check_estimator` on the column encoders, as far as its
-  numeric-only test data allows.
+- scikit-learn's `check_estimator` is not used: it feeds numpy arrays, which
+  the column encoders reject by design.
 
 ## Docs
 
