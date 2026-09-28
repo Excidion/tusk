@@ -113,9 +113,9 @@ components are the numeric results of narwhals' `dt` namespace:
 
 | Encoder | Allowed | Default |
 | --- | --- | --- |
-| `DateEncoder` | `year`, `month`, `day`, `weekday`, `ordinal_day`, `timestamp` | `month`, `day`, `weekday` |
+| `DateEncoder` | `year`, `month`, `day`, `weekday`, `ordinal_day`, `timestamp` | `month`, `day` |
 | `TimeEncoder` | `hour`, `minute`, `second`, `millisecond`, `microsecond`, `nanosecond` | `hour`, `minute` |
-| `DatetimeEncoder` | the `DateEncoder` and `TimeEncoder` components | `month`, `day`, `weekday`, `hour`, `minute` |
+| `DatetimeEncoder` | the `DateEncoder` and `TimeEncoder` components | `month`, `day`, `hour`, `minute` |
 | `DurationEncoder` | `total_minutes`, `total_seconds`, `total_milliseconds`, `total_microseconds`, `total_nanoseconds` | `total_seconds` |
 
 They compute the components as narwhals expressions on the native backend.
