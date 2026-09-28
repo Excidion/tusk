@@ -19,9 +19,8 @@ backend a duckdb database collects to.
 
 ## Components
 
-All components live in `tusk.sklearn` and are public, except `_NarwhalsEncoder`.
-They need the `sklearn`
-extra.
+All components live in `tusk.sklearn` and are public, except
+`_NarwhalsEncoder`. They need the `sklearn` extra.
 
 ### `NarwhalsMixin`
 
