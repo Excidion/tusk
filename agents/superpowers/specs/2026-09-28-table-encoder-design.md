@@ -123,7 +123,7 @@ Schema-only encoders carry the class attribute `_fits_on_schema = True`.
 
 ### `TableEncoder`
 
-`TableEncoder(_NarwhalsEncoder)` has one parameter per dtype group. Each
+`TableEncoder(NarwhalsEncoder)` has one parameter per dtype group. Each
 takes an estimator, `"passthrough"` or `"drop"`. The groups are disjoint, so
 each column has exactly one owner.
 
