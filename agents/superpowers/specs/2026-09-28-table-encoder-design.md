@@ -118,24 +118,48 @@ The defaults are estimator instances in the signature, as in skrub. `fit`
 clones them, so instances are never shared or mutated, and nested parameters
 such as `date__components` work with `set_params`.
 
+`estimator_input: Literal["numpy", "pandas", "polars"] = "numpy"` sets
+what value-based estimators receive. numpy works with every scikit-learn
+estimator and needs no extra package. With numpy, `TableEncoder` passes the
+column names to `get_feature_names_out(input_features=columns)`. pandas and
+polars give the estimator a table with column names; neither package is a
+dependency of the `sklearn` extra.
+
 `fit`:
 
-1. Read the schema. Cast `Decimal` columns to `Float64`.
-2. Split the columns into the groups. A group with no columns is skipped.
-3. Clone each group's estimator.
-4. Fit each estimator on its group's columns:
+1. Check `estimator_input`. If its package is not installed, raise
+   (see [Errors](#errors)).
+2. Read the schema. Cast `Decimal` columns to `Float64`.
+3. Split the columns into the groups. A group with no columns is skipped.
+4. Clone each group's estimator.
+5. Fit each estimator on its group's columns:
    - An estimator with `_fits_on_schema = True` receives the table as it
      came, lazy or eager. Nothing is collected.
-   - Every other estimator receives its columns collected as pandas. This
-     covers `StringEncoder`, `OneHotEncoder` and any estimator the user
-     supplies.
-5. Set `groups_`: group name to (fitted estimator, input columns).
+   - Every other estimator receives its columns collected and converted to
+     `estimator_input`. This covers `StringEncoder`, `OneHotEncoder` and any
+     estimator the user supplies.
+6. Set `groups_`: group name to (fitted estimator, input columns).
 
-`transform` collects the table once. Each group's output is converted to a
-narwhals table named by the estimator's `get_feature_names_out()`, and the
-tables are joined horizontally in the order of the parameter table above.
-A sparse output is made dense. The result goes through `NarwhalsConverter`'s
-output conversion.
+`transform` builds one `select` on the native table. It holds:
+
+- the expressions of the schema-only encoders, which expose them as
+  `_expressions() -> list[nw.Expr]` after fit,
+- the passthrough columns,
+- the raw columns of the value-based groups.
+
+It collects that `select` once. On duckdb, date parts and codes are then
+computed in the database. Each value-based estimator transforms its columns,
+converted to `estimator_input`. A sparse output is made dense. The blocks are
+concatenated horizontally, by position. The result goes through
+`NarwhalsConverter`'s output conversion.
+
+Order:
+
+- Rows: every block comes from the one collected table, and every encoder
+  maps row i to row i. Before the concatenation, `transform` checks that
+  every block has the same row count.
+- Columns: groups in the order of the parameter table above; within a group,
+  the estimator's `get_feature_names_out()` order. Both are fixed at fit.
 
 Output names are `{group}__{name}`, for example `date__signup_month`, the
 same scheme as `ColumnTransformer(verbose_feature_names_out=True)`.
@@ -143,8 +167,6 @@ same scheme as `ColumnTransformer(verbose_feature_names_out=True)`.
 `TableEncoder` does its own dispatch instead of building a
 `ColumnTransformer`. A `ColumnTransformer` needs the whole table eager and
 cannot read pyarrow, which defeats a schema-only fit.
-
-Non-tusk estimators receive pandas, so the `sklearn` extra gains `pandas`.
 
 ## Integration with `DFSSelectorTransformer`
 
@@ -172,6 +194,8 @@ Non-tusk estimators receive pandas, so the `sklearn` extra gains `pandas`.
 | `transform` gets columns that differ from `feature_names_in_` | transform | `EncoderError` naming the extra and absent columns |
 | A column's dtype differs from the dtype seen at fit, including an `Enum` with other categories | transform | `EncoderError` naming the column and both dtypes |
 | `set_output` gets a value other than `"default"`, `"pandas"`, `"polars"` | set_output | `ValueError` from scikit-learn's own check |
+| `estimator_input` or `set_output` names pandas or polars and the package is not installed | fit, set_output | `TuskError`: "`estimator_input='pandas'` needs the pandas package, which is not installed; `uv add pandas`" |
+| A block has a different row count from the others | transform | `EncoderError` naming the group and both counts |
 
 ## Testing
 
@@ -189,9 +213,11 @@ matters:
   small one and an empty one; strings with shared n-grams are closer than
   strings without; a value first seen at transform is encoded.
 - `TableEncoder`: each dtype reaches its group; defaults encode a table with
-  every dtype; `"drop"` and `"passthrough"` work; a user estimator receives
-  pandas; a schema-only group does not collect at fit; an empty group is
+  every dtype; `"drop"` and `"passthrough"` work; a schema-only group does not collect at fit; an empty group is
   skipped; `get_feature_names_out` matches the output columns;
+  `estimator_input` gives numpy, pandas and polars to a user estimator, and
+  raises `TuskError` when the package is absent (patch the import);
+  `transform` on a lazy duckdb table collects once;
   `clone` and `get_params`/`set_params` work, including nested parameters
   such as `date__components`.
 - `DFSSelectorTransformer` with a `TableEncoder` followed by a selector, on
