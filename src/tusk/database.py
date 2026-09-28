@@ -274,8 +274,7 @@ class Database:
         for table in (parent, child):
             if table not in self._schemas:
                 raise SchemaError(f"unknown table {table!r}")
-        if self._schemas[parent].primary_key is None:
-            raise SchemaError(f"parent table {parent!r} needs a primary_key")
+        self.require_primary_key(parent)
         if foreign_key not in self._schemas[child].dtypes:
             raise SchemaError(
                 f"child table {child!r} is missing foreign_key column {foreign_key!r}",
@@ -362,11 +361,21 @@ class Database:
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 
-    def get_table(self, name: str) -> nw.LazyFrame:
-        """Return a table as a narwhals LazyFrame.
+    def get_table(
+        self,
+        name: str,
+        cutoff_time: datetime | None = None,
+    ) -> nw.LazyFrame:
+        """Return a table as a narwhals LazyFrame, as it stood at the cutoff time.
+
+        Rows created after the cutoff time are dropped. Columns updated after
+        the cutoff time hold the value they held before. A table with no
+        ``row_creation_time`` keeps every row, and a table declaring no
+        ``row_update_times`` keeps every value.
 
         Args:
             name: The table's name.
+            cutoff_time: The cutoff time. None returns the table as added.
 
         Returns:
             The table as a narwhals LazyFrame.
@@ -375,9 +384,33 @@ class Database:
             SchemaError: If the table is unknown.
         """
         try:
-            return self._tables[name]
+            table = self._tables[name]
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
+        if cutoff_time is None:
+            return table
+
+        schema = self.get_schema(name)
+        if schema.row_creation_time is not None:
+            table = table.filter(nw.col(schema.row_creation_time) <= cutoff_time)
+        return _restore_updated_columns(table, schema, cutoff_time)
+
+    def require_primary_key(self, name: str) -> str:
+        """Return a table's primary key.
+
+        Args:
+            name: The table's name.
+
+        Returns:
+            The primary key's column name.
+
+        Raises:
+            SchemaError: If the table is unknown or has no ``primary_key``.
+        """
+        primary_key = self.get_schema(name).primary_key
+        if primary_key is None:
+            raise SchemaError(f"table {name!r} needs a primary_key")
+        return primary_key
 
     def get_keys(
         self,
@@ -390,9 +423,11 @@ class Database:
         For the target table, these are the keys the feature matrix at
         ``cutoff_time`` has rows for.
 
-        It raises :class:`~tusk.exceptions.ValidationError` if
-        ``cutoff_time`` disagrees with the database's Datetime columns in tz
-        awareness, and ``TypeError`` if it is not a ``datetime``.
+        It raises :class:`~tusk.exceptions.SchemaError` if the table is unknown
+        or has no ``primary_key``. It raises
+        :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` disagrees
+        with the database's Datetime columns in tz awareness, and
+        ``TypeError`` if it is not a ``datetime``.
 
         Args:
             name: The table's name.
@@ -404,19 +439,10 @@ class Database:
         Returns:
             The primary key column on the caller's backend, as the backend's
             native lazy table, if the backend supports lazy tables.
-
-        Raises:
-            SchemaError: If the table is unknown or has no ``primary_key``.
         """
-        # The compiler imports this module, so a module-level import would
-        # be circular.
-        from tusk.compiler import base_table
-
-        primary_key = self.get_schema(name).primary_key
-        if primary_key is None:
-            raise SchemaError(f"table {name!r} has no primary_key to read keys from")
+        primary_key = self.require_primary_key(name)
         check_cutoff_time(self, cutoff_time)
-        keys = base_table(self, name, cutoff_time).select(primary_key)
+        keys = self.get_table(name, cutoff_time).select(primary_key)
         if sort:
             keys = keys.sort(primary_key)
         return keys.to_native()
@@ -617,3 +643,46 @@ def _insert_own_values(
     for update_time in incomplete:
         completed[update_time][update_time] = None
     return completed
+
+
+def _restore_updated_columns(
+    table: nw.LazyFrame,
+    schema: TableSchema,
+    cutoff_time: datetime,
+) -> nw.LazyFrame:
+    """Give every column updated after the cutoff time the value it held before.
+
+    Args:
+        table: The table, already filtered to the cutoff time.
+        schema: The table's schema, naming the updates.
+        cutoff_time: The cutoff time.
+
+    Returns:
+        The table, with one replaced column per declared update.
+    """
+    if not schema.column_updates:
+        return table
+
+    return table.with_columns(
+        nw.when(_was_updated_by(update_time, cutoff_time))
+        .then(nw.col(column))
+        .otherwise(nw.lit(value, dtype=schema.dtypes[column]))
+        .alias(column)
+        for update_time, column, value in schema.column_updates
+    )
+
+
+def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
+    """Build the test for a row's update having already happened.
+
+    A null update time counts as never updated.
+
+    Args:
+        update_time: Column recording when the row was updated.
+        cutoff_time: The cutoff time.
+
+    Returns:
+        A boolean expression, true where the update has already happened.
+    """
+    updated = nw.col(update_time)
+    return updated.is_null() | (updated <= cutoff_time)

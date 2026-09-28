@@ -43,7 +43,9 @@ def compile_features(
 ) -> nw.LazyFrame:
     """Compute a lazy feature matrix from feature definitions.
 
-    It also raises :class:`~tusk.exceptions.ValidationError`, from
+    It raises :class:`~tusk.exceptions.SchemaError`, from
+    :meth:`~tusk.Database.require_primary_key`, if the target table has no
+    primary key. It raises :class:`~tusk.exceptions.ValidationError`, from
     :func:`_require_cutoff_time`, if a primitive measures against
     ``cutoff_time`` and none was given.
 
@@ -59,17 +61,9 @@ def compile_features(
             visible at ``cutoff_time``. This may have fewer rows than the
             target table holds, because the target is filtered like any
             other table.
-
-    Raises:
-        SchemaError: If the target table has no primary key.
     """
     target = features.target_table
-    primary_key = database.get_schema(target).primary_key
-    if primary_key is None:
-        raise SchemaError(
-            f"target table {target!r} needs a primary_key: the feature "
-            "matrix is keyed by it",
-        )
+    primary_key = database.require_primary_key(target)
 
     _reject_colliding_names(features)
     closure = _closure(features)
@@ -174,83 +168,6 @@ def _names_measuring_against_cutoff_time(feature: Feature) -> tuple[str, ...]:
     return tuple(names)
 
 
-def base_table(
-    database: Database,
-    table_name: str,
-    cutoff_time: datetime | None,
-) -> nw.LazyFrame:
-    """Return a table's narwhals LazyFrame as it stood at the cutoff time.
-
-    Rows created after the cutoff time are dropped. Columns updated after
-    the cutoff time hold the value they held before. A table with no
-    ``row_creation_time`` keeps every row, and a table declaring no
-    ``row_update_times`` keeps every value.
-
-    This function filters the target table the same way as any other table.
-    So a cutoff time can leave the feature matrix with fewer rows than the
-    target table holds.
-
-    Args:
-        database: The database holding the tables.
-        table_name: Table name.
-        cutoff_time: The cutoff time, or None.
-
-    Returns:
-        The table's narwhals LazyFrame as it stood at the cutoff time.
-    """
-    table = database.get_table(table_name)
-    if cutoff_time is None:
-        return table
-
-    schema = database.get_schema(table_name)
-    if schema.row_creation_time is not None:
-        table = table.filter(nw.col(schema.row_creation_time) <= cutoff_time)
-    return _restore_updated_columns(table, schema, cutoff_time)
-
-
-def _restore_updated_columns(
-    table: nw.LazyFrame,
-    schema: TableSchema,
-    cutoff_time: datetime,
-) -> nw.LazyFrame:
-    """Give every column updated after the cutoff time the value it held before.
-
-    Args:
-        table: The table, already filtered to the cutoff time.
-        schema: The table's schema, naming the updates.
-        cutoff_time: The cutoff time.
-
-    Returns:
-        The table, with one replaced column per declared update.
-    """
-    if not schema.column_updates:
-        return table
-
-    return table.with_columns(
-        nw.when(_was_updated_by(update_time, cutoff_time))
-        .then(nw.col(column))
-        .otherwise(nw.lit(value, dtype=schema.dtypes[column]))
-        .alias(column)
-        for update_time, column, value in schema.column_updates
-    )
-
-
-def _was_updated_by(update_time: str, cutoff_time: datetime) -> nw.Expr:
-    """Build the test for a row's update having already happened.
-
-    A null update time counts as never updated.
-
-    Args:
-        update_time: Column recording when the row was updated.
-        cutoff_time: The cutoff time.
-
-    Returns:
-        A boolean expression, true where the update has already happened.
-    """
-    updated = nw.col(update_time)
-    return updated.is_null() | (updated <= cutoff_time)
-
-
 def _read_table(
     database: Database,
     table_name: str,
@@ -278,7 +195,7 @@ def _read_table(
         SchemaError: If ``needed`` contains a feature type this compiler does
             not know how to compute.
     """
-    table = base_table(database, table_name, cutoff_time)
+    table = database.get_table(table_name, cutoff_time)
     needed = {f for f in needed if f.table == table_name}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]
@@ -635,13 +552,8 @@ def _add_directs(
 
     Returns:
         The child table with the batch's columns joined on.
-
-    Raises:
-        SchemaError: If the parent table has no primary key.
     """
-    parent_key = database.get_schema(relationship.parent).primary_key
-    if parent_key is None:
-        raise SchemaError(f"parent table {relationship.parent!r} needs a primary_key")
+    parent_key = database.require_primary_key(relationship.parent)
     parent_needed: set[Feature] = set()
     for feature in batch:
         parent_needed.update(_closure(feature.base_features))

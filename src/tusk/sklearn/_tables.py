@@ -21,32 +21,10 @@ from typing import Any
 import narwhals as nw
 from narwhals.typing import IntoLazyFrame
 
-from tusk.compiler import base_table
 from tusk.database import Database
 from tusk.exceptions import SchemaError
 
 _POSITION = "__tusk_position"
-
-
-def require_primary_key(database: Database, target_table: str) -> str:
-    """Return the target table's primary key.
-
-    Args:
-        database: The database to read the schema from.
-        target_table: Table whose primary key is returned.
-
-    Returns:
-        The primary key name.
-
-    Raises:
-        SchemaError: If the target table declares none.
-    """
-    primary_key = database.get_schema(target_table).primary_key
-    if primary_key is None:
-        raise SchemaError(
-            f"target table {target_table!r} needs a primary_key: it is what X names",
-        )
-    return primary_key
 
 
 def read_keys(X: Iterable[Any]) -> list[Any]:
@@ -102,7 +80,7 @@ def check_keys_are_visible(
         cutoff_time: The cutoff time, or None.
     """
     visible = (
-        base_table(database, target_table, cutoff_time)
+        database.get_table(target_table, cutoff_time)
         .select(primary_key)
         .filter(nw.col(primary_key).is_in(keys))
         .collect()

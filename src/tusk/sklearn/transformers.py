@@ -43,7 +43,6 @@ from tusk.sklearn._tables import (
     check_keys_are_visible,
     collect_feature_matrix,
     read_keys,
-    require_primary_key,
 )
 from tusk.synthesis import synthesize
 from tusk.validation import check_cutoff_time
@@ -155,7 +154,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         db = self.database_ if database is None else database
         cutoff = self.cutoff_time_ if cutoff_time is None else cutoff_time
         check_cutoff_time(db, cutoff)
-        primary_key = require_primary_key(db, self.target_table)
+        primary_key = db.require_primary_key(self.target_table)
         keys = read_keys(X)
         check_keys_are_visible(db, self.target_table, primary_key, keys, cutoff)
         return collect_feature_matrix(

@@ -987,7 +987,7 @@ def test_add_table_rejects_a_chained_row_update_time():
     # 'updated_at' masks 'shipped_at', which in turn masks 'status'. A single
     # with_columns reads every mask's condition off the original frame, so
     # 'status' would leak shipped_at's raw post-cutoff value; add_table must
-    # refuse this declaration rather than let base_table produce it.
+    # refuse this declaration rather than let Database.get_table produce it.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ImplicitEarlierValueWarning)
         with pytest.raises(ValidationError, match="'shipped_at'"):
