@@ -13,25 +13,18 @@ metadata:
 
 ```python
 import sklearn
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.impute import SimpleImputer
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.pipeline import Pipeline
 
-from tusk.sklearn import DFSTransformer, dtype_selector
+from tusk.sklearn import DFSTransformer, TableEncoder
 
 sklearn.set_config(enable_metadata_routing=True)
 
 pipeline = Pipeline(
     steps=[
         ("dfs", DFSTransformer(target_table="customers", max_depth=2)),
-        (
-            "encode",
-            ColumnTransformer(
-                [("numbers", SimpleImputer(), dtype_selector("numeric"))],
-            ),
-        ),
-        ("model", ExtraTreesClassifier()),
+        ("encode", TableEncoder()),
+        ("model", HistGradientBoostingClassifier()),
     ],
 )
 
@@ -46,8 +39,10 @@ rows. `transform` computes them and returns one row per key, in key order.
 reach the transformer through the pipeline. Set it once per process.
 
 The feature matrix holds whatever dtypes synthesis produced, so it can carry
-strings and nulls, which most estimators do not take. How to encode them, and
-what value to substitute for a null, is yours to choose.
+strings and nulls, which most estimators do not take.
+[`TableEncoder`](#encoding-by-dtype-with-tableencoder) encodes each column by
+its dtype. A null stays a null (NaN). Choose a model that accepts NaN, such as
+`HistGradientBoostingClassifier`, or give the `numeric` group an imputer.
 
 Pass `database=` to `predict` to score a different set of keys, from either
 the same database or another one built to the same schema.
@@ -132,7 +127,7 @@ remains:
 
 ```python
 from sklearn.feature_selection import SelectKBest
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
 
 from tusk.sklearn import DFSSelectorTransformer
 
@@ -140,19 +135,7 @@ selector = DFSSelectorTransformer(
     target_table="customers",
     selection_pipeline=Pipeline(
         steps=[
-            (
-                "encode",
-                ColumnTransformer(
-                    [
-                        (
-                            "categories",
-                            OneHotEncoder(handle_unknown="ignore"),
-                            dtype_selector("string"),
-                        ),
-                        ("numbers", StandardScaler(), dtype_selector("numeric")),
-                    ],
-                ),
-            ),
+            ("encode", TableEncoder(numeric=SimpleImputer())),
             ("select", SelectKBest(k=50)),
         ],
     ),
@@ -167,7 +150,7 @@ selector.fit(keys, y_train, database=db)
 After fitting, `features_` holds the kept feature definitions as a
 [`FeatureList`][tusk.FeatureList]. `get_feature_names_out()` gives the encoded
 column names with tusk's names substituted back, such as
-`categories__MODE__orders__products__category_a`.
+`string__MODE__orders__products__category_svd_0`.
 
 Two cases change what you get:
 
@@ -180,39 +163,89 @@ Two cases change what you get:
   Consider placing the `PCA` further downstream in the main `Pipeline` and
   not in the `selection_pipeline`.
 - If a feature reaches no encoder, tusk drops it and warns with
-  `UnencodedFeatureWarning` naming how many. Cover every dtype in your
-  feature matrix, or set `remainder="passthrough"`.
+  `UnencodedFeatureWarning` naming how many. A `TableEncoder` group set to
+  `"drop"` is the usual cause. The `other` group, for dtypes such as `List`
+  and `Struct`, drops by default.
 
-## Choosing columns with `dtype_selector`
+## Encoding by dtype with `TableEncoder`
+
+`TableEncoder` puts each column into one group by its narwhals dtype and
+encodes each group with its own estimator:
+
+| Parameter | Dtypes | Default |
+| --- | --- | --- |
+| `numeric` | integers, floats, `Decimal` | `"passthrough"` |
+| `boolean` | `Boolean` | `"passthrough"` |
+| `string` | `String` | `StringEncoder()` |
+| `categorical` | `Categorical` | `OneHotEncoder(handle_unknown="ignore")` |
+| `enum` | `Enum` | `EnumEncoder()` |
+| `date` | `Date` | `DateEncoder()`: month, day |
+| `time` | `Time` | `TimeEncoder()`: hour, minute |
+| `datetime` | `Datetime` | `DatetimeEncoder()`: month, day, hour, minute |
+| `duration` | `Duration` | `DurationEncoder()`: total seconds |
+| `other` | every other dtype | `"drop"` |
+
+Each parameter takes an estimator, `"passthrough"` or `"drop"`. Output names
+are `{group}__{name}`, such as `date__signed_up_at_month`.
+
+The dtype of a text column chooses its encoding:
+
+- `Categorical`: one column per value (one-hot). Use it for a few unordered
+  values.
+- `Enum`: the value's position in the category order. Use it for ordered
+  values.
+- `String`: `StringEncoder` computes a TF-IDF vector over the value's
+  character 3- and 4-grams and reduces it to 30 coordinates. Values that
+  share spelling get close coordinates. Use it for free text and for values
+  with many distinct entries.
+
+Cast a column in the database to choose its encoding.
+
+The temporal encoders take `components`:
+
+```python
+from tusk.sklearn import DateEncoder
+
+TableEncoder(date=DateEncoder(components=["year", "month", "weekday"]))
+```
 
 Synthesis builds the feature matrix's column names, so you cannot know them
-all in advance. Which features exist depends on your schema, your primitives
-and `max_depth`. tusk therefore rejects a `ColumnTransformer` given an
-explicit list of names, raising `EncoderError`.
+all in advance. tusk therefore rejects a `ColumnTransformer` given an
+explicit list of names, raising `EncoderError`. `TableEncoder` needs no
+names.
 
-`dtype_selector` picks columns by dtype instead. It takes a
-[`DtypeFamily`](../api/dtypes.md), the same families that decide which
-primitives apply to which columns:
+### Any estimator, any backend
 
-| Family | Matches |
-| --- | --- |
-| `"numeric"` | integers and floats |
-| `"temporal"` | `Date`, `Datetime`, `Duration`, `Time` (every temporal dtype) |
-| `"has_date"` | `Date`, `Datetime` (columns you can read a calendar position from) |
-| `"has_time"` | `Datetime`, `Time` (columns you can read an hour or minute from) |
-| `"duration"` | `Duration` |
-| `"string"` | `String` |
-| `"categorical"` | `Categorical`, `Enum` |
-| `"boolean"` | `Boolean` |
+A group gets numpy unless its estimator has `NarwhalsMixin`. Mix it in to
+give an estimator a table narwhals can read, from any backend, converted to
+`convert_to`:
 
-`"string"` and `"categorical"` are separate: a column you declared
-`Categorical` is a label, a `String` column carries no such declaration.
+```python
+from sklearn.preprocessing import TargetEncoder
 
-scikit-learn's own `make_column_selector` does the same job but accepts only
-pandas. `dtype_selector` reads the schema through narwhals, so it works on
-every backend a tusk database can use.
+from tusk.sklearn import NarwhalsMixin
 
-## Frame backends
+
+class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
+    convert_to = "pandas"
+
+
+TableEncoder(string=PandasTargetEncoder())
+```
+
+`convert_to` is `"numpy"`, `"pandas"`, `"polars"` or `"narwhals"`.
+
+`NarwhalsEncoder` on its own passes every column through unchanged.
+`set_output` sets what it returns. Use it to hand a feature matrix from any
+backend to scikit-learn:
+
+```python
+from tusk.sklearn import NarwhalsEncoder
+
+NarwhalsEncoder().set_output(transform="pandas")
+```
+
+## Table backends
 
 tusk collects the feature matrix to whatever backend the database already
 uses, so narwhals-native transformers get the native table type they want.
@@ -227,6 +260,7 @@ not include it. Two cases need it:
 
 - `ColumnTransformer` cannot read pyarrow tables, which is what a duckdb
   database collects to. Use `"pandas"` or `"polars"` in that case.
+  `TableEncoder` and `NarwhalsEncoder` read every backend.
 - scikit-learn reads polars DataFrames through a dataframe interchange
   protocol that polars deprecated, so fitting one emits harmless
   `DeprecationWarning`s. `"pandas"` avoids them.
