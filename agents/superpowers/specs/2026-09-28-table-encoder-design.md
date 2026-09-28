@@ -64,13 +64,29 @@ narwhals-native encoder a user writes:
   collect. It sets `feature_names_in_`, `n_features_in_` and `schema_in_`
   (column name to narwhals dtype). Here `feature_names_in_` is safe to set,
   because `transform` receives a table with names.
-- Subclasses implement `_fit(table: nw.LazyFrame | nw.DataFrame, y)` and
-  `_transform(table: nw.DataFrame) -> nw.DataFrame`.
+- Subclasses override `_fit(table: nw.LazyFrame | nw.DataFrame, y)` and
+  `_transform(table: nw.DataFrame) -> nw.DataFrame`. The defaults do nothing
+  and return the table unchanged.
 - `set_output(transform=...)` accepts `"default"` (numpy), `"pandas"` and
   `"polars"`, the values scikit-learn accepts. The base class converts the
   narwhals result itself instead of through scikit-learn's output wrapper. A
   polars `Categorical` column then becomes a pandas `category` column, not an
   object array. `Pipeline.set_output` reaches it like any other step.
+- `get_feature_names_out()` returns the output column names.
+
+Used alone, `NarwhalsEncoder()` is a convert step. It passes every column
+through unchanged, and `set_output` sets what it returns:
+
+```python
+Pipeline([
+    ("dfs", DFSTransformer(target_table="customers")),
+    ("convert", NarwhalsEncoder().set_output(transform="pandas")),
+    ("model", HistGradientBoostingClassifier()),
+])
+```
+
+It fits on the schema alone, so `TableEncoder` accepts it as a group's
+estimator, for example to pass a group through in a chosen form.
 
 ### Column encoders
 
@@ -233,7 +249,9 @@ matters:
   keeps `convert_to`; an absent pandas raises `TuskError` (patch the import).
 - `NarwhalsEncoder`: fit on a lazy duckdb table collects nothing (patch
   `collect` to raise); `set_output` returns numpy, pandas and polars; a
-  polars `Categorical` becomes a pandas `category`.
+  polars `Categorical` becomes a pandas `category`; as a pipeline step
+  between `DFSTransformer` on duckdb and a model, it hands the model the
+  `set_output` type with the values unchanged.
 - Each column encoder: the values for a small fixed input; the output names;
   null handling; an unrecognized component and a wrong dtype raise.
 - `EnumEncoder`: codes follow the category order, not the order the values
