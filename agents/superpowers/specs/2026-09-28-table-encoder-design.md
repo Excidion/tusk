@@ -143,7 +143,11 @@ is empty (every value null or `""`), every output column
 is zero. The output width is always `n_components`. Output name:
 `{column}_svd_{i}`.
 
-Schema-only encoders carry the class attribute `_fits_on_schema = True`.
+Schema-only encoders carry the class attribute `_fits_on_schema = True`. An
+estimator counts as schema-only only if it also keeps `NarwhalsEncoder`'s own
+`_transform`: a subclass that overrides `_transform` fits on values even if
+`_fits_on_schema` is left at its default, so its own encoding is not
+silently replaced by the identity `_expressions()`.
 
 Backend limits, found by the prototype:
 
@@ -153,6 +157,9 @@ Backend limits, found by the prototype:
 - duckdb raises `NotImplementedError` for the `timestamp` and
   `total_nanoseconds` components. Neither is a default.
 - A pyarrow dictionary column reads as `Categorical`, not `Enum`.
+- A pyarrow dictionary column's own `to_numpy` fills a null with a category
+  value instead of leaving it null. Casting `Categorical` columns to
+  `String` before the numpy conversion keeps the null, on every backend.
 
 ### `TableEncoder`
 
@@ -191,12 +198,19 @@ the user mixes `NarwhalsMixin` into that group's estimator.
 2. Split the columns into the groups. A group with no columns is skipped.
 3. Clone each group's estimator.
 4. Fit each estimator on its group's columns:
-   - An estimator with `_fits_on_schema = True` receives the table as it
-     came, lazy or eager. Nothing is collected.
+   - A schema-only estimator receives the table as it came, lazy or eager.
+     Nothing is collected.
    - Every other estimator receives its columns collected: as a narwhals
      table if it has `NarwhalsMixin`, else as numpy. This covers
      `StringEncoder`, `OneHotEncoder` and any estimator the user supplies.
 5. Set `groups_`: group name to (fitted estimator, input columns).
+
+`fit_transform` does not call `fit` then `transform`: a value-based group's
+estimator fits and transforms through its own `fit_transform` instead, on
+the columns collected once at fit. This lets an estimator such as
+scikit-learn's `TargetEncoder` cross-fit, the way it does inside a
+`ColumnTransformer`. Schema-only and passthrough groups are produced the way
+`transform` produces them, from one collected `select` of their columns.
 
 `transform` builds one `select` on the native table. It holds:
 
@@ -247,6 +261,7 @@ cannot read pyarrow, which defeats a schema-only fit.
 | Condition | When | Raises |
 | --- | --- | --- |
 | A group parameter is not an estimator, `"passthrough"` or `"drop"` | fit | `ValueError` naming the parameter and the value |
+| `components` is a string instead of a list | fit | `TypeError` asking for a list, such as `["month"]` |
 | A component is not allowed for the encoder | fit | `ValueError` listing the allowed components |
 | A column encoder gets a column of a dtype it cannot encode | fit | `EncoderError` naming the column, its dtype and the accepted dtype |
 | `transform` gets columns that differ from `feature_names_in_` | transform | `EncoderError` naming the extra and absent columns |
