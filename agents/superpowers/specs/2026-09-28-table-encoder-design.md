@@ -6,8 +6,8 @@ column of a feature matrix by its narwhals dtype. It resembles skrub's
 no cardinality switch: the user picks the encoding of a text column by casting
 it to `String`, `Categorical` or `Enum`.
 
-`TableEncoder` and its column encoders subclass `NarwhalsConverter`, a
-scikit-learn compatibility layer that accepts any table narwhals can read.
+`NarwhalsMixin` makes any scikit-learn estimator accept a table narwhals can
+read. The tusk encoders and `TableEncoder` use it too.
 
 ## Why
 
@@ -19,36 +19,62 @@ backend a duckdb database collects to.
 
 ## Components
 
-All components live in `tusk.sklearn` and are public. They need the `sklearn`
+All components live in `tusk.sklearn` and are public, except `_NarwhalsEncoder`.
+They need the `sklearn`
 extra.
 
-### `NarwhalsConverter`
+### `NarwhalsMixin`
 
-`NarwhalsConverter(TransformerMixin, BaseEstimator)` converts a narwhals
-table into the output scikit-learn asks for.
+`NarwhalsMixin` makes an estimator accept any table narwhals can read, eager
+or lazy, on any backend. It is mixed in before the estimator's class:
 
-- `fit(X, y=None)` accepts an eager or lazy native table. It reads the schema
-  with `collect_schema()` and does not collect. It sets `feature_names_in_`,
-  `n_features_in_` and `schema_in_` (column name to narwhals dtype).
-- `transform(X)` collects the table and returns it in the configured output.
+```python
+class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
+    convert_to = "pandas"
+```
+
+- The class attribute `convert_to: Literal["narwhals", "numpy", "pandas",
+  "polars"] = "numpy"` sets what the estimator underneath receives. It is a
+  class attribute, not an `__init__` parameter: scikit-learn reads parameters
+  from the `__init__` signature, which a mixin cannot extend without hiding
+  the estimator's own. A class attribute also survives `clone`.
+- `fit`, `transform` and `fit_transform` convert `X` to `convert_to`, then
+  call the estimator's own method. `fit_transform` is converted too, because
+  some estimators define their own, `TargetEncoder` among them.
+- `"numpy"`, `"pandas"` and `"polars"` collect a lazy table first.
+  `"narwhals"` hands over the narwhals table unchanged, lazy or eager.
+- At fit the mixin records the column names as `narwhals_columns_`.
+  `get_feature_names_out(input_features=None)` falls back to them, so an
+  estimator fitted on numpy still reports the real names. The mixin does not
+  set `feature_names_in_`: scikit-learn would then warn at every `transform`
+  that numpy input has no feature names.
+- If `convert_to` names pandas or polars and the package is not installed, it
+  raises (see [Errors](#errors)). Neither package is a dependency of the
+  `sklearn` extra.
+
+The output is scikit-learn's own `set_output`. The mixin does not change it.
+
+### `_NarwhalsEncoder`
+
+The private base class of the tusk encoders and `TableEncoder`:
+`_NarwhalsEncoder(NarwhalsMixin, TransformerMixin, BaseEstimator)` with
+`convert_to = "narwhals"`.
+
+- `fit(X, y=None)` reads the schema with `collect_schema()` and does not
+  collect. It sets `feature_names_in_`, `n_features_in_` and `schema_in_`
+  (column name to narwhals dtype). Here `feature_names_in_` is safe to set,
+  because `transform` receives a table with names.
+- Subclasses implement `_fit(table: nw.LazyFrame | nw.DataFrame, y)` and
+  `_transform(table: nw.DataFrame) -> nw.DataFrame`.
 - `set_output(transform=...)` accepts `"default"` (numpy), `"pandas"` and
-  `"polars"`, the values scikit-learn accepts. The converter converts through
-  narwhals itself instead of through scikit-learn's output wrapper. A polars
-  table with a `Categorical` column then becomes a pandas table with a
-  `category` column, not an object array. `Pipeline.set_output` reaches it
-  like any other step.
-- `get_feature_names_out()` returns the output column names.
-- Subclasses override two hooks and receive a narwhals table:
-  `_fit(table: nw.LazyFrame | nw.DataFrame, y)` and
-  `_transform(table: nw.DataFrame) -> nw.DataFrame`. The base class does the
-  conversion on both sides.
-
-Used alone, it is the step that hands a duckdb or pyarrow feature matrix to
-scikit-learn.
+  `"polars"`, the values scikit-learn accepts. The base class converts the
+  narwhals result itself instead of through scikit-learn's output wrapper. A
+  polars `Categorical` column then becomes a pandas `category` column, not an
+  object array. `Pipeline.set_output` reaches it like any other step.
 
 ### Column encoders
 
-Each column encoder is a `NarwhalsConverter` subclass that encodes every
+Each column encoder is a `_NarwhalsEncoder` subclass that encodes every
 column it is given. Each rejects a column of a dtype it cannot encode (see
 [Errors](#errors)). Output names are `{column}_{suffix}`, so the input column
 name is always part of the output name.
@@ -97,7 +123,7 @@ Schema-only encoders carry the class attribute `_fits_on_schema = True`.
 
 ### `TableEncoder`
 
-`TableEncoder(NarwhalsConverter)` has one parameter per dtype group. Each
+`TableEncoder(_NarwhalsEncoder)` has one parameter per dtype group. Each
 takes an estimator, `"passthrough"` or `"drop"`. The groups are disjoint, so
 each column has exactly one owner.
 
@@ -118,27 +144,24 @@ The defaults are estimator instances in the signature, as in skrub. `fit`
 clones them, so instances are never shared or mutated, and nested parameters
 such as `date__components` work with `set_params`.
 
-`estimator_input: Literal["numpy", "pandas", "polars"] = "numpy"` sets
-what value-based estimators receive. numpy works with every scikit-learn
-estimator and needs no extra package. With numpy, `TableEncoder` passes the
-column names to `get_feature_names_out(input_features=columns)`. pandas and
-polars give the estimator a table with column names; neither package is a
-dependency of the `sklearn` extra.
+An estimator with `NarwhalsMixin` receives the narwhals table and converts
+it to its own `convert_to`. Any other estimator receives numpy, and
+`TableEncoder` passes the column names to
+`get_feature_names_out(input_features=columns)`. To give one group pandas,
+the user mixes `NarwhalsMixin` into that group's estimator.
 
 `fit`:
 
-1. Check `estimator_input`. If its package is not installed, raise
-   (see [Errors](#errors)).
-2. Read the schema. Cast `Decimal` columns to `Float64`.
-3. Split the columns into the groups. A group with no columns is skipped.
-4. Clone each group's estimator.
-5. Fit each estimator on its group's columns:
+1. Read the schema. Cast `Decimal` columns to `Float64`.
+2. Split the columns into the groups. A group with no columns is skipped.
+3. Clone each group's estimator.
+4. Fit each estimator on its group's columns:
    - An estimator with `_fits_on_schema = True` receives the table as it
      came, lazy or eager. Nothing is collected.
-   - Every other estimator receives its columns collected and converted to
-     `estimator_input`. This covers `StringEncoder`, `OneHotEncoder` and any
-     estimator the user supplies.
-6. Set `groups_`: group name to (fitted estimator, input columns).
+   - Every other estimator receives its columns collected: as a narwhals
+     table if it has `NarwhalsMixin`, else as numpy. This covers
+     `StringEncoder`, `OneHotEncoder` and any estimator the user supplies.
+5. Set `groups_`: group name to (fitted estimator, input columns).
 
 `transform` builds one `select` on the native table. It holds:
 
@@ -149,9 +172,9 @@ dependency of the `sklearn` extra.
 
 It collects that `select` once. On duckdb, date parts and codes are then
 computed in the database. Each value-based estimator transforms its columns,
-converted to `estimator_input`. A sparse output is made dense. The blocks are
+converted as at fit. A sparse output is made dense. The blocks are
 concatenated horizontally, by position. The result goes through
-`NarwhalsConverter`'s output conversion.
+`_NarwhalsEncoder`'s output conversion.
 
 Order:
 
@@ -194,7 +217,7 @@ cannot read pyarrow, which defeats a schema-only fit.
 | `transform` gets columns that differ from `feature_names_in_` | transform | `EncoderError` naming the extra and absent columns |
 | A column's dtype differs from the dtype seen at fit, including an `Enum` with other categories | transform | `EncoderError` naming the column and both dtypes |
 | `set_output` gets a value other than `"default"`, `"pandas"`, `"polars"` | set_output | `ValueError` from scikit-learn's own check |
-| `estimator_input` or `set_output` names pandas or polars and the package is not installed | fit, set_output | `TuskError`: "`estimator_input='pandas'` needs the pandas package, which is not installed; `uv add pandas`" |
+| `convert_to` or `set_output` names pandas or polars and the package is not installed | fit, set_output | `TuskError`: "`PandasTargetEncoder` converts to pandas, which is not installed; `uv add pandas`" |
 | A block has a different row count from the others | transform | `EncoderError` naming the group and both counts |
 
 ## Testing
@@ -202,7 +225,13 @@ cannot read pyarrow, which defeats a schema-only fit.
 Behaviour tests, on polars, pandas, pyarrow and duckdb where the backend
 matters:
 
-- `NarwhalsConverter`: fit on a lazy duckdb table collects nothing (patch
+- `NarwhalsMixin`: mixed into `StandardScaler`, `OneHotEncoder` and
+  `TargetEncoder`, it accepts polars, pandas, pyarrow and a lazy duckdb
+  table; each `convert_to` reaches the estimator as that type;
+  `get_feature_names_out` reports the real names after a numpy fit; a
+  `transform` after a numpy fit issues no feature-name warning; `clone`
+  keeps `convert_to`; an absent pandas raises `TuskError` (patch the import).
+- `_NarwhalsEncoder`: fit on a lazy duckdb table collects nothing (patch
   `collect` to raise); `set_output` returns numpy, pandas and polars; a
   polars `Categorical` becomes a pandas `category`.
 - Each column encoder: the values for a small fixed input; the output names;
@@ -215,8 +244,8 @@ matters:
 - `TableEncoder`: each dtype reaches its group; defaults encode a table with
   every dtype; `"drop"` and `"passthrough"` work; a schema-only group does
   not collect at fit; an empty group is skipped; `get_feature_names_out` matches the output columns;
-  `estimator_input` gives numpy, pandas and polars to a user estimator, and
-  raises `TuskError` when the package is absent (patch the import);
+  a bare user estimator receives numpy, and one with `NarwhalsMixin`
+  receives its `convert_to`;
   `transform` on a lazy duckdb table collects once;
   `clone` and `get_params`/`set_params` work, including nested parameters
   such as `date__components`.
