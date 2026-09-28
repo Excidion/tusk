@@ -19,8 +19,8 @@ backend a duckdb database collects to.
 
 ## Components
 
-All components live in `tusk.sklearn` and are public, except
-`_NarwhalsEncoder`. They need the `sklearn` extra.
+All components live in `tusk.sklearn` and are public. They need the `sklearn`
+extra.
 
 ### `NarwhalsMixin`
 
@@ -53,10 +53,11 @@ class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
 
 The output is scikit-learn's own `set_output`. The mixin does not change it.
 
-### `_NarwhalsEncoder`
+### `NarwhalsEncoder`
 
-The private base class of the tusk encoders and `TableEncoder`:
-`_NarwhalsEncoder(NarwhalsMixin, TransformerMixin, BaseEstimator)` with
+The base class of the tusk encoders and `TableEncoder`, and of any
+narwhals-native encoder a user writes:
+`NarwhalsEncoder(NarwhalsMixin, TransformerMixin, BaseEstimator)` with
 `convert_to = "narwhals"`.
 
 - `fit(X, y=None)` reads the schema with `collect_schema()` and does not
@@ -73,7 +74,7 @@ The private base class of the tusk encoders and `TableEncoder`:
 
 ### Column encoders
 
-Each column encoder is a `_NarwhalsEncoder` subclass that encodes every
+Each column encoder is a `NarwhalsEncoder` subclass that encodes every
 column it is given. Each rejects a column of a dtype it cannot encode (see
 [Errors](#errors)). Output names are `{column}_{suffix}`, so the input column
 name is always part of the output name.
@@ -173,7 +174,7 @@ It collects that `select` once. On duckdb, date parts and codes are then
 computed in the database. Each value-based estimator transforms its columns,
 converted as at fit. A sparse output is made dense. The blocks are
 concatenated horizontally, by position. The result goes through
-`_NarwhalsEncoder`'s output conversion.
+`NarwhalsEncoder`'s output conversion.
 
 Order:
 
@@ -230,7 +231,7 @@ matters:
   `get_feature_names_out` reports the real names after a numpy fit; a
   `transform` after a numpy fit issues no feature-name warning; `clone`
   keeps `convert_to`; an absent pandas raises `TuskError` (patch the import).
-- `_NarwhalsEncoder`: fit on a lazy duckdb table collects nothing (patch
+- `NarwhalsEncoder`: fit on a lazy duckdb table collects nothing (patch
   `collect` to raise); `set_output` returns numpy, pandas and polars; a
   polars `Categorical` becomes a pandas `category`.
 - Each column encoder: the values for a small fixed input; the output names;
