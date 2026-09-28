@@ -41,7 +41,11 @@ reach the transformer through the pipeline. Set it once per process.
 The feature matrix holds whatever dtypes synthesis produced, so it can carry
 strings and nulls, which most estimators do not take.
 [`TableEncoder`](#encoding-by-dtype-with-tableencoder) encodes each column by
-its dtype. A null stays a null (NaN). Choose a model that accepts NaN, such as
+its dtype, and a null survives the encoding differently by dtype: a null in
+a numeric, `Enum` or temporal (`Date`, `Time`, `Datetime`, `Duration`)
+column stays NaN; a null in a `String` column is encoded as `""`; a null in
+a `Categorical` column gets its own one-hot column; a null in a `Boolean`
+column passes through as `None`. Choose a model that accepts NaN, such as
 `HistGradientBoostingClassifier`, or give the `numeric` group an imputer.
 
 Pass `database=` to `predict` to score a different set of keys, from either
@@ -177,7 +181,7 @@ encodes each group with its own estimator:
 | `numeric` | integers, floats, `Decimal` | `"passthrough"` |
 | `boolean` | `Boolean` | `"passthrough"` |
 | `string` | `String` | `StringEncoder()` |
-| `categorical` | `Categorical` | `OneHotEncoder(handle_unknown="ignore")` |
+| `categorical` | `Categorical` | `OneHotEncoder(handle_unknown="ignore", sparse_output=False)` |
 | `enum` | `Enum` | `EnumEncoder()` |
 | `date` | `Date` | `DateEncoder()`: month, day |
 | `time` | `Time` | `TimeEncoder()`: hour, minute |
