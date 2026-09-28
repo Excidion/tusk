@@ -119,13 +119,13 @@ def test_a_value_first_seen_at_transform_is_encoded():
     ids=["few rows", "one n-gram", "no n-grams"],
 )
 def test_a_small_vocabulary_is_padded_to_n_components(values):
-    frame = pl.DataFrame({"c": values}, schema={"c": pl.String})
-    assert StringEncoder().fit_transform(frame).shape == (2, 30)
+    table = pl.DataFrame({"c": values}, schema={"c": pl.String})
+    assert StringEncoder().fit_transform(table).shape == (2, 30)
 
 
 def test_no_n_grams_encode_as_zeros():
-    frame = pl.DataFrame({"c": [None, ""]}, schema={"c": pl.String})
-    assert not StringEncoder().fit_transform(frame).any()
+    table = pl.DataFrame({"c": [None, ""]}, schema={"c": pl.String})
+    assert not StringEncoder().fit_transform(table).any()
 
 
 def test_the_string_encoder_rejects_another_dtype():

@@ -38,9 +38,9 @@ class TypeRecorder(TransformerMixin, BaseEstimator):
         return X
 
 
-def as_duckdb(frame):
+def as_duckdb(table):
     connection = duckdb.connect()
-    connection.register("t", frame.to_arrow())
+    connection.register("t", table.to_arrow())
     return connection.sql("select * from t")
 
 
@@ -82,10 +82,10 @@ def test_a_numpy_fit_then_transform_issues_no_feature_name_warning():
 
 
 def test_an_estimator_with_its_own_fit_transform_receives_the_conversion():
-    frame = pl.DataFrame({"c": ["x", "y"] * 10})
+    table = pl.DataFrame({"c": ["x", "y"] * 10})
     y = [0, 1] * 10
-    assert PandasTargetEncoder().fit_transform(frame, y).shape == (20, 1)
-    fitted = PandasTargetEncoder().fit(frame, y)
+    assert PandasTargetEncoder().fit_transform(table, y).shape == (20, 1)
+    fitted = PandasTargetEncoder().fit(table, y)
     assert list(fitted.get_feature_names_out()) == ["c"]
 
 

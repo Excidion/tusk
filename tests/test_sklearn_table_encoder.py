@@ -54,9 +54,9 @@ class PolarsRecorder(NarwhalsMixin, TypeRecorder):
     convert_to = "polars"
 
 
-def as_duckdb(frame):
+def as_duckdb(table):
     connection = duckdb.connect()
-    connection.register("t", frame.to_arrow())
+    connection.register("t", table.to_arrow())
     return connection.sql("select * from t")
 
 
@@ -104,8 +104,8 @@ def test_drop_and_passthrough():
 
 @pytest.mark.parametrize("backend", ["pandas", "pyarrow"])
 def test_other_backends(backend):
-    frame = EVERY_DTYPE.drop("d", "t", "l")
-    native = frame.to_pandas() if backend == "pandas" else frame.to_arrow()
+    table = EVERY_DTYPE.drop("d", "t", "l")
+    native = table.to_pandas() if backend == "pandas" else table.to_arrow()
     encoder = small_strings().fit(native)
     assert encoder.transform(native).shape == (2, len(encoder.get_feature_names_out()))
 
@@ -117,8 +117,8 @@ def test_an_empty_group_is_skipped():
 
 
 def test_a_schema_only_fit_does_not_collect(monkeypatch):
-    frame = pl.DataFrame({"n": [1.0, 2.0], "w": [dt.datetime(2024, 3, 5, 9, 30)] * 2})
-    relation = as_duckdb(frame)
+    table = pl.DataFrame({"n": [1.0, 2.0], "w": [dt.datetime(2024, 3, 5, 9, 30)] * 2})
+    relation = as_duckdb(table)
 
     def refuse(*args, **kwargs):
         raise AssertionError("fit collected the table")
@@ -128,14 +128,14 @@ def test_a_schema_only_fit_does_not_collect(monkeypatch):
 
 
 def test_transform_collects_a_lazy_table_once(monkeypatch):
-    frame = pl.DataFrame(
+    table = pl.DataFrame(
         {
             "n": [1.0, 2.0],
             "s": ["foo", "bar"],
             "w": [dt.datetime(2024, 3, 5, 9, 30)] * 2,
         }
     )
-    relation = as_duckdb(frame)
+    relation = as_duckdb(table)
     encoder = small_strings().fit(relation)
     calls = []
     collect = nw.LazyFrame.collect
