@@ -6,7 +6,6 @@ import polars as pl
 import pytest
 import sklearn
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import SelectKBest, SelectorMixin, f_classif
 from sklearn.impute import SimpleImputer
@@ -22,7 +21,8 @@ from tusk.exceptions import (
     SchemaError,
     UnencodedFeatureWarning,
 )
-from tusk.sklearn import DFSSelectorTransformer, DFSTransformer, dtype_selector
+from tusk.sklearn import DFSSelectorTransformer, DFSTransformer, TableEncoder
+from tusk.sklearn._table_encoder import GROUPS
 
 # Fitting a raw polars frame directly (bypassing narwhals, as scikit-learn's own
 # validation does internally) raises a DeprecationWarning that is sklearn/polars
@@ -114,12 +114,15 @@ def shop():
     )
 
 
+def _only(**groups):
+    """A TableEncoder that drops every group not named."""
+    return TableEncoder(**{group: "drop" for group in GROUPS} | groups)
+
+
 def _encoder():
-    return ColumnTransformer(
-        [
-            ("oh", OneHotEncoder(handle_unknown="ignore"), dtype_selector("string")),
-            ("num", StandardScaler(), dtype_selector("numeric")),
-        ],
+    return _only(
+        string=OneHotEncoder(handle_unknown="ignore"),
+        numeric=StandardScaler(),
     )
 
 
@@ -250,8 +253,8 @@ def test_pruned_features_are_never_computed(shop):
 def test_the_survivors_are_exactly_the_features_feeding_kept_columns(shop):
     matrix = _matrix(shop)
     positions = [
-        _encoded_position(matrix, "oh__region_south"),
-        _encoded_position(matrix, "num__MAX__transactions__amount"),
+        _encoded_position(matrix, "string__region_south"),
+        _encoded_position(matrix, "numeric__MAX__transactions__amount"),
     ]
     transformer = DFSSelectorTransformer(
         target_table="customers",
@@ -271,7 +274,7 @@ def test_the_survivors_are_exactly_the_features_feeding_kept_columns(shop):
 def test_a_multi_output_feature_survives_whole(shop):
     quantiles = {"agg_primitives": ["quantiles"], "trans_primitives": []}
     matrix = _matrix(shop, **quantiles)
-    position = _encoded_position(matrix, "num__QUANTILES__transactions__amount__1")
+    position = _encoded_position(matrix, "numeric__QUANTILES__transactions__amount__1")
     transformer = DFSSelectorTransformer(
         target_table="customers",
         selection_pipeline=Pipeline(
@@ -318,12 +321,7 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
     # handling.
     selection_pipeline = Pipeline(
         [
-            (
-                "enc",
-                ColumnTransformer(
-                    [("pca", PCA(n_components=2), dtype_selector("numeric"))],
-                ),
-            ),
+            ("enc", _only(numeric=PCA(n_components=2))),
             ("sel", SelectKBest(f_classif, k=1)),
         ],
     )
@@ -350,22 +348,11 @@ def test_an_opaque_encoder_keeps_every_feature_and_warns(shop):
 
 @pytest.mark.filterwarnings(_INTERCHANGE_DEPRECATION)
 def test_a_partial_encoder_warns_about_features_it_never_saw(shop):
-    # Only string columns are encoded, and remainder defaults to "drop", so
+    # Only string columns are encoded and every other group is dropped, so
     # every numeric feature silently feeds nothing and gets dropped.
     selection_pipeline = Pipeline(
         [
-            (
-                "enc",
-                ColumnTransformer(
-                    [
-                        (
-                            "oh",
-                            OneHotEncoder(handle_unknown="ignore"),
-                            dtype_selector("string"),
-                        ),
-                    ],
-                ),
-            ),
+            ("enc", _only(string=OneHotEncoder(handle_unknown="ignore"))),
             ("sel", SelectKBest(f_classif, k=1)),
         ],
     )
@@ -440,12 +427,7 @@ def test_a_supervised_encoder_is_refitted_with_y(shop):
             [
                 (
                     "encode",
-                    ColumnTransformer(
-                        [
-                            ("target", TargetEncoder(), dtype_selector("string")),
-                            ("numbers", StandardScaler(), dtype_selector("numeric")),
-                        ],
-                    ),
+                    _only(string=TargetEncoder(), numeric=StandardScaler()),
                 ),
                 ("select", KeepPositions(positions=(0,))),
             ],

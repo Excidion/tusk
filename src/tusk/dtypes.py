@@ -22,13 +22,12 @@ class DtypeFamily(Enum):
     reports this distinction.
 
     ``TEMPORAL`` matches every dtype the narrower temporal families match,
-    plus every dtype that is temporal. It stays broad for
-    ``dtype_selector``. ``HAS_DATE`` matches ``Datetime`` and ``Date``,
-    the dtypes a calendar position can be read from. ``HAS_TIME`` matches
-    ``Datetime`` and ``Time``, the dtypes an hour or minute can be read
-    from. Both families match ``Datetime``. ``DURATION`` is elapsed time.
-    Neither ``HAS_DATE`` nor ``HAS_TIME`` matches it, even though it is
-    temporal.
+    plus every dtype that is temporal. ``HAS_DATE`` matches ``Datetime``
+    and ``Date``, the dtypes a calendar position can be read from.
+    ``HAS_TIME`` matches ``Datetime`` and ``Time``, the dtypes an hour or
+    minute can be read from. Both families match ``Datetime``.
+    ``DURATION`` is elapsed time. Neither ``HAS_DATE`` nor ``HAS_TIME``
+    matches it, even though it is temporal.
     """
 
     NUMERIC = "numeric"

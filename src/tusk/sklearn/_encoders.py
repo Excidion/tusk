@@ -3,69 +3,19 @@
 :func:`get_last_step` and :func:`get_encoder_prefix` split a pipeline into the
 part that encodes and the selector that ends it.
 :func:`validate_selection_pipeline` rejects pipelines this module cannot
-support. :class:`dtype_selector` picks columns by dtype for a
-``ColumnTransformer``.
+support.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-import narwhals as nw
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import SelectorMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
-from tusk.dtypes import DtypeFamily, matches
 from tusk.exceptions import EncoderError
-
-
-class dtype_selector:  # noqa: N801
-    """A selector of columns by :class:`~tusk.dtypes.DtypeFamily`, on any backend.
-
-    It serves the same role as scikit-learn's ``make_column_selector``. It
-    reads the schema through narwhals. This lets it work on every backend a
-    tusk database can use, not pandas alone.
-
-    Families are :class:`~tusk.dtypes.DtypeFamily` values. ``"string"`` here
-    means what it means to a primitive: ``String``, not ``Categorical`` or
-    ``Enum``.
-
-    It is callable. Each call re-evaluates the family match against the
-    table it is given. A narrowed feature matrix then narrows the selection.
-
-    Attributes:
-        family: The :class:`~tusk.dtypes.DtypeFamily` to select.
-    """
-
-    family: DtypeFamily
-
-    def __init__(self, family: DtypeFamily | str) -> None:
-        """Build a selector for one dtype family.
-
-        Args:
-            family: A ``DtypeFamily`` or its string value, such as
-                ``"numeric"`` or ``"string"``. An unrecognized string raises
-                ``ValueError`` listing the valid values.
-        """
-        self.family = DtypeFamily(family)
-
-    def __call__(self, X: Any) -> list[str]:
-        """Return the matching column names.
-
-        Args:
-            X: The table the encoder is being fitted on.
-
-        Returns:
-            Matching column names, in table order.
-        """
-        schema = nw.from_native(X, eager_only=True).schema
-        return [c for c, d in schema.items() if matches(d, self.family)]
-
-    def __repr__(self) -> str:
-        """Show the family value. A cloned estimator then prints readably."""
-        return f"dtype_selector({self.family.value!r})"
 
 
 def get_last_step(selection_pipeline: Any) -> Any:
@@ -177,8 +127,7 @@ def _reject_explicit_columns(estimator: Any) -> None:
                     f"explicitly ({list(columns)[:3]}...), which cannot be "
                     "refit once selection narrows the feature matrix, and DFS "
                     "builds its column names so they cannot be known in "
-                    "advance anyway. Use a callable instead, such as "
-                    "tusk.sklearn.dtype_selector('numeric') or "
-                    "dtype_selector('string').",
+                    "advance anyway. Use tusk.sklearn.TableEncoder, which "
+                    "encodes columns by dtype.",
                 )
             _reject_explicit_columns(transformer)
