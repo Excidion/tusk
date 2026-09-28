@@ -213,8 +213,8 @@ matters:
   small one and an empty one; strings with shared n-grams are closer than
   strings without; a value first seen at transform is encoded.
 - `TableEncoder`: each dtype reaches its group; defaults encode a table with
-  every dtype; `"drop"` and `"passthrough"` work; a schema-only group does not collect at fit; an empty group is
-  skipped; `get_feature_names_out` matches the output columns;
+  every dtype; `"drop"` and `"passthrough"` work; a schema-only group does
+  not collect at fit; an empty group is skipped; `get_feature_names_out` matches the output columns;
   `estimator_input` gives numpy, pandas and polars to a user estimator, and
   raises `TuskError` when the package is absent (patch the import);
   `transform` on a lazy duckdb table collects once;
