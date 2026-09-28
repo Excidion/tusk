@@ -5,15 +5,17 @@ import duckdb
 import narwhals as nw
 import numpy as np
 import polars as pl
+import pyarrow as pa
 import pytest
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, TargetEncoder
 
 import tusk
 from tusk.sklearn import (
     DFSSelectorTransformer,
+    NarwhalsEncoder,
     NarwhalsMixin,
     StringEncoder,
     TableEncoder,
@@ -166,6 +168,62 @@ def test_nested_parameters_do_not_change_the_defaults():
     assert changed.date.components == ["year"]
     assert TableEncoder().date.components == ("month", "day")
     assert clone(changed).date.components == ["year"]
+
+
+def test_set_params_with_an_unknown_key_raises_value_error():
+    with pytest.raises(ValueError, match="foo"):
+        TableEncoder().set_params(foo__x=1)
+
+
+def test_a_pyarrow_dictionary_null_matches_polars():
+    values = ["x", None, "y"]
+    polars_table = pl.DataFrame({"c": pl.Series(values, dtype=pl.Categorical)})
+    arrow_table = pa.table({"c": pa.array(values).dictionary_encode()})
+    on_polars = (
+        TableEncoder().set_output(transform="polars").fit_transform(polars_table)
+    )
+    on_arrow = TableEncoder().set_output(transform="polars").fit_transform(arrow_table)
+    assert on_polars.to_dict(as_series=False) == on_arrow.to_dict(as_series=False)
+    assert on_polars["categorical__c_None"].to_list() == [0.0, 1.0, 0.0]
+
+
+def test_fit_transform_cross_fits_value_based_groups():
+    n = 30
+    categories = (["a", "b", "c"] * n)[:n]
+    table = pl.DataFrame({"s": categories})
+    y = np.arange(n) % 2
+
+    def make_encoder():
+        return TableEncoder(string=TargetEncoder(cv=3, random_state=0))
+
+    cross_fitted = make_encoder().set_output(transform="polars").fit_transform(table, y)
+    fit_then_transform = (
+        make_encoder().set_output(transform="polars").fit(table, y).transform(table)
+    )
+    expected = TargetEncoder(cv=3, random_state=0).fit_transform(
+        table["s"].to_numpy().reshape(-1, 1), y
+    )
+    np.testing.assert_allclose(cross_fitted["string__s"].to_numpy(), expected.ravel())
+    assert not np.allclose(
+        cross_fitted["string__s"].to_numpy(), fit_then_transform["string__s"].to_numpy()
+    )
+
+
+class DoublingEncoder(NarwhalsEncoder):
+    """A NarwhalsEncoder subclass that overrides _transform, not _fits_on_schema."""
+
+    def _transform(self, table):
+        return table.select(
+            [(nw.col(name) * 2).alias(name) for name in self.schema_in_]
+        )
+
+
+def test_an_overridden_transform_is_not_bypassed_as_schema_only():
+    encoder = TableEncoder(numeric=DoublingEncoder())
+    out = encoder.set_output(transform="polars").fit_transform(
+        pl.DataFrame({"n": [1.0, 2.0, 3.0]})
+    )
+    assert out["numeric__n"].to_list() == [2.0, 4.0, 6.0]
 
 
 def test_it_encodes_inside_dfs_selection_on_duckdb():

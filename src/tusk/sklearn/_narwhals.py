@@ -153,12 +153,24 @@ class NarwhalsEncoder(
         Returns:
             This encoder.
         """
+        table = self._read_schema(X)
+        self._fit(table, y)
+        return self
+
+    def _read_schema(self, X: Any) -> nw.DataFrame | nw.LazyFrame:
+        """Read ``X`` as a table and set the schema attributes from it.
+
+        Args:
+            X: A table narwhals can read, eager or lazy.
+
+        Returns:
+            The table, eager or lazy.
+        """
         table = read_table(X, type(self).__name__)
         self.schema_in_ = dict(table.collect_schema())
         self.feature_names_in_ = np.asarray(list(self.schema_in_), dtype=object)
         self.n_features_in_ = len(self.schema_in_)
-        self._fit(table, y)
-        return self
+        return table
 
     def transform(self, X: Any, **params: Any) -> Any:
         """Encode ``X`` and return it as ``set_output`` asks.
@@ -281,7 +293,7 @@ class NarwhalsEncoder(
             return table.to_pandas()
         if output == "polars":
             return table.to_polars()
-        return table.to_numpy()
+        return table_to_numpy(table)
 
 
 def convert_table(X: Any, convert_to: ConvertTo, owner: str) -> Any:
@@ -302,9 +314,31 @@ def convert_table(X: Any, convert_to: ConvertTo, owner: str) -> Any:
         return table
     eager = collect(table)
     if convert_to == "numpy":
-        return eager.to_numpy()
+        return table_to_numpy(eager)
     require_package(convert_to, owner)
     return eager.to_pandas() if convert_to == "pandas" else eager.to_polars()
+
+
+def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
+    """Return ``table`` as numpy, with a null-safe cast of ``Categorical`` columns.
+
+    A pyarrow dictionary column's own ``to_numpy`` fills a null with a
+    category value. Casting ``Categorical`` to ``String`` first keeps the
+    null, on every backend.
+
+    Args:
+        table: The eager table.
+
+    Returns:
+        The array.
+    """
+    schema = table.collect_schema()
+    string_valued = table.with_columns(
+        nw.col(name).cast(nw.String)
+        for name, dtype in schema.items()
+        if dtype == nw.Categorical
+    )
+    return string_valued.to_numpy()
 
 
 def read_table(X: Any, owner: str) -> nw.DataFrame | nw.LazyFrame:
