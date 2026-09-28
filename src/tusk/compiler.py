@@ -195,7 +195,7 @@ def _read_table(
         SchemaError: If ``needed`` contains a feature type this compiler does
             not know how to compute.
     """
-    table = database.get_table(table_name, cutoff_time)
+    table = database._get_table(table_name, cutoff_time)
     needed = {f for f in needed if f.table == table_name}
 
     aggregations = [f for f in needed if isinstance(f, AggregationFeature)]

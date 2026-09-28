@@ -10,7 +10,6 @@ from tusk.compiler import compile_features
 from tusk.database import Database
 from tusk.exceptions import SchemaError
 from tusk.features import Feature
-from tusk.validation import check_cutoff_time
 
 
 class FeatureList(Sequence[Feature]):
@@ -93,7 +92,6 @@ class FeatureList(Sequence[Feature]):
                 backend's native lazy table, if the backend supports lazy
                 tables, with one row per visible target row.
         """
-        check_cutoff_time(database, cutoff_time)
         return compile_features(self, database, cutoff_time).to_native()
 
     @overload

@@ -1045,7 +1045,7 @@ def test_no_frames_are_touched(db, monkeypatch):
     def explode(_name):
         raise AssertionError("synthesis touched a frame")
 
-    monkeypatch.setattr(db, "get_table", explode)
+    monkeypatch.setattr(db, "_get_table", explode)
     synthesize(
         db,
         "customers",

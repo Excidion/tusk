@@ -112,7 +112,7 @@ def test_unknown_foreign_key_raises(db):
 )
 def test_every_input_frame_form_is_lazified(table):
     db = tusk.Database("x").add_table("t", table, primary_key="a")
-    assert isinstance(db.get_table("t"), nw.LazyFrame)
+    assert isinstance(db.get_table("t"), pl.LazyFrame)
 
 
 def test_self_reference_is_allowed():

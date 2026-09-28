@@ -153,7 +153,6 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         # these fallbacks every cross-validated score would come back nan.
         db = self.database_ if database is None else database
         cutoff = self.cutoff_time_ if cutoff_time is None else cutoff_time
-        check_cutoff_time(db, cutoff)
         primary_key = db.require_primary_key(self.target_table)
         keys = read_keys(X)
         check_keys_are_visible(db, self.target_table, primary_key, keys, cutoff)

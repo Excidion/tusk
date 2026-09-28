@@ -80,7 +80,7 @@ def check_keys_are_visible(
         cutoff_time: The cutoff time, or None.
     """
     visible = (
-        database.get_table(target_table, cutoff_time)
+        database._get_table(target_table, cutoff_time)
         .select(primary_key)
         .filter(nw.col(primary_key).is_in(keys))
         .collect()

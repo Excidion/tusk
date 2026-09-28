@@ -365,6 +365,29 @@ class Database:
         self,
         name: str,
         cutoff_time: datetime | None = None,
+    ) -> Any:
+        """Return a table as it stood at the cutoff time.
+
+        Rows created after the cutoff time are dropped. Columns updated after
+        the cutoff time hold the value they held before. A table with no
+        ``row_creation_time`` keeps every row, and a table declaring no
+        ``row_update_times`` keeps every value.
+
+        Args:
+            name: The table's name.
+            cutoff_time: The cutoff time. None returns the table as added.
+
+        Returns:
+            The table on the caller's backend, as the backend's native lazy
+            table, if the backend supports lazy tables.
+
+        """
+        return self._get_table(name, cutoff_time).to_native()
+
+    def _get_table(
+        self,
+        name: str,
+        cutoff_time: datetime | None = None,
     ) -> nw.LazyFrame:
         """Return a table as a narwhals LazyFrame, as it stood at the cutoff time.
 
@@ -390,6 +413,7 @@ class Database:
         if cutoff_time is None:
             return table
 
+        check_cutoff_time(self, cutoff_time)
         schema = self.get_schema(name)
         if schema.row_creation_time is not None:
             table = table.filter(nw.col(schema.row_creation_time) <= cutoff_time)
@@ -441,8 +465,7 @@ class Database:
             native lazy table, if the backend supports lazy tables.
         """
         primary_key = self.require_primary_key(name)
-        check_cutoff_time(self, cutoff_time)
-        keys = self.get_table(name, cutoff_time).select(primary_key)
+        keys = self._get_table(name, cutoff_time).select(primary_key)
         if sort:
             keys = keys.sort(primary_key)
         return keys.to_native()

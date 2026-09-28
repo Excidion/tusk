@@ -499,11 +499,11 @@ def check_overlapping_keys(database: Database, relationship: Relationship) -> No
         return
 
     children = (
-        database.get_table(relationship.child)
+        database._get_table(relationship.child)
         .select(nw.col(foreign_key))
         .filter(~nw.col(foreign_key).is_null())
     )
-    parents = database.get_table(relationship.parent).select(nw.col(primary_key))
+    parents = database._get_table(relationship.parent).select(nw.col(primary_key))
     matched = children.join(
         parents,
         left_on=foreign_key,
@@ -725,7 +725,7 @@ def validate_database(
     wide = _select_checks(database_checks, DATABASE_CHECKS)
 
     for name in database.table_names:
-        validate_table(database.get_table(name), database.get_schema(name), tables)
+        validate_table(database._get_table(name), database.get_schema(name), tables)
     for relationship in database.relationships:
         validate_relationship(database, relationship, relationships)
     for name in wide:
