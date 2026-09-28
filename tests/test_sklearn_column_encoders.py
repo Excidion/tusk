@@ -85,6 +85,11 @@ def test_an_unrecognized_component_lists_the_allowed_ones():
         DateEncoder(components=["hour"]).fit(TEMPORAL.select("d"))
 
 
+def test_a_string_components_is_rejected():
+    with pytest.raises(TypeError, match=r"a list, such as \['year'\]"):
+        DateEncoder(components="month").fit(TEMPORAL.select("d"))
+
+
 def test_a_temporal_encoder_rejects_another_dtype():
     with pytest.raises(EncoderError, match="DateEncoder encodes Date columns"):
         DateEncoder().fit(TEMPORAL.select("w"))

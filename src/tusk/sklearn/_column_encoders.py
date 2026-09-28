@@ -98,8 +98,15 @@ class TemporalEncoder(NarwhalsEncoder):
             y: Ignored.
 
         Raises:
+            TypeError: If ``components`` is a string.
             ValueError: If a component is not in ``allowed_components``.
         """
+        if isinstance(self.components, str):
+            raise TypeError(
+                f"{type(self).__name__} takes components as a list, such as "
+                f"[{self.allowed_components[0]!r}], not the string "
+                f"{self.components!r}",
+            )
         unrecognized = [c for c in self.components if c not in self.allowed_components]
         if unrecognized:
             raise ValueError(
