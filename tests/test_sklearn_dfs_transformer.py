@@ -6,7 +6,6 @@ import numpy as np
 import polars as pl
 import pytest
 import sklearn
-from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
@@ -15,7 +14,8 @@ from sklearn.pipeline import Pipeline
 
 import tusk
 from tusk.exceptions import SchemaError, UnmatchedPrimitiveWarning
-from tusk.sklearn import DFSTransformer, dtype_selector
+from tusk.sklearn import DFSTransformer, TableEncoder
+from tusk.sklearn._table_encoder import GROUPS
 
 KEYS = [1, 2, 3]
 Y = [0, 1, 0]
@@ -89,14 +89,9 @@ def test_it_routes_the_database_through_a_pipeline(db):
                 ("dfs", _transformer()),
                 (
                     "impute",
-                    ColumnTransformer(
-                        [
-                            (
-                                "numbers",
-                                SimpleImputer(keep_empty_features=True),
-                                dtype_selector("numeric"),
-                            ),
-                        ],
+                    TableEncoder(
+                        **{group: "drop" for group in GROUPS}
+                        | {"numeric": SimpleImputer(keep_empty_features=True)}
                     ),
                 ),
                 ("clf", LogisticRegression()),
