@@ -6,7 +6,6 @@ encodes each group with its own estimator.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any
 
 import narwhals as nw
@@ -55,7 +54,7 @@ GROUP_DTYPES = {
 KEYWORDS = ("passthrough", "drop")
 
 
-class TableEncoder(NarwhalsEncoder):
+class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
     """An encoder of every column of a table by its narwhals dtype.
 
     Each parameter names a dtype group and takes an estimator,
@@ -139,9 +138,8 @@ class TableEncoder(NarwhalsEncoder):
 
         A value-based group's estimator cross-fits through its own
         ``fit_transform``, for example ``TargetEncoder``, instead of fitting
-        and then transforming the same rows. Schema-only and passthrough
-        groups are produced the way :meth:`transform` produces them, from one
-        collected ``select`` of their columns.
+        and then transforming the same rows. Every group is read from one
+        collected ``select``, as in :meth:`transform`.
 
         Args:
             X: A table narwhals can read, eager or lazy.
@@ -152,40 +150,12 @@ class TableEncoder(NarwhalsEncoder):
             The encoded table as numpy, pandas or polars.
         """
         table = self._read_schema(X)
-        kept, estimators, cast, by_values, values = self._split_groups(table)
-        self.groups_ = {}
-        value_outputs = {}
-        for group, columns in kept.items():
-            estimator = estimators[group]
-            if group in by_values:
-                source = to_estimator_input(estimator, values.select(columns))
-                value_outputs[group] = estimator.fit_transform(source, y)
-                self.groups_[group] = (estimator, columns)
-            else:
-                self.groups_[group] = (
-                    fit_group(estimator, cast.select(columns), y),
-                    columns,
-                )
+        cast = table.select(read_expressions(self.schema_in_))
+        self.groups_ = self._fit_groups_on_schema(cast, y)
+        selected = nw.maybe_reset_index(collect(table.select(self._selection())))
+        blocks = [self._fit_transform_group(g, selected, y) for g in self.groups_]
         self._set_output_names()
-        selected = nw.maybe_reset_index(
-            collect(cast.select(self._selection(skip=by_values)))
-        )
-        # Selecting zero columns loses the row count on some backends
-        # (pyarrow), which happens here when every kept group is
-        # value-based; `values` then still holds the real row count.
-        row_count = len(collect(values)) if by_values else len(selected)
-        blocks = [
-            self._group_output_block(
-                group,
-                *self.groups_[group],
-                value_outputs[group],
-                selected.implementation,
-            )
-            if group in value_outputs
-            else self._encode_group(group, selected)
-            for group in self.groups_
-        ]
-        return self._convert_output(self._concat_checked(selected, blocks, row_count))
+        return self._convert_output(self._concat_checked(selected, blocks))
 
     def _fit(self, table: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
         """Fit each group's estimator on the group's columns.
@@ -194,42 +164,58 @@ class TableEncoder(NarwhalsEncoder):
             table: The input table, eager or lazy.
             y: Targets, passed to each estimator.
         """
-        kept, estimators, cast, by_values, values = self._split_groups(table)
-        self.groups_ = {}
-        for group, columns in kept.items():
-            source = values if group in by_values else cast
+        cast = table.select(read_expressions(self.schema_in_))
+        self.groups_ = self._fit_groups_on_schema(cast, y)
+        by_values = {
+            group: (estimator, columns)
+            for group, (estimator, columns) in self.groups_.items()
+            if not fits_on_schema(estimator)
+        }
+        values = collect_columns(
+            cast, [column for _, columns in by_values.values() for column in columns]
+        )
+        for group, (estimator, columns) in by_values.items():
             self.groups_[group] = (
-                fit_group(estimators[group], source.select(columns), y),
+                fit_group(estimator, values.select(columns), y),
                 columns,
             )
         self._set_output_names()
 
-    def _split_groups(
-        self, table: nw.DataFrame | nw.LazyFrame
-    ) -> tuple[
-        dict[str, list[str]],
-        dict[str, Any],
-        nw.DataFrame | nw.LazyFrame,
-        list[str],
-        nw.DataFrame | nw.LazyFrame,
-    ]:
-        """Split the schema into groups and collect the value-based groups' columns.
+    def _fit_groups_on_schema(
+        self, cast: nw.DataFrame | nw.LazyFrame, y: Any
+    ) -> dict[str, tuple[Any, list[str]]]:
+        """Fit the groups that need no rows and leave the others unfitted.
 
         Args:
-            table: The input table, eager or lazy.
+            cast: The input table with ``Decimal`` cast to ``Float64``.
+            y: Targets.
 
         Returns:
-            The kept groups (name to columns), each group's estimator clone
-            or keyword, the table with ``Decimal`` cast to ``Float64``, the
-            names of the value-based groups, and their columns, collected.
+            Group name to its estimator and columns, in group order. A
+            schema-only estimator is fitted. A value-based one is a clone.
         """
-        groups = split_into_groups(self.schema_in_)
-        estimators = {group: self._get_estimator(group) for group in groups}
-        kept = {g: c for g, c in groups.items() if estimators[g] != "drop"}
-        cast = table.select(read_expressions(self.schema_in_))
-        by_values = [g for g in kept if not fits_on_schema(estimators[g])]
-        values = collect_columns(cast, [c for g in by_values for c in kept[g]])
-        return kept, estimators, cast, by_values, values
+        return {
+            group: (
+                fit_group(estimator, cast.select(columns), y)
+                if fits_on_schema(estimator)
+                else estimator,
+                columns,
+            )
+            for group, (estimator, columns) in self._plan_groups().items()
+        }
+
+    def _plan_groups(self) -> dict[str, tuple[Any, list[str]]]:
+        """Return each kept group's estimator clone or keyword, and its columns.
+
+        Returns:
+            Group name to its estimator clone or ``"passthrough"``, and its
+            columns, in group order. Empty and dropped groups are absent.
+        """
+        plan = {
+            group: (self._get_estimator(group), columns)
+            for group, columns in split_into_groups(self.schema_in_).items()
+        }
+        return {g: (e, c) for g, (e, c) in plan.items() if e != "drop"}
 
     def _set_output_names(self) -> None:
         """Set ``output_names_`` from ``groups_``."""
@@ -258,36 +244,29 @@ class TableEncoder(NarwhalsEncoder):
         """
         selected = nw.maybe_reset_index(collect(table.select(self._selection())))
         blocks = [self._encode_group(group, selected) for group in self.groups_]
-        return self._concat_checked(selected, blocks, len(selected))
+        return self._concat_checked(selected, blocks)
 
     def _concat_checked(
-        self,
-        selected: nw.DataFrame,
-        blocks: list[nw.DataFrame],
-        row_count: int,
+        self, selected: nw.DataFrame, blocks: list[nw.DataFrame]
     ) -> nw.DataFrame:
         """Join ``blocks`` horizontally, by position.
 
         Args:
-            selected: The collected table the blocks were made from, used to
-                build the empty result when there are no blocks.
+            selected: The collected table the blocks were made from.
             blocks: One block per group, in ``groups_`` order.
-            row_count: The number of rows every block must have. Selecting
-                zero columns loses the row count on some backends, so this is
-                given explicitly rather than read from ``selected``.
 
         Returns:
             The joined table.
 
         Raises:
             EncoderError: If a group's output has another row count than
-                ``row_count``.
+                ``selected``.
         """
         for group, block in zip(self.groups_, blocks, strict=True):
-            if len(block) != row_count:
+            if len(block) != len(selected):
                 raise EncoderError(
                     f"the {group!r} group returned {len(block)} rows for "
-                    f"{row_count} input rows",
+                    f"{len(selected)} input rows",
                 )
         if not blocks:
             return selected.select([])
@@ -315,16 +294,12 @@ class TableEncoder(NarwhalsEncoder):
             )
         return clone(value)
 
-    def _selection(self, skip: Iterable[str] = ()) -> list[nw.Expr]:
-        """Return the one ``select`` that feeds every group but ``skip``.
+    def _selection(self) -> list[nw.Expr]:
+        """Return the one ``select`` that feeds every group.
 
         Schema-only estimators contribute their expressions. Every other
         kept group contributes its columns. Every name is prefixed with its
         group.
-
-        Args:
-            skip: Group names to leave out, for example the value-based
-                groups a :meth:`fit_transform` already encoded.
 
         Returns:
             The expressions.
@@ -334,8 +309,6 @@ class TableEncoder(NarwhalsEncoder):
         )
         expressions = []
         for group, (estimator, columns) in self.groups_.items():
-            if group in skip:
-                continue
             if estimator != "passthrough" and fits_on_schema(estimator):
                 names = estimator.get_feature_names_out()
                 sources = estimator._expressions()
@@ -358,15 +331,52 @@ class TableEncoder(NarwhalsEncoder):
             The group's output, with ``{group}__`` names.
         """
         estimator, columns = self.groups_[group]
-        if estimator == "passthrough" or fits_on_schema(estimator):
+        if fits_on_schema(estimator):
             names = group_output_names(estimator, columns)
             return selected.select([f"{group}__{name}" for name in names])
-        values = selected.select([f"{group}__{c}" for c in columns]).rename(
-            {f"{group}__{c}": c for c in columns}
+        output = estimator.transform(
+            to_estimator_input(estimator, self._group_values(group, selected))
         )
-        output = estimator.transform(to_estimator_input(estimator, values))
         return self._group_output_block(
             group, estimator, columns, output, selected.implementation
+        )
+
+    def _fit_transform_group(
+        self, group: str, selected: nw.DataFrame, y: Any
+    ) -> nw.DataFrame:
+        """Return the encoded columns of one group, fitting a value-based group.
+
+        Args:
+            group: The group name.
+            selected: The collected result of :meth:`_selection`.
+            y: Targets.
+
+        Returns:
+            The group's output, with ``{group}__`` names.
+        """
+        estimator, columns = self.groups_[group]
+        if fits_on_schema(estimator):
+            return self._encode_group(group, selected)
+        output = estimator.fit_transform(
+            to_estimator_input(estimator, self._group_values(group, selected)), y
+        )
+        return self._group_output_block(
+            group, estimator, columns, output, selected.implementation
+        )
+
+    def _group_values(self, group: str, selected: nw.DataFrame) -> nw.DataFrame:
+        """Return the columns of one value-based group, under their input names.
+
+        Args:
+            group: The group name.
+            selected: The collected result of :meth:`_selection`.
+
+        Returns:
+            The group's columns.
+        """
+        columns = self.groups_[group][1]
+        return selected.select([f"{group}__{c}" for c in columns]).rename(
+            {f"{group}__{c}": c for c in columns}
         )
 
     def _group_output_block(
@@ -469,10 +479,7 @@ def fits_on_schema(estimator: Any) -> bool:
 
     Returns:
         True for ``"passthrough"`` and for a ``NarwhalsEncoder`` that keeps
-        ``_fits_on_schema`` true and does not override :meth:`_transform`. A
-        subclass that overrides :meth:`_transform` but leaves
-        ``_fits_on_schema`` at its default would otherwise have its own
-        encoding silently replaced by the identity :meth:`_expressions`.
+        ``_fits_on_schema`` true and does not override :meth:`_transform`.
     """
     return estimator == "passthrough" or (
         isinstance(estimator, NarwhalsEncoder)

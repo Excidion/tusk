@@ -158,8 +158,10 @@ Backend limits, found by the prototype:
   `total_nanoseconds` components. Neither is a default.
 - A pyarrow dictionary column reads as `Categorical`, not `Enum`.
 - A pyarrow dictionary column's own `to_numpy` fills a null with a category
-  value instead of leaving it null. Casting `Categorical` columns to
-  `String` before the numpy conversion keeps the null, on every backend.
+  value instead of leaving it null. A pandas category casts a null to the
+  string `"nan"`. Casting `Categorical` columns to `String` and setting the
+  null positions to `None` afterwards gives every backend the same array, so
+  a null is its own one-hot column, `None`, distinct from a value `"nan"`.
 
 ### `TableEncoder`
 
@@ -205,12 +207,12 @@ the user mixes `NarwhalsMixin` into that group's estimator.
      `StringEncoder`, `OneHotEncoder` and any estimator the user supplies.
 5. Set `groups_`: group name to (fitted estimator, input columns).
 
-`fit_transform` does not call `fit` then `transform`: a value-based group's
-estimator fits and transforms through its own `fit_transform` instead, on
-the columns collected once at fit. This lets an estimator such as
-scikit-learn's `TargetEncoder` cross-fit, the way it does inside a
-`ColumnTransformer`. Schema-only and passthrough groups are produced the way
-`transform` produces them, from one collected `select` of their columns.
+`fit_transform` does not call `fit` then `transform`. It fits the
+schema-only groups, then builds the same one `select` as `transform` and
+collects it once. A value-based group's estimator fits and transforms its
+columns of that result through its own `fit_transform`. This lets an
+estimator such as scikit-learn's `TargetEncoder` cross-fit, the way it does
+inside a `ColumnTransformer`. Every block comes from the one collected table.
 
 `transform` builds one `select` on the native table. It holds:
 
@@ -298,7 +300,9 @@ matters:
   not collect at fit; an empty group is skipped; `get_feature_names_out` matches the output columns;
   a bare user estimator receives numpy, and one with `NarwhalsMixin`
   receives its `convert_to`;
-  `transform` on a lazy duckdb table collects once;
+  `transform` and `fit_transform` on a lazy duckdb table collect once;
+  a null in a `Categorical` column is its own column, the same on pandas,
+  polars and pyarrow;
   `clone` and `get_params`/`set_params` work, including nested parameters
   such as `date__components`.
 - `DFSSelectorTransformer` with a `TableEncoder` followed by a selector, on

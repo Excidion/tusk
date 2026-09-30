@@ -320,11 +320,12 @@ def convert_table(X: Any, convert_to: ConvertTo, owner: str) -> Any:
 
 
 def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
-    """Return ``table`` as numpy, with a null-safe cast of ``Categorical`` columns.
+    """Return ``table`` as numpy, with a null ``Categorical`` value as ``None``.
 
     A pyarrow dictionary column's own ``to_numpy`` fills a null with a
-    category value. Casting ``Categorical`` to ``String`` first keeps the
-    null, on every backend.
+    category value, and a pandas category casts a null to the string
+    ``"nan"``. Casting ``Categorical`` to ``String`` and setting the null
+    positions to ``None`` afterwards gives every backend the same array.
 
     Args:
         table: The eager table.
@@ -333,12 +334,16 @@ def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
         The array.
     """
     schema = table.collect_schema()
-    string_valued = table.with_columns(
-        nw.col(name).cast(nw.String)
-        for name, dtype in schema.items()
-        if dtype == nw.Categorical
-    )
-    return string_valued.to_numpy()
+    categorical = [name for name, dtype in schema.items() if dtype == nw.Categorical]
+    if not categorical:
+        return table.to_numpy()
+    array = table.with_columns(nw.col(name).cast(nw.String) for name in categorical)
+    array = array.to_numpy().astype(object)
+    null_mask = table.select(nw.col(name).is_null() for name in categorical).to_numpy()
+    positions = {name: position for position, name in enumerate(schema)}
+    for mask_position, name in enumerate(categorical):
+        array[null_mask[:, mask_position], positions[name]] = None
+    return array
 
 
 def read_table(X: Any, owner: str) -> nw.DataFrame | nw.LazyFrame:

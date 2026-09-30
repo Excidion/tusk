@@ -4,6 +4,7 @@ from decimal import Decimal
 import duckdb
 import narwhals as nw
 import numpy as np
+import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pytest
@@ -185,6 +186,48 @@ def test_a_pyarrow_dictionary_null_matches_polars():
     on_arrow = TableEncoder().set_output(transform="polars").fit_transform(arrow_table)
     assert on_polars.to_dict(as_series=False) == on_arrow.to_dict(as_series=False)
     assert on_polars["categorical__c_None"].to_list() == [0.0, 1.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    "make_table",
+    [
+        lambda values: pd.DataFrame({"c": pd.Categorical(values)}),
+        lambda values: pa.table({"c": pa.array(values).dictionary_encode()}),
+    ],
+    ids=["pandas", "pyarrow"],
+)
+def test_a_categorical_null_is_its_own_column_on_every_backend(make_table):
+    values = ["x", None, "nan", "y"]
+    polars_table = pl.DataFrame({"c": pl.Series(values, dtype=pl.Categorical)})
+    expected = TableEncoder().set_output(transform="polars").fit_transform(polars_table)
+    actual = (
+        TableEncoder().set_output(transform="polars").fit_transform(make_table(values))
+    )
+    assert actual.to_dict(as_series=False) == expected.to_dict(as_series=False)
+    assert actual["categorical__c_None"].to_list() == [0.0, 1.0, 0.0, 0.0]
+    assert actual["categorical__c_nan"].to_list() == [0.0, 0.0, 1.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"n": [1.0, 2.0], "s": ["foo", "bar"]},
+        {"s": ["foo", "bar"]},
+    ],
+    ids=["schema-only and value-based", "value-based only"],
+)
+def test_fit_transform_collects_a_lazy_table_once(monkeypatch, columns):
+    relation = as_duckdb(pl.DataFrame(columns))
+    calls = []
+    collect = nw.LazyFrame.collect
+
+    def counting(self, *args, **kwargs):
+        calls.append(self)
+        return collect(self, *args, **kwargs)
+
+    monkeypatch.setattr(nw.LazyFrame, "collect", counting)
+    assert small_strings().fit_transform(relation).shape[0] == 2
+    assert len(calls) == 1
 
 
 def test_fit_transform_cross_fits_value_based_groups():
