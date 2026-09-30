@@ -49,9 +49,9 @@ class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
   that numpy input has no feature names.
 - Input narwhals cannot read, such as a numpy array from an earlier step,
   reaches the estimator unchanged.
-- If `convert_to` names pandas or polars and the package is not installed, it
-  raises (see [Errors](#errors)). Neither package is a dependency of the
-  `sklearn` extra.
+- Neither pandas nor polars is a dependency of the `sklearn` extra. If
+  `convert_to` names one that is not installed, the conversion raises the
+  package's own import error.
 
 The output is scikit-learn's own `set_output`. The mixin does not change it.
 
@@ -269,7 +269,6 @@ cannot read pyarrow, which defeats a schema-only fit.
 | `transform` gets columns that differ from `feature_names_in_` | transform | `EncoderError` naming the extra and absent columns |
 | A column's dtype differs from the dtype seen at fit, including an `Enum` with other categories | transform | `EncoderError` naming the column and both dtypes |
 | `set_output` gets a value other than `"default"`, `"pandas"`, `"polars"` | set_output | `ValueError` from scikit-learn's own check |
-| `convert_to` or `set_output` names pandas or polars and the package is not installed | fit, set_output | `TuskError`: "`PandasTargetEncoder` converts to pandas, which is not installed; `uv add pandas`" |
 | A block has a different row count from the others | transform | `EncoderError` naming the group and both counts |
 
 ## Testing

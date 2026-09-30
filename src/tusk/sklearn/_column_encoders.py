@@ -60,7 +60,7 @@ class EnumEncoder(NarwhalsEncoder):
             The expressions.
         """
         return [
-            code_expression(name, list(dtype.categories))  # ty: ignore[unresolved-attribute]
+            code_expression(name, list(dtype.categories))
             for name, dtype in self.schema_in_.items()
         ]
 

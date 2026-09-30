@@ -13,8 +13,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, TargetEncoder
 
 import tusk
-from tusk.exceptions import EncoderError, TuskError
-from tusk.sklearn import DFSTransformer, NarwhalsEncoder, NarwhalsMixin, _narwhals
+from tusk.exceptions import EncoderError
+from tusk.sklearn import DFSTransformer, NarwhalsEncoder, NarwhalsMixin
 
 NUMBERS = pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [2.0, 4.0, 6.0, 9.0]})
 
@@ -96,12 +96,6 @@ def test_set_output_pandas_names_the_columns():
 
 def test_clone_keeps_convert_to():
     assert clone(PandasTargetEncoder()).convert_to == "pandas"
-
-
-def test_an_absent_package_names_the_install_command(monkeypatch):
-    monkeypatch.setattr(_narwhals, "find_spec", lambda name: None)
-    with pytest.raises(TuskError, match="uv add pandas"):
-        PandasTargetEncoder().fit(pl.DataFrame({"c": ["x", "y"]}), [0, 1])
 
 
 def test_the_encoder_fits_a_lazy_table_without_collecting(monkeypatch):

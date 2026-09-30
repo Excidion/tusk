@@ -7,7 +7,6 @@ converts a table to what ``set_output`` asks for.
 
 from __future__ import annotations
 
-from importlib.util import find_spec
 from typing import Any, ClassVar, Literal
 
 import narwhals as nw
@@ -16,7 +15,7 @@ from sklearn import get_config
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
-from tusk.exceptions import EncoderError, TuskError
+from tusk.exceptions import EncoderError
 
 ConvertTo = Literal["narwhals", "numpy", "pandas", "polars"]
 OUTPUTS = ("default", "pandas", "polars")
@@ -114,7 +113,12 @@ class NarwhalsMixin:
         Returns:
             The converted table, or ``X`` unchanged if it is not a table.
         """
-        return convert_table(X, self.convert_to, type(self).__name__)
+        # TransformerMixin.fit_transform calls fit again on the converted
+        # input, which is no table any more.
+        table = nw.from_native(X, pass_through=True)
+        if not isinstance(table, nw.DataFrame | nw.LazyFrame):
+            return X
+        return convert_table(table, self.convert_to)
 
 
 class NarwhalsEncoder(
@@ -166,7 +170,7 @@ class NarwhalsEncoder(
         Returns:
             The table, eager or lazy.
         """
-        table = read_table(X, type(self).__name__)
+        table = nw.from_native(X)
         self.schema_in_ = dict(table.collect_schema())
         self.feature_names_in_ = np.asarray(list(self.schema_in_), dtype=object)
         self.n_features_in_ = len(self.schema_in_)
@@ -184,8 +188,8 @@ class NarwhalsEncoder(
             The encoded table as numpy, pandas or polars.
         """
         check_is_fitted(self, "schema_in_")
-        table = read_table(X, type(self).__name__)
-        reject_changed_schema(self.schema_in_, dict(table.collect_schema()))
+        table = nw.from_native(X)
+        check_schema_equality(self.schema_in_, dict(table.collect_schema()))
         return self._convert_output(collect(self._transform(table)))
 
     def fit_transform(self, X: Any, y: Any = None, **params: Any) -> Any:
@@ -221,8 +225,6 @@ class NarwhalsEncoder(
                 f"set_output(transform={transform!r}) is not supported; choose "
                 f"from {list(OUTPUTS)}",
             )
-        if transform != "default":
-            require_package(transform, type(self).__name__)
         # This attribute name is the one sklearn.base.clone copies, so a
         # cloned encoder keeps its output setting.
         self._sklearn_output_config = {"transform": transform}
@@ -296,26 +298,22 @@ class NarwhalsEncoder(
         return table_to_numpy(table)
 
 
-def convert_table(X: Any, convert_to: ConvertTo, owner: str) -> Any:
-    """Return ``X`` as ``convert_to``. Input that is not a table is unchanged.
+def convert_table(table: nw.DataFrame | nw.LazyFrame, convert_to: ConvertTo) -> Any:
+    """Return ``table`` as ``convert_to``.
 
     Args:
-        X: The input.
+        table: The narwhals table.
         convert_to: What to convert to.
-        owner: The estimator's class name, for the error message.
 
     Returns:
-        The converted table, or ``X`` itself.
+        The table itself for ``"narwhals"``, else a numpy array, a pandas
+        DataFrame or a polars DataFrame.
     """
-    table = nw.from_native(X, pass_through=True)
-    if not isinstance(table, nw.DataFrame | nw.LazyFrame):
-        return X
     if convert_to == "narwhals":
         return table
     eager = collect(table)
     if convert_to == "numpy":
         return table_to_numpy(eager)
-    require_package(convert_to, owner)
     return eager.to_pandas() if convert_to == "pandas" else eager.to_polars()
 
 
@@ -346,28 +344,6 @@ def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
     return array
 
 
-def read_table(X: Any, owner: str) -> nw.DataFrame | nw.LazyFrame:
-    """Return ``X`` as a narwhals table.
-
-    Args:
-        X: The input.
-        owner: The encoder's class name, for the error message.
-
-    Returns:
-        The table, eager or lazy.
-
-    Raises:
-        TypeError: If narwhals cannot read ``X``.
-    """
-    table = nw.from_native(X, pass_through=True)
-    if not isinstance(table, nw.DataFrame | nw.LazyFrame):
-        raise TypeError(
-            f"{owner} takes a table narwhals can read, such as a polars, "
-            f"pandas or pyarrow table; got {type(X).__name__}",
-        )
-    return table
-
-
 def collect(table: nw.DataFrame | nw.LazyFrame) -> nw.DataFrame:
     """Return ``table`` eager, collecting it if it is lazy.
 
@@ -380,24 +356,7 @@ def collect(table: nw.DataFrame | nw.LazyFrame) -> nw.DataFrame:
     return table.collect() if isinstance(table, nw.LazyFrame) else table
 
 
-def require_package(package: str, owner: str) -> None:
-    """Raise unless ``package`` is installed.
-
-    Args:
-        package: ``"pandas"`` or ``"polars"``.
-        owner: The class name that needs it, for the error message.
-
-    Raises:
-        TuskError: If the package is not installed.
-    """
-    if find_spec(package) is None:
-        raise TuskError(
-            f"{owner} converts to {package}, which is not installed; "
-            f"`uv add {package}`",
-        )
-
-
-def reject_changed_schema(
+def check_schema_equality(
     fitted: dict[str, nw.dtypes.DType], given: dict[str, nw.dtypes.DType]
 ) -> None:
     """Raise if ``given`` has other columns or dtypes than ``fitted``.

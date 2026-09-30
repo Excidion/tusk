@@ -41,17 +41,6 @@ GROUPS = (
     "duration",
     "other",
 )
-GROUP_DTYPES = {
-    "boolean": nw.Boolean,
-    "string": nw.String,
-    "categorical": nw.Categorical,
-    "enum": nw.Enum,
-    "date": nw.Date,
-    "time": nw.Time,
-    "datetime": nw.Datetime,
-    "duration": nw.Duration,
-}
-KEYWORDS = ("passthrough", "drop")
 
 
 class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
@@ -66,7 +55,7 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
 
     Fitting sets ``groups_``, group name to its fitted estimator or
     ``"passthrough"`` and its input columns. Empty and dropped groups are
-    absent. It also sets ``output_names_``, the output column names.
+    absent.
     """
 
     _fits_on_schema = False
@@ -150,11 +139,10 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
             The encoded table as numpy, pandas or polars.
         """
         table = self._read_schema(X)
-        cast = table.select(read_expressions(self.schema_in_))
+        cast = table.select(build_expressions_casting_decimals(self.schema_in_))
         self.groups_ = self._fit_groups_on_schema(cast, y)
         selected = nw.maybe_reset_index(collect(table.select(self._selection())))
         blocks = [self._fit_transform_group(g, selected, y) for g in self.groups_]
-        self._set_output_names()
         return self._convert_output(self._concat_checked(selected, blocks))
 
     def _fit(self, table: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
@@ -164,22 +152,31 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
             table: The input table, eager or lazy.
             y: Targets, passed to each estimator.
         """
-        cast = table.select(read_expressions(self.schema_in_))
+        cast = table.select(build_expressions_casting_decimals(self.schema_in_))
         self.groups_ = self._fit_groups_on_schema(cast, y)
-        by_values = {
+        self._fit_groups_on_values(cast, y)
+
+    def _fit_groups_on_values(self, cast: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
+        """Fit the groups that were left unfitted, on one collected table.
+
+        Args:
+            cast: The input table with ``Decimal`` cast to ``Float64``.
+            y: Targets.
+        """
+        unfitted_groups = {
             group: (estimator, columns)
             for group, (estimator, columns) in self.groups_.items()
             if not fits_on_schema(estimator)
         }
-        values = collect_columns(
-            cast, [column for _, columns in by_values.values() for column in columns]
-        )
-        for group, (estimator, columns) in by_values.items():
-            self.groups_[group] = (
-                fit_group(estimator, values.select(columns), y),
-                columns,
-            )
-        self._set_output_names()
+        columns_to_collect = []
+        for _, columns in unfitted_groups.values():
+            columns_to_collect += columns
+        if not columns_to_collect:
+            return
+        collected = collect(cast.select(columns_to_collect))
+        for group, (estimator, columns) in unfitted_groups.items():
+            fitted_estimator = fit_group(estimator, collected.select(columns), y)
+            self.groups_[group] = (fitted_estimator, columns)
 
     def _fit_groups_on_schema(
         self, cast: nw.DataFrame | nw.LazyFrame, y: Any
@@ -217,21 +214,18 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
         }
         return {g: (e, c) for g, (e, c) in plan.items() if e != "drop"}
 
-    def _set_output_names(self) -> None:
-        """Set ``output_names_`` from ``groups_``."""
-        self.output_names_ = [
-            f"{group}__{name}"
-            for group, (estimator, columns) in self.groups_.items()
-            for name in group_output_names(estimator, columns)
-        ]
-
     def _output_names(self) -> list[str]:
-        """Return the output names found at fit.
+        """Return ``{group}__{name}`` for every output column.
 
         Returns:
-            The names.
+            The names, group by group.
         """
-        return self.output_names_
+        names = []
+        for group, (estimator, columns) in self.groups_.items():
+            names += [
+                f"{group}__{name}" for name in group_output_names(estimator, columns)
+            ]
+        return names
 
     def _transform(self, table: nw.DataFrame | nw.LazyFrame) -> nw.DataFrame:
         """Encode each group and join the results by position.
@@ -286,7 +280,7 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
                 keyword.
         """
         value = getattr(self, group)
-        if isinstance(value, str) and value in KEYWORDS:
+        if isinstance(value, str) and value in ("passthrough", "drop"):
             return value
         if not (hasattr(value, "fit") and hasattr(value, "transform")):
             raise ValueError(
@@ -305,7 +299,11 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
             The expressions.
         """
         read = dict(
-            zip(self.schema_in_, read_expressions(self.schema_in_), strict=True)
+            zip(
+                self.schema_in_,
+                build_expressions_casting_decimals(self.schema_in_),
+                strict=True,
+            )
         )
         expressions = []
         for group, (estimator, columns) in self.groups_.items():
@@ -433,13 +431,25 @@ def find_group(dtype: nw.dtypes.DType) -> str:
     """
     if dtype.is_numeric():
         return "numeric"
-    for group, group_dtype in GROUP_DTYPES.items():
+    group_dtypes = {
+        "boolean": nw.Boolean,
+        "string": nw.String,
+        "categorical": nw.Categorical,
+        "enum": nw.Enum,
+        "date": nw.Date,
+        "time": nw.Time,
+        "datetime": nw.Datetime,
+        "duration": nw.Duration,
+    }
+    for group, group_dtype in group_dtypes.items():
         if dtype == group_dtype:
             return group
     return "other"
 
 
-def read_expressions(schema: dict[str, nw.dtypes.DType]) -> list[nw.Expr]:
+def build_expressions_casting_decimals(
+    schema: dict[str, nw.dtypes.DType],
+) -> list[nw.Expr]:
     """Return one expression per column, with ``Decimal`` cast to ``Float64``.
 
     Args:
@@ -452,23 +462,6 @@ def read_expressions(schema: dict[str, nw.dtypes.DType]) -> list[nw.Expr]:
         nw.col(name).cast(nw.Float64) if dtype == nw.Decimal else nw.col(name)
         for name, dtype in schema.items()
     ]
-
-
-def collect_columns(
-    table: nw.DataFrame | nw.LazyFrame, columns: list[str]
-) -> nw.DataFrame | nw.LazyFrame:
-    """Return ``columns`` of ``table``, collected unless there are none.
-
-    Args:
-        table: The table, eager or lazy.
-        columns: The columns to collect.
-
-    Returns:
-        The collected columns, or ``table`` itself when ``columns`` is empty.
-    """
-    if not columns:
-        return table
-    return collect(table.select(columns))
 
 
 def fits_on_schema(estimator: Any) -> bool:
