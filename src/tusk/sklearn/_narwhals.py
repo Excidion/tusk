@@ -190,7 +190,7 @@ class NarwhalsEncoder(
         check_is_fitted(self, "schema_in_")
         table = nw.from_native(X)
         check_schema_equality(self.schema_in_, dict(table.collect_schema()))
-        return self._convert_output(collect(self._transform(table)))
+        return self._convert_output(self._transform(table).lazy().collect())
 
     def fit_transform(self, X: Any, y: Any = None, **params: Any) -> Any:
         """Fit on ``X``, then encode it.
@@ -311,7 +311,7 @@ def convert_table(table: nw.DataFrame | nw.LazyFrame, convert_to: ConvertTo) -> 
     """
     if convert_to == "narwhals":
         return table
-    eager = collect(table)
+    eager = table.lazy().collect()
     if convert_to == "numpy":
         return table_to_numpy(eager)
     return eager.to_pandas() if convert_to == "pandas" else eager.to_polars()
@@ -342,18 +342,6 @@ def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
     for mask_position, name in enumerate(categorical):
         array[null_mask[:, mask_position], positions[name]] = None
     return array
-
-
-def collect(table: nw.DataFrame | nw.LazyFrame) -> nw.DataFrame:
-    """Return ``table`` eager, collecting it if it is lazy.
-
-    Args:
-        table: The table.
-
-    Returns:
-        The eager table.
-    """
-    return table.collect() if isinstance(table, nw.LazyFrame) else table
 
 
 def check_schema_equality(

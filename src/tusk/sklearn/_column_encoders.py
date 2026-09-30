@@ -17,7 +17,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from tusk.exceptions import EncoderError
-from tusk.sklearn._narwhals import NarwhalsEncoder, collect
+from tusk.sklearn._narwhals import NarwhalsEncoder
 
 DATE_COMPONENTS = ("year", "month", "day", "weekday", "ordinal_day", "timestamp")
 TIME_COMPONENTS = (
@@ -263,7 +263,7 @@ class StringEncoder(NarwhalsEncoder):
             y: Ignored.
         """
         reject_other_dtypes(self.schema_in_, nw.String, type(self).__name__)
-        eager = collect(table)
+        eager = table.lazy().collect()
         self.vectorizers_ = {
             name: fit_string_column(read_strings(eager, name), self.n_components)
             for name in self.schema_in_
@@ -290,7 +290,7 @@ class StringEncoder(NarwhalsEncoder):
         Returns:
             The coordinates, column by column.
         """
-        eager = collect(table)
+        eager = table.lazy().collect()
         blocks = [
             encode_string_column(
                 self.vectorizers_[name], read_strings(eager, name), self.n_components

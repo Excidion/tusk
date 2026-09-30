@@ -25,7 +25,6 @@ from tusk.sklearn._column_encoders import (
 from tusk.sklearn._narwhals import (
     NarwhalsEncoder,
     NarwhalsMixin,
-    collect,
     table_to_numpy,
 )
 
@@ -141,7 +140,9 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
         table = self._read_schema(X)
         cast = table.select(build_expressions_casting_decimals(self.schema_in_))
         self.groups_ = self._fit_groups_on_schema(cast, y)
-        selected = nw.maybe_reset_index(collect(table.select(self._selection())))
+        selected = nw.maybe_reset_index(
+            table.select(self._selection()).lazy().collect()
+        )
         blocks = [self._fit_transform_group(g, selected, y) for g in self.groups_]
         return self._convert_output(self._concat_checked(selected, blocks))
 
@@ -173,7 +174,7 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
             columns_to_collect += columns
         if not columns_to_collect:
             return
-        collected = collect(cast.select(columns_to_collect))
+        collected = cast.select(columns_to_collect).lazy().collect()
         for group, (estimator, columns) in unfitted_groups.items():
             fitted_estimator = fit_group(estimator, collected.select(columns), y)
             self.groups_[group] = (fitted_estimator, columns)
@@ -236,7 +237,9 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
         Returns:
             The encoded table.
         """
-        selected = nw.maybe_reset_index(collect(table.select(self._selection())))
+        selected = nw.maybe_reset_index(
+            table.select(self._selection()).lazy().collect()
+        )
         blocks = [self._encode_group(group, selected) for group in self.groups_]
         return self._concat_checked(selected, blocks)
 
@@ -510,7 +513,7 @@ def to_estimator_input(estimator: Any, table: nw.DataFrame | nw.LazyFrame) -> An
     """
     if isinstance(estimator, NarwhalsMixin):
         return table
-    return table_to_numpy(collect(table))
+    return table_to_numpy(table.lazy().collect())
 
 
 def group_output_names(estimator: Any, columns: list[str]) -> list[str]:

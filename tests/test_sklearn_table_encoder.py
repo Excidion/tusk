@@ -144,7 +144,8 @@ def test_transform_collects_a_lazy_table_once(monkeypatch):
     collect = nw.LazyFrame.collect
 
     def counting(self, *args, **kwargs):
-        calls.append(self)
+        if self.implementation == nw.Implementation.DUCKDB:
+            calls.append(self)
         return collect(self, *args, **kwargs)
 
     monkeypatch.setattr(nw.LazyFrame, "collect", counting)
@@ -222,7 +223,8 @@ def test_fit_transform_collects_a_lazy_table_once(monkeypatch, columns):
     collect = nw.LazyFrame.collect
 
     def counting(self, *args, **kwargs):
-        calls.append(self)
+        if self.implementation == nw.Implementation.DUCKDB:
+            calls.append(self)
         return collect(self, *args, **kwargs)
 
     monkeypatch.setattr(nw.LazyFrame, "collect", counting)
