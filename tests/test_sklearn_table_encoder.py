@@ -79,7 +79,7 @@ def test_every_dtype_reaches_its_group():
         "string__s_svd_1",
         "categorical__c_x",
         "categorical__c_y",
-        "enum__e_code",
+        "enum__e",
         "date__d_month",
         "date__d_day",
         "time__t_hour",

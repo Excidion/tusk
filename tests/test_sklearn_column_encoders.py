@@ -11,7 +11,7 @@ from tusk.sklearn import (
     DateEncoder,
     DatetimeEncoder,
     DurationEncoder,
-    EnumEncoder,
+    EnumOrdinalEncoder,
     TfIdfSvdEncoder,
     TimeEncoder,
 )
@@ -28,14 +28,13 @@ TEMPORAL = pl.DataFrame(
 
 
 def test_enum_codes_follow_the_category_order():
-    encoder = EnumEncoder().fit(ENUM)
+    encoder = EnumOrdinalEncoder().fit(ENUM)
     np.testing.assert_array_equal(encoder.transform(ENUM).ravel(), [0.0, 1.0, np.nan])
-    assert list(encoder.get_feature_names_out()) == ["e_code"]
 
 
 def test_a_pandas_ordered_categorical_gets_the_same_codes():
     ordered = pd.Categorical(["b", "a", None], categories=["b", "a"], ordered=True)
-    codes = EnumEncoder().fit_transform(pd.DataFrame({"e": ordered}))
+    codes = EnumOrdinalEncoder().fit_transform(pd.DataFrame({"e": ordered}))
     np.testing.assert_array_equal(codes.ravel(), [0.0, 1.0, np.nan])
 
 
@@ -45,13 +44,13 @@ def test_enum_codes_are_computed_on_duckdb():
     relation = connection.sql(
         "select * from (values ('b'::mood), ('a'::mood), (null::mood)) t(e)"
     )
-    codes = EnumEncoder().fit_transform(relation)
+    codes = EnumOrdinalEncoder().fit_transform(relation)
     np.testing.assert_array_equal(codes.ravel(), [0.0, 1.0, np.nan])
 
 
-def test_the_enum_encoder_rejects_another_dtype():
-    with pytest.raises(EncoderError, match="EnumEncoder encodes Enum columns"):
-        EnumEncoder().fit(pl.DataFrame({"s": ["a"]}))
+def test_the_enum_ordinal_encoder_rejects_another_dtype():
+    with pytest.raises(EncoderError, match="EnumOrdinalEncoder encodes Enum columns"):
+        EnumOrdinalEncoder().fit(pl.DataFrame({"s": ["a"]}))
 
 
 @pytest.mark.parametrize(

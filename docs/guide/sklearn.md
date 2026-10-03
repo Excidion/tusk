@@ -182,7 +182,7 @@ encodes each group with its own estimator:
 | `boolean` | `Boolean` | `"passthrough"` |
 | `string` | `String` | `TfIdfSvdEncoder()` |
 | `categorical` | `Categorical` | `OneHotEncoder(handle_unknown="ignore", sparse_output=False)` |
-| `enum` | `Enum` | `EnumEncoder()` |
+| `enum` | `Enum` | `EnumOrdinalEncoder()` |
 | `date` | `Date` | `DateEncoder()`: month, day |
 | `time` | `Time` | `TimeEncoder()`: hour, minute |
 | `datetime` | `Datetime` | `DatetimeEncoder()`: month, day, hour, minute |

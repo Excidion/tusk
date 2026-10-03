@@ -1,6 +1,6 @@
 """Encoders for the columns of one narwhals dtype.
 
-:class:`EnumEncoder` encodes ``Enum`` columns as codes. :class:`DateEncoder`,
+:class:`EnumOrdinalEncoder` encodes ``Enum`` columns as codes. :class:`DateEncoder`,
 :class:`TimeEncoder`, :class:`DatetimeEncoder` and :class:`DurationEncoder`
 encode temporal columns as numeric components. :class:`TfIdfSvdEncoder`
 encodes ``String`` columns as coordinates of their character n-grams.
@@ -37,11 +37,11 @@ DURATION_COMPONENTS = (
 )
 
 
-class EnumEncoder(NarwhalsEncoder):
+class EnumOrdinalEncoder(NarwhalsEncoder):
     """An encoder of ``Enum`` columns as their position in the category order.
 
     The categories come from the dtype, so fitting reads no rows. A null
-    becomes NaN. Output name: ``{column}_code``.
+    becomes NaN. Output name: the input name.
     """
 
     def _fit(self, table: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
@@ -63,14 +63,6 @@ class EnumEncoder(NarwhalsEncoder):
             code_expression(name, list(dtype.categories))
             for name, dtype in self.schema_in_.items()
         ]
-
-    def _output_names(self) -> list[str]:
-        """Return ``{column}_code`` per column.
-
-        Returns:
-            The names.
-        """
-        return [f"{name}_code" for name in self.schema_in_]
 
 
 class TemporalEncoder(NarwhalsEncoder):
@@ -394,7 +386,6 @@ def code_expression(name: str, categories: list[str]) -> nw.Expr:
             default=None,
             return_dtype=nw.Float64,
         )
-        .alias(f"{name}_code")
     )
 
 
