@@ -18,8 +18,8 @@ from tusk.sklearn import (
     DFSSelectorTransformer,
     NarwhalsEncoder,
     NarwhalsMixin,
-    StringEncoder,
     TableEncoder,
+    TfIdfSvdEncoder,
 )
 
 EVERY_DTYPE = pl.DataFrame(
@@ -64,7 +64,7 @@ def as_duckdb(table):
 
 
 def small_strings():
-    return TableEncoder(string=StringEncoder(n_components=2))
+    return TableEncoder(string=TfIdfSvdEncoder(n_components=2))
 
 
 def test_every_dtype_reaches_its_group():

@@ -18,8 +18,8 @@ from tusk.sklearn._column_encoders import (
     DatetimeEncoder,
     DurationEncoder,
     EnumEncoder,
-    StringEncoder,
     TemporalEncoder,
+    TfIdfSvdEncoder,
     TimeEncoder,
 )
 from tusk.sklearn._narwhals import NarwhalsEncoder, NarwhalsMixin
@@ -35,8 +35,8 @@ __all__ = [
     "EnumEncoder",
     "NarwhalsEncoder",
     "NarwhalsMixin",
-    "StringEncoder",
     "TableEncoder",
     "TemporalEncoder",
+    "TfIdfSvdEncoder",
     "TimeEncoder",
 ]

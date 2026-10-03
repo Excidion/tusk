@@ -12,7 +12,7 @@ from tusk.sklearn import (
     DatetimeEncoder,
     DurationEncoder,
     EnumEncoder,
-    StringEncoder,
+    TfIdfSvdEncoder,
     TimeEncoder,
 )
 
@@ -100,19 +100,19 @@ CITIES = pl.DataFrame(
 )
 
 
-def test_the_string_encoder_output_has_n_components_columns():
-    encoder = StringEncoder(n_components=4).fit(CITIES)
+def test_the_tf_idf_svd_encoder_output_has_n_components_columns():
+    encoder = TfIdfSvdEncoder(n_components=4).fit(CITIES)
     assert encoder.transform(CITIES).shape == (18, 4)
     assert list(encoder.get_feature_names_out()) == [f"c_svd_{i}" for i in range(4)]
 
 
 def test_shared_n_grams_are_closer_than_none():
-    out = StringEncoder(n_components=4).fit_transform(CITIES)
+    out = TfIdfSvdEncoder(n_components=4).fit_transform(CITIES)
     assert np.linalg.norm(out[0] - out[2]) < np.linalg.norm(out[0] - out[3])
 
 
 def test_a_value_first_seen_at_transform_is_encoded():
-    encoder = StringEncoder(n_components=4).fit(CITIES)
+    encoder = TfIdfSvdEncoder(n_components=4).fit(CITIES)
     unseen = encoder.transform(pl.DataFrame({"c": ["Zurichberg"]}))
     assert unseen.shape == (1, 4)
     assert np.abs(unseen).sum() > 0
@@ -125,14 +125,14 @@ def test_a_value_first_seen_at_transform_is_encoded():
 )
 def test_a_small_vocabulary_is_padded_to_n_components(values):
     table = pl.DataFrame({"c": values}, schema={"c": pl.String})
-    assert StringEncoder().fit_transform(table).shape == (2, 30)
+    assert TfIdfSvdEncoder().fit_transform(table).shape == (2, 30)
 
 
 def test_no_n_grams_encode_as_zeros():
     table = pl.DataFrame({"c": [None, ""]}, schema={"c": pl.String})
-    assert not StringEncoder().fit_transform(table).any()
+    assert not TfIdfSvdEncoder().fit_transform(table).any()
 
 
-def test_the_string_encoder_rejects_another_dtype():
-    with pytest.raises(EncoderError, match="StringEncoder encodes String columns"):
-        StringEncoder().fit(pl.DataFrame({"n": [1]}))
+def test_the_tf_idf_svd_encoder_rejects_another_dtype():
+    with pytest.raises(EncoderError, match="TfIdfSvdEncoder encodes String columns"):
+        TfIdfSvdEncoder().fit(pl.DataFrame({"n": [1]}))

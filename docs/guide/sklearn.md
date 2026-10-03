@@ -180,7 +180,7 @@ encodes each group with its own estimator:
 | --- | --- | --- |
 | `numeric` | integers, floats, `Decimal` | `"passthrough"` |
 | `boolean` | `Boolean` | `"passthrough"` |
-| `string` | `String` | `StringEncoder()` |
+| `string` | `String` | `TfIdfSvdEncoder()` |
 | `categorical` | `Categorical` | `OneHotEncoder(handle_unknown="ignore", sparse_output=False)` |
 | `enum` | `Enum` | `EnumEncoder()` |
 | `date` | `Date` | `DateEncoder()`: month, day |
@@ -198,7 +198,7 @@ The dtype of a text column chooses its encoding:
   values.
 - `Enum`: the value's position in the category order. Use it for ordered
   values.
-- `String`: `StringEncoder` computes a TF-IDF vector over the value's
+- `String`: `TfIdfSvdEncoder` computes a TF-IDF vector over the value's
   character 3- and 4-grams and reduces it to 30 coordinates. Values that
   share spelling get close coordinates. Use it for free text and for values
   with many distinct entries.

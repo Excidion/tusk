@@ -19,7 +19,7 @@ from tusk.sklearn._column_encoders import (
     DatetimeEncoder,
     DurationEncoder,
     EnumEncoder,
-    StringEncoder,
+    TfIdfSvdEncoder,
     TimeEncoder,
 )
 from tusk.sklearn._narwhals import (
@@ -63,7 +63,7 @@ class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
         self,
         numeric: Any = "passthrough",
         boolean: Any = "passthrough",
-        string: Any = StringEncoder(),  # noqa: B008
+        string: Any = TfIdfSvdEncoder(),  # noqa: B008
         categorical: Any = OneHotEncoder(handle_unknown="ignore", sparse_output=False),  # noqa: B008
         enum: Any = EnumEncoder(),  # noqa: B008
         date: Any = DateEncoder(),  # noqa: B008

@@ -2,7 +2,7 @@
 
 :class:`EnumEncoder` encodes ``Enum`` columns as codes. :class:`DateEncoder`,
 :class:`TimeEncoder`, :class:`DatetimeEncoder` and :class:`DurationEncoder`
-encode temporal columns as numeric components. :class:`StringEncoder`
+encode temporal columns as numeric components. :class:`TfIdfSvdEncoder`
 encodes ``String`` columns as coordinates of their character n-grams.
 """
 
@@ -232,7 +232,7 @@ class DurationEncoder(TemporalEncoder):
         self.components = components
 
 
-class StringEncoder(NarwhalsEncoder):
+class TfIdfSvdEncoder(NarwhalsEncoder):
     """An encoder of ``String`` columns as coordinates of their character n-grams.
 
     Each column is encoded separately. A value becomes a TF-IDF vector over
@@ -265,7 +265,7 @@ class StringEncoder(NarwhalsEncoder):
         reject_other_dtypes(self.schema_in_, nw.String, type(self).__name__)
         eager = table.lazy().collect()
         self.vectorizers_ = {
-            name: fit_string_column(read_strings(eager, name), self.n_components)
+            name: self._fit_column(read_strings(eager, name))
             for name in self.schema_in_
         }
 
@@ -292,9 +292,7 @@ class StringEncoder(NarwhalsEncoder):
         """
         eager = table.lazy().collect()
         blocks = [
-            encode_string_column(
-                self.vectorizers_[name], read_strings(eager, name), self.n_components
-            )
+            self._transform_column(self.vectorizers_[name], read_strings(eager, name))
             for name in self.schema_in_
         ]
         coordinates = np.hstack([np.zeros((len(eager), 0)), *blocks])
@@ -303,6 +301,53 @@ class StringEncoder(NarwhalsEncoder):
             schema=self._output_names(),
             backend=eager.implementation,
         )
+
+    def _fit_column(
+        self, values: list[str]
+    ) -> tuple[TfidfVectorizer, TruncatedSVD | None] | None:
+        """Fit TF-IDF and SVD on one column's values.
+
+        Args:
+            values: The column's values.
+
+        Returns:
+            The fitted TF-IDF and SVD steps. The SVD is None when there are
+            fewer than two n-grams. None when there are no n-grams at all.
+        """
+        if not any(value.strip() for value in values):
+            return None
+        vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 4))
+        tfidf = vectorizer.fit_transform(values)
+        # TruncatedSVD needs at least two features.
+        if tfidf.shape[1] < 2:
+            return vectorizer, None
+        svd = TruncatedSVD(n_components=min(self.n_components, tfidf.shape[1]))
+        svd.fit(tfidf)
+        return vectorizer, svd
+
+    def _transform_column(
+        self,
+        fitted: tuple[TfidfVectorizer, TruncatedSVD | None] | None,
+        values: list[str],
+    ) -> np.ndarray:
+        """Encode one column's values, padded to ``n_components`` columns.
+
+        Args:
+            fitted: The steps from :meth:`_fit_column`.
+            values: The column's values.
+
+        Returns:
+            An array of shape ``(len(values), n_components)``.
+        """
+        if fitted is None:
+            return np.zeros((len(values), self.n_components))
+        vectorizer, svd = fitted
+        tfidf = vectorizer.transform(values)
+        coordinates = tfidf.toarray() if svd is None else svd.transform(tfidf)
+        # The SVD yields fewer components than asked when the column has fewer
+        # rows or n-grams; zero columns keep the output width fixed.
+        width_shortfall = self.n_components - coordinates.shape[1]
+        return np.pad(coordinates, ((0, 0), (0, width_shortfall)))
 
 
 def reject_other_dtypes(
@@ -364,53 +409,3 @@ def read_strings(table: nw.DataFrame, name: str) -> list[str]:
         The values.
     """
     return table[name].fill_null("").to_list()
-
-
-def fit_string_column(
-    values: list[str], n_components: int
-) -> tuple[TfidfVectorizer, TruncatedSVD | None] | None:
-    """Fit TF-IDF and SVD on one column's values.
-
-    Args:
-        values: The column's values.
-        n_components: The number of coordinates wanted.
-
-    Returns:
-        The fitted TF-IDF and SVD steps. The SVD is None when there are fewer
-        than two n-grams. None when there are no n-grams at all.
-    """
-    if not any(value.strip() for value in values):
-        return None
-    vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 4))
-    tfidf = vectorizer.fit_transform(values)
-    # TruncatedSVD needs at least two features.
-    if tfidf.shape[1] < 2:
-        return vectorizer, None
-    svd = TruncatedSVD(n_components=min(n_components, tfidf.shape[1]))
-    svd.fit(tfidf)
-    return vectorizer, svd
-
-
-def encode_string_column(
-    fitted: tuple[TfidfVectorizer, TruncatedSVD | None] | None,
-    values: list[str],
-    n_components: int,
-) -> np.ndarray:
-    """Encode one column's values, padded to ``n_components`` columns.
-
-    Args:
-        fitted: The steps from :func:`fit_string_column`.
-        values: The column's values.
-        n_components: The output width.
-
-    Returns:
-        An array of shape ``(len(values), n_components)``.
-    """
-    if fitted is None:
-        return np.zeros((len(values), n_components))
-    vectorizer, svd = fitted
-    tfidf = vectorizer.transform(values)
-    coordinates = tfidf.toarray() if svd is None else svd.transform(tfidf)
-    # The SVD yields fewer components than asked when the column has fewer
-    # rows or n-grams; zero columns keep the output width fixed.
-    return np.pad(coordinates, ((0, 0), (0, n_components - coordinates.shape[1])))
