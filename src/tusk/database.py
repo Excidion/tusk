@@ -323,7 +323,11 @@ class Database:
         )
         return self
 
-    def plot(self, columns: bool | str = True) -> SchemaDiagram:
+    def plot(
+        self,
+        columns: bool | str = True,
+        config: dict | None = None,
+    ) -> SchemaDiagram:
         """Draw the database's schema as an entity-relationship diagram.
 
         Reads no rows. The diagram is built entirely from the declared
@@ -337,12 +341,23 @@ class Database:
                 ``"structural"`` lists only the primary key, the foreign
                 keys, the ``row_creation_time``, the ``row_update_times``,
                 and the columns they update.
+            config: The Mermaid configuration of the diagram, for example
+                ``{"theme": "forest"}``. :func:`json.dumps` must accept it.
+                None sets no configuration.
 
         Returns:
             The diagram. It renders itself in a notebook and writes itself
             to a file with :meth:`~tusk.SchemaDiagram.save`.
         """
-        return SchemaDiagram.from_database(self, columns)
+        return SchemaDiagram.from_database(self, columns, config)
+
+    def _repr_markdown_(self):
+        """Return a fenced markdown block, for notebooks and docs.
+
+        Returns:
+            The diagram as :attr:`markdown`.
+        """
+        return self.plot()._repr_markdown_()
 
     def get_schema(self, name: str) -> TableSchema:
         """Return a table's schema.

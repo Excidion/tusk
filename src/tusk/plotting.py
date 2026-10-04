@@ -9,6 +9,7 @@ grammar.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,19 +28,14 @@ class SchemaDiagram:
 
     Printing it, or reading :attr:`source`, gives the Mermaid source. Any
     Mermaid renderer accepts this source directly.
-
-    Attributes:
-        lines: The diagram's Mermaid lines, starting with the ``erDiagram``
-            header. :attr:`source` joins them.
     """
-
-    lines: list[str]
 
     @classmethod
     def from_database(
         cls,
         database: Database,
         columns: bool | str = True,
+        config: dict | None = None,
     ) -> SchemaDiagram:
         """Draw a database's schema.
 
@@ -49,6 +45,9 @@ class SchemaDiagram:
                 ``"structural"`` lists only the primary key, the foreign
                 keys, the ``row_creation_time``, the ``row_update_times``,
                 and the columns they update.
+            config: The Mermaid configuration of the diagram, for example
+                ``{"theme": "forest"}``. :func:`json.dumps` must accept it.
+                None sets no configuration.
 
         Returns:
             The diagram.
@@ -62,16 +61,25 @@ class SchemaDiagram:
                 f"columns must be True, False, or 'structural'; got {columns!r}",
             )
 
-        diagram = cls()
+        diagram = cls(title=database.name, config=config)
         for name in database.table_names:
             diagram._add_lines(*render_table(database, name, columns))
         for relationship in database.relationships:
             diagram._add_lines(render_relationship(database, relationship))
         return diagram
 
-    def __init__(self) -> None:
-        """Start an empty diagram. It holds only the header."""
+    def __init__(self, title: str | None = None, config: dict | None = None) -> None:
+        """Start an empty diagram. It holds only the header.
+
+        Args:
+            title: The title shown above the diagram, or None for no title.
+            config: The Mermaid configuration of the diagram, for example
+                ``{"theme": "forest"}``. :func:`json.dumps` must accept it.
+                None sets no configuration.
+        """
         self.lines = ["erDiagram"]
+        self.title = title
+        self.config = config
 
     def _add_lines(self, *new_lines: str, indent: int = 2) -> None:
         """Append lines to the diagram.
@@ -84,8 +92,28 @@ class SchemaDiagram:
 
     @property
     def source(self) -> str:
-        """The Mermaid ``erDiagram`` source, as one newline-terminated string."""
-        return "\n".join(self.lines) + "\n"
+        """The Mermaid ``erDiagram`` source, as one newline-terminated string.
+
+        A diagram with a :attr:`title` or a :attr:`config` starts with a
+        front matter block. This block holds the title and the configuration.
+        """
+        return self._front_matter + "\n".join(self.lines) + "\n"
+
+    @property
+    def _front_matter(self) -> str:
+        """The front matter block with the diagram's settings, or "" without any."""
+        settings = {
+            "title": self.title,
+            "config": self.config,
+        }
+        front_matter_lines = [
+            f"{key}: {json.dumps(value)}"
+            for key, value in settings.items()
+            if value is not None
+        ]
+        if len(front_matter_lines) == 0:
+            return ""
+        return "---\n" + "\n".join(front_matter_lines) + "\n---\n"
 
     def __str__(self) -> str:
         """Return the Mermaid source.

@@ -132,6 +132,9 @@ db.plot()
 For the shop database above, that gives:
 
 ```mermaid
+---
+title: "shop"
+---
 erDiagram
   "customers" {
     Int64 id PK
@@ -156,7 +159,8 @@ erDiagram
   "products" 1 to 0+ "orders" : ""
 ```
 
-Each attribute row is the column's dtype, its name, its key marker, and a
+The database's name becomes the diagram's title. Each attribute row is the
+column's dtype, its name, its key marker, and a
 comment. `PK` and `FK` are Mermaid's own markers. Everything else travels in
 the comment, because Mermaid has no marker for it. That includes the table a
 foreign key points at, the `row_creation_time`, each
@@ -168,8 +172,8 @@ column that update time fills in.
 link reads `1 to zero or one` instead. Both come from the declared keys, so
 neither costs a query.
 
-In a notebook the diagram renders inline. Elsewhere, `print(db.plot())` gives
-the Mermaid source. `save()` writes a file:
+In a notebook the diagram renders inline, and so does the database itself.
+Elsewhere, `print(db.plot())` gives the Mermaid source. `save()` writes a file:
 
 ```python
 db.plot().save("schema.svg")

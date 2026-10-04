@@ -58,4 +58,4 @@ def test_schema_diagram_is_exported():
     assert tusk.SchemaDiagram is tusk.plotting.SchemaDiagram
     diagram = tusk.Database("d").plot()
     assert isinstance(diagram, tusk.SchemaDiagram)
-    assert diagram.source.startswith("erDiagram")
+    assert "erDiagram\n" in diagram.source

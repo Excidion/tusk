@@ -161,7 +161,7 @@ def two_table_db():
 
 def test_every_table_and_relationship_appears(two_table_db):
     source = SchemaDiagram.from_database(two_table_db, columns=True).source
-    assert source.startswith("erDiagram\n")
+    assert "\nerDiagram\n" in source
     assert '"customers" 1 to 0+ "orders" : ""' in source
     # A table with no relationships still has to be drawn.
     assert '"regions"' in source
@@ -546,3 +546,41 @@ def test_the_structural_view_keeps_update_times_and_updated_columns(
     assert "updated_at" in source
     assert "status" in source
     assert "note" not in source
+
+
+def test_diagram_is_titled_with_the_database_name():
+    db = tusk.Database("shop: v2 #1").add_table(
+        "t", pl.LazyFrame({"id": [1]}), primary_key="id"
+    )
+    assert db.plot().source.startswith('---\ntitle: "shop: v2 #1"\n---\nerDiagram\n')
+
+
+def test_untitled_diagram_starts_with_the_header():
+    assert SchemaDiagram().source == "erDiagram\n"
+
+
+def test_database_markdown_repr_is_its_diagram():
+    db = tusk.Database("d").add_table("t", pl.LazyFrame({"id": [1]}), primary_key="id")
+    assert db._repr_markdown_() == db.plot().markdown
+
+
+def test_config_follows_the_title_in_the_front_matter():
+    db = tusk.Database("shop").add_table(
+        "t", pl.LazyFrame({"id": [1]}), primary_key="id"
+    )
+    source = db.plot(config={"theme": "forest"}).source
+    assert source.startswith(
+        '---\ntitle: "shop"\nconfig: {"theme": "forest"}\n---\nerDiagram\n'
+    )
+
+
+def test_mermaid_applies_the_config():
+    mermaidx = pytest.importorskip("mermaidx")
+    db = tusk.Database("shop").add_table(
+        "t", pl.LazyFrame({"id": [1]}), primary_key="id"
+    )
+    forest_background = "#cde498"
+    plain = mermaidx.render(db.plot().source).svg()
+    forest = mermaidx.render(db.plot(config={"theme": "forest"}).source).svg()
+    assert forest_background not in plain
+    assert forest_background in forest

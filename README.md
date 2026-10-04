@@ -79,6 +79,9 @@ db.plot()
 ```
 
 ```mermaid
+---
+title: "shop"
+---
 erDiagram
   "customers" {
     Int64 id PK
@@ -105,9 +108,10 @@ erDiagram
   "products" 1 to 0+ "orders" : ""
 ```
 
-In a notebook it renders inline; `print(db.plot())` gives the Mermaid source,
-and `db.plot().save("schema.svg")` writes an image with `tusk-ml[plot]`
-installed.
+The database's name becomes the title. In a notebook the diagram renders
+inline, and so does the database itself; `print(db.plot())` gives the Mermaid
+source, and `db.plot().save("schema.svg")` writes an image with
+`tusk-ml[plot]` installed.
 
 ## Documentation
 
