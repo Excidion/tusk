@@ -173,14 +173,16 @@ link reads `1 to zero or one` instead. Both come from the declared keys, so
 neither costs a query.
 
 In a notebook the diagram renders inline, and so does the database itself.
-Elsewhere, `print(db.plot())` gives the Mermaid source. `save()` writes a file:
+Elsewhere, `print(db.plot())` gives the Mermaid source, and
+`print(db.plot().ascii)` draws the diagram in the terminal. `save()` writes a
+file:
 
 ```python
 db.plot().save("schema.svg")
 ```
 
-`.mmd` and `.md` write the source and need nothing installed. `.svg`, `.png`
-and `.pdf` render the diagram and need the extra:
+`.mmd` and `.md` write the source and need nothing installed. `.txt` writes
+the terminal drawing. `.txt`, `.svg`, `.png` and `.pdf` need the extra:
 
 ```bash
 pip install tusk-ml[plot]

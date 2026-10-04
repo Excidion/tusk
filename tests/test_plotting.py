@@ -467,15 +467,32 @@ def test_saving_an_image_writes_a_file(tmp_path, suffix, one_table_diagram):
     assert path.stat().st_size > 0
 
 
+def test_saving_text_writes_the_ascii_drawing(tmp_path, one_table_diagram):
+    pytest.importorskip("mermaidx")
+    path = tmp_path / "schema.txt"
+    one_table_diagram.save(path)
+    assert path.read_text(encoding="utf-8") == one_table_diagram.ascii
+
+
+def test_ascii_draws_every_table_and_column(two_table_db):
+    pytest.importorskip("mermaidx")
+    drawing = SchemaDiagram.from_database(two_table_db).ascii
+    for name in ("customers", "orders", "regions", "customer_id", "signed_up_at"):
+        assert name in drawing
+
+
 def test_an_unsupported_suffix_is_rejected(tmp_path, one_table_diagram):
     with pytest.raises(ValueError, match="cannot save"):
         one_table_diagram.save(tmp_path / "schema.gif")
 
 
-def test_a_missing_renderer_names_the_extra(tmp_path, monkeypatch, one_table_diagram):
+@pytest.mark.parametrize("suffix", [".svg", ".txt"])
+def test_a_missing_renderer_names_the_extra(
+    tmp_path, suffix, monkeypatch, one_table_diagram
+):
     monkeypatch.setitem(sys.modules, "mermaidx", None)
     with pytest.raises(ImportError, match=r"tusk-ml\[plot\]"):
-        one_table_diagram.save(tmp_path / "schema.svg")
+        one_table_diagram.save(tmp_path / f"schema{suffix}")
 
 
 def test_plot_returns_a_diagram_of_the_database(db):
