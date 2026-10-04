@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 import narwhals as nw
 
 if TYPE_CHECKING:
+    from mermaidx import DiagramBase
+
     from tusk.database import Database, Relationship, TableSchema
 
 
@@ -132,6 +134,15 @@ class SchemaDiagram:
         """
         return f"```mermaid\n{self.source}```\n"
 
+    @property
+    def ascii(self) -> str:
+        """The diagram drawn as box-drawing text, newline-terminated.
+
+        Terminals show this as a picture. It needs ``tusk-ml[plot]`` and
+        raises ``ImportError`` if ``tusk-ml[plot]`` is not installed.
+        """
+        return self._render().ascii()
+
     def _repr_markdown_(self) -> str:
         """Return the fenced block, for notebooks and docs.
 
@@ -145,9 +156,10 @@ class SchemaDiagram:
 
         The suffix selects the format. ``.mmd`` writes the bare source and
         ``.md`` writes it in a ``mermaid`` code fence. Both need nothing
-        installed. ``.svg``, ``.png`` and ``.pdf`` render the diagram and
-        need ``tusk-ml[plot]``. Saving to these formats raises
-        ``ImportError`` if ``tusk-ml[plot]`` is not installed.
+        installed. ``.txt`` writes :attr:`ascii`. ``.svg``, ``.png`` and
+        ``.pdf`` render the diagram. ``.txt`` and the image formats need
+        ``tusk-ml[plot]``. Saving to these formats raises ``ImportError``
+        if ``tusk-ml[plot]`` is not installed.
 
         Args:
             path: The file path to write to, including the suffix.
@@ -165,16 +177,16 @@ class SchemaDiagram:
                 write_text(self.markdown)
             case ".mmd":  # mermaid diagram, no fence
                 write_text(self.source)
-            case ".svg" | ".png" | ".pdf":
-                self._render_image(path)
+            case ".txt" | ".svg" | ".png" | ".pdf":
+                self._render().save(str(path))
             case _:
                 raise ValueError(f"cannot save {path.suffix!r}; unsupported suffix.")
 
-    def _render_image(self, path: Path) -> None:
-        """Render the diagram to an image file.
+    def _render(self) -> DiagramBase:
+        """Render the diagram with mermaidx.
 
-        Args:
-            path: The file path to write to, including the suffix.
+        Returns:
+            The rendered diagram.
 
         Raises:
             ImportError: If the renderer is not installed.
@@ -182,10 +194,9 @@ class SchemaDiagram:
         try:
             import mermaidx
         except ImportError as error:
-            raise ImportError(
-                f"saving {path.suffix} needs a renderer: pip install tusk-ml[plot]",
-            ) from error
-        mermaidx.render(self.source).save(str(path))
+            message = "rendering the diagram needs: pip install tusk-ml[plot]"
+            raise ImportError(message) from error
+        return mermaidx.render(self.source)
 
 
 def render_relationship(database: Database, relationship: Relationship) -> str:

@@ -109,9 +109,10 @@ erDiagram
 ```
 
 The database's name becomes the title. In a notebook the diagram renders
-inline, and so does the database itself; `print(db.plot())` gives the Mermaid
-source, and `db.plot().save("schema.svg")` writes an image with
-`tusk-ml[plot]` installed.
+inline, and so does the database itself. `print(db.plot())` gives the Mermaid
+source. `print(db.plot().ascii)` draws the diagram in the terminal.
+`db.plot().save("schema.svg")` writes an image. Drawing and saving an image
+require `tusk-ml[plot]`.
 
 ## Documentation
 
