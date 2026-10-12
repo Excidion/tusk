@@ -416,3 +416,11 @@ def test_conditional_primitives_defaults_to_count_and_sum():
     assert "COUNT__orders__WHEN__open" in names
     assert "SUM__orders__amount__WHEN__open" in names
     assert not any(n.startswith("MEAN__") and "WHEN" in n for n in names)
+
+
+@pytest.mark.parametrize("batch_size", [1, 2, 100])
+def test_batchwise_collect_matches_a_single_collect(db, batch_size):
+    feature_matrix, _ = tusk.deep_feature_synthesis(db, "customers")
+    expected = tusk.collect_feature_matrix(feature_matrix).sort("id")
+    got = tusk.collect_feature_matrix(feature_matrix, batch_size=batch_size)
+    assert got.equals(expected)

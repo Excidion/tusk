@@ -2,6 +2,7 @@
 
 :func:`deep_feature_synthesis` builds feature definitions and computes
 them. :func:`apply_features` computes existing ones.
+:func:`collect_feature_matrix` collects the resulting feature matrix.
 """
 
 from __future__ import annotations
@@ -10,7 +11,10 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
+import narwhals as nw
+
 from tusk.database import Database
+from tusk.exceptions import TuskError
 from tusk.feature_list import FeatureList
 from tusk.features import Feature
 from tusk.primitives.base import Primitive
@@ -160,3 +164,64 @@ def apply_features(
             tables, with one row per visible target row.
     """
     return FeatureList(features).apply(database, cutoff_time)
+
+
+def collect_feature_matrix(
+    feature_matrix: Any,
+    backend: str | None = None,
+    batch_size: int | None = None,
+) -> Any:
+    """Collect a feature matrix.
+
+    Args:
+        feature_matrix: A feature matrix from :func:`deep_feature_synthesis`
+            or :func:`apply_features`.
+        backend: Backend to collect to. None collects to the feature
+            matrix's own backend.
+        batch_size: Number of feature columns to collect per query. None
+            collects all of them in one query.
+
+    Returns:
+        feature_matrix: The collected feature matrix, as the backend's native
+            eager table. With ``batch_size``, the rows are sorted by the
+            primary key.
+
+    Raises:
+        TuskError: If ``backend`` needs a package that is not installed.
+    """
+    feature_matrix = nw.from_native(feature_matrix)
+    try:
+        if batch_size is None:
+            return feature_matrix.lazy().collect(backend=backend).to_native()
+        return _collect_batchwise(feature_matrix, backend, batch_size)
+    except ModuleNotFoundError as exc:
+        raise TuskError(f"{backend=} is not installed.") from exc
+
+
+def _collect_batchwise(
+    feature_matrix: nw.LazyFrame | nw.DataFrame,
+    backend: str | None,
+    batch_size: int,
+) -> Any:
+    """Collect ``batch_size`` columns at a time, sorted by the primary key."""
+    if not isinstance(batch_size, int):
+        raise TypeError(f"{batch_size=} is not an integer.")
+    primary_key, *feature_columns = feature_matrix.collect_schema().names()
+    keys = _collect_columns(feature_matrix, primary_key, (), backend)
+    batches = []
+    for column_index in range(0, len(feature_columns), batch_size):
+        columns = feature_columns[column_index : column_index + batch_size]
+        batch = _collect_columns(feature_matrix, primary_key, columns, backend)
+        batches.append(batch.drop(primary_key))
+    return nw.concat([keys, *batches], how="horizontal").to_native()
+
+
+def _collect_columns(
+    feature_matrix: nw.LazyFrame | nw.DataFrame,
+    primary_key: str,
+    columns: Sequence[str],
+    backend: str | None,
+) -> nw.DataFrame:
+    """Collect the primary key and ``columns``, sorted by the primary key."""
+    batch = feature_matrix.select(primary_key, *columns).sort(primary_key)
+    return batch.lazy().collect(backend=backend)  # ty: ignore[invalid-argument-type]

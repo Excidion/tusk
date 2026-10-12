@@ -1,12 +1,9 @@
-"""Materialization of a lazy feature matrix for scikit-learn.
+"""Key handling for scikit-learn.
 
 :func:`read_keys` normalizes the primary key ``X`` to a list.
 :func:`check_keys_are_visible` rejects keys the target table has no row for.
-:func:`collect_feature_matrix` filters the feature matrix to those keys,
-collects it, and returns the rows in key order. :func:`backend_hint`
-annotates exceptions from a user's pipeline with the table's backend.
-
-This is the only module in tusk that collects a feature matrix.
+:func:`backend_hint` annotates exceptions from a user's pipeline with the
+table's backend.
 """
 
 from __future__ import annotations
@@ -19,12 +16,9 @@ from datetime import datetime
 from typing import Any
 
 import narwhals as nw
-from narwhals.typing import IntoLazyFrame
 
 from tusk.database import Database
 from tusk.exceptions import SchemaError
-
-_POSITION = "__tusk_position"
 
 
 def read_keys(X: Iterable[Any]) -> list[Any]:
@@ -42,6 +36,7 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
     Raises:
         TypeError: If ``X`` is not iterable. If its elements are not single
             values.
+        SchemaError: If ``X`` repeats a key.
     """
     try:
         keys = list(X)
@@ -54,6 +49,11 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
             f"X must be one-dimensional -- each element is one key -- but its "
             f"elements are {type(keys[0]).__name__}. A column vector of shape "
             f"(n, 1) is the usual cause; pass the keys themselves.",
+        )
+    if len(set(keys)) != len(keys):
+        raise SchemaError(
+            "X contains duplicate keys; the feature matrix is keyed by the "
+            "target's primary key, so each row must be requested at most once",
         )
     return keys
 
@@ -88,52 +88,6 @@ def check_keys_are_visible(
     _reject_missing_keys(keys, set(visible[primary_key].to_list()), primary_key)
 
 
-def collect_feature_matrix(
-    feature_matrix: IntoLazyFrame,
-    primary_key: str,
-    keys: list[Any],
-    output_backend: str | None,
-) -> Any:
-    """Materialize the feature matrix for ``keys``, in ``keys`` order.
-
-    Args:
-        feature_matrix: The uncomputed feature matrix from ``apply_features``.
-        primary_key: The target table's primary key.
-        keys: Key values selecting and ordering the rows.
-        output_backend: Backend to collect to, or None to collect natively.
-
-    Returns:
-        feature_matrix: An eager native table with one row per key, in key
-            order. The primary key column is not in the result.
-
-    Raises:
-        SchemaError: If ``keys`` repeats a value. If ``keys`` names a key
-            that produced no row.
-    """
-    if len(set(keys)) != len(keys):
-        raise SchemaError(
-            "X contains duplicate keys; the feature matrix is keyed by the "
-            "target's primary key, so each row must be requested at most once",
-        )
-
-    table = nw.from_native(feature_matrix)
-    filtered = table.filter(nw.col(primary_key).is_in(keys))
-    collected = _collect(filtered, output_backend)
-
-    _reject_missing_keys(keys, set(collected[primary_key].to_list()), primary_key)
-
-    # The key dtype must be taken from the collected frame rather than
-    # inferred: inference gives int64, and a duckdb database keyed by int32
-    # then fails the join with ArrowInvalid.
-    order = nw.from_dict(
-        {primary_key: keys, _POSITION: list(range(len(keys)))},
-        schema={primary_key: collected.schema[primary_key], _POSITION: nw.Int64()},
-        backend=collected.implementation,
-    )
-    joined = order.join(collected, on=primary_key, how="left").sort(_POSITION)
-    return joined.drop([primary_key, _POSITION]).to_native()
-
-
 def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> None:
     """Fail if a requested key is not among the ones found.
 
@@ -153,36 +107,6 @@ def _reject_missing_keys(keys: list[Any], found: set[Any], primary_key: str) -> 
         f"{missing[:5]}; they are absent from {primary_key!r} or were "
         f"excluded by cutoff_time",
     )
-
-
-def _collect(table: nw.LazyFrame, output_backend: str | None) -> nw.DataFrame:
-    """Collect the table. Raise a tusk error if the backend package is not installed.
-
-    Args:
-        table: The filtered lazy feature matrix.
-        output_backend: Backend name, or None for the database's own.
-
-    Returns:
-        The collected table.
-
-    Raises:
-        TuskError: If ``output_backend`` names a package that is not installed.
-    """
-    from tusk.exceptions import TuskError
-
-    if output_backend is None:
-        return table.collect()
-    try:
-        # narwhals types `backend` as a 3-way Literal but accepts a plain
-        # string. It rejects an unknown name itself, with a ValueError listing
-        # what it accepts; this clause is for a name it accepts whose package
-        # is not installed.
-        return table.collect(backend=output_backend)  # ty: ignore[invalid-argument-type]
-    except ModuleNotFoundError as exc:
-        raise TuskError(
-            f"output_backend={output_backend!r} needs the {output_backend} "
-            f"package, which is not installed; `uv add {output_backend}`",
-        ) from exc
 
 
 @contextlib.contextmanager

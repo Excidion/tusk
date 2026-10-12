@@ -77,3 +77,24 @@ def test_an_unknown_output_backend_lists_the_ones_that_work(duckdb_db):
     ).fit(KEYS, database=duckdb_db)
     with pytest.raises(ValueError, match="pandas.*polars.*pyarrow"):
         fitted.transform(KEYS, database=duckdb_db)
+
+
+@pytest.mark.parametrize("batch_size", [1, 2, 100])
+def test_batchwise_collect_matches_a_single_collect(duckdb_db, batch_size):
+    single = DFSTransformer(target_table="customers").fit(KEYS, database=duckdb_db)
+    batchwise = DFSTransformer(target_table="customers", batch_size=batch_size)
+    batchwise.fit(KEYS, database=duckdb_db)
+    expected = nw.from_native(single.transform([3, 1, 2], database=duckdb_db))
+    matrix = nw.from_native(batchwise.transform([3, 1, 2], database=duckdb_db))
+    assert matrix.to_dict(as_series=False) == expected.to_dict(as_series=False)
+
+
+def test_batchwise_collect_honors_output_backend(duckdb_db):
+    pytest.importorskip("pandas")
+    fitted = DFSTransformer(
+        target_table="customers",
+        output_backend="pandas",
+        batch_size=1,
+    ).fit(KEYS, database=duckdb_db)
+    matrix = fitted.transform(KEYS, database=duckdb_db)
+    assert type(matrix).__module__.startswith("pandas")

@@ -5,7 +5,11 @@ from __future__ import annotations
 from importlib.metadata import version
 
 from tusk import exceptions
-from tusk.api import apply_features, deep_feature_synthesis
+from tusk.api import (
+    apply_features,
+    collect_feature_matrix,
+    deep_feature_synthesis,
+)
 from tusk.database import Database, Relationship, TableSchema
 from tusk.feature_list import FeatureList
 from tusk.plotting import SchemaDiagram
@@ -20,6 +24,7 @@ __all__ = [
     "SchemaDiagram",
     "TableSchema",
     "apply_features",
+    "collect_feature_matrix",
     "deep_feature_synthesis",
     "exceptions",
 ]

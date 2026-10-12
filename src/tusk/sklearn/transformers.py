@@ -22,6 +22,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.utils.validation import check_is_fitted
 
+from tusk.api import collect_feature_matrix
 from tusk.database import Database
 from tusk.exceptions import (
     LineageError,
@@ -41,7 +42,6 @@ from tusk.sklearn._lineage import Sentinels, make_sentinels
 from tusk.sklearn._tables import (
     backend_hint,
     check_keys_are_visible,
-    collect_feature_matrix,
     read_keys,
 )
 from tusk.synthesis import synthesize
@@ -68,6 +68,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         trans_primitives: Iterable[str | Primitive] | None = None,
         max_depth: int = 2,
         output_backend: str | None = None,
+        batch_size: int | None = None,
     ) -> None:
         """Configure synthesis.
 
@@ -80,12 +81,15 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             max_depth: Maximum stacked primitive applications.
             output_backend: Backend to collect the feature matrix to. None
                 collects to the database's own backend.
+            batch_size: Feature columns per query, as in
+                :func:`tusk.collect_feature_matrix`.
         """
         self.target_table = target_table
         self.agg_primitives = agg_primitives
         self.trans_primitives = trans_primitives
         self.max_depth = max_depth
         self.output_backend = output_backend
+        self.batch_size = batch_size
 
     def fit(
         self,
@@ -156,12 +160,22 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         primary_key = db.require_primary_key(self.target_table)
         keys = read_keys(X)
         check_keys_are_visible(db, self.target_table, primary_key, keys, cutoff)
-        return collect_feature_matrix(
-            feature_matrix=self.features_.apply(db, cutoff),
-            primary_key=primary_key,
-            keys=keys,
-            output_backend=self.output_backend,
+        feature_matrix = nw.from_native(self.features_.apply(db, cutoff))
+        rows = feature_matrix.filter(nw.col(primary_key).is_in(keys))
+        collected = nw.from_native(
+            collect_feature_matrix(rows, self.output_backend, self.batch_size)
         )
+        position = "__tusk_position"
+        # The key dtype must be taken from the collected table rather than
+        # inferred: inference gives int64, and a duckdb database keyed by int32
+        # then fails the join with ArrowInvalid.
+        order = nw.from_dict(
+            {primary_key: keys, position: list(range(len(keys)))},
+            schema={primary_key: collected.schema[primary_key], position: nw.Int64()},
+            backend=collected.implementation,
+        )
+        joined = order.join(collected, on=primary_key, how="left").sort(position)
+        return joined.drop([primary_key, position]).to_native()
 
     def fit_transform(
         self,
@@ -233,6 +247,7 @@ class DFSSelectorTransformer(DFSTransformer):
         trans_primitives: Iterable[str | Primitive] | None = None,
         max_depth: int = 2,
         output_backend: str | None = None,
+        batch_size: int | None = None,
     ) -> None:
         """Configure synthesis and selection.
 
@@ -246,6 +261,8 @@ class DFSSelectorTransformer(DFSTransformer):
                 defaults.
             max_depth: Maximum stacked primitive applications.
             output_backend: Backend to collect to. None collects natively.
+            batch_size: Feature columns per query, as in
+                :func:`tusk.collect_feature_matrix`.
         """
         super().__init__(
             target_table=target_table,
@@ -253,6 +270,7 @@ class DFSSelectorTransformer(DFSTransformer):
             trans_primitives=trans_primitives,
             max_depth=max_depth,
             output_backend=output_backend,
+            batch_size=batch_size,
         )
         self.selection_pipeline = selection_pipeline
 
