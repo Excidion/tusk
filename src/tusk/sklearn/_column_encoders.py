@@ -17,7 +17,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from tusk.exceptions import EncoderError
-from tusk.sklearn._narwhals import NarwhalsEncoder
+from tusk.sklearn._narwhals import BaseEncoder
 
 DATE_COMPONENTS = ("year", "month", "day", "weekday", "ordinal_day", "timestamp")
 TIME_COMPONENTS = (
@@ -37,7 +37,7 @@ DURATION_COMPONENTS = (
 )
 
 
-class EnumOrdinalEncoder(NarwhalsEncoder):
+class EnumOrdinalEncoder(BaseEncoder):
     """An encoder of ``Enum`` columns as their position in the category order.
 
     The categories come from the dtype, so fitting reads no rows. A null
@@ -65,7 +65,7 @@ class EnumOrdinalEncoder(NarwhalsEncoder):
         ]
 
 
-class TemporalEncoder(NarwhalsEncoder):
+class TemporalEncoder(BaseEncoder):
     """The base of the encoders of temporal columns as numeric components.
 
     A subclass sets ``accepted_dtype`` and ``allowed_components``, and takes
@@ -224,7 +224,7 @@ class DurationEncoder(TemporalEncoder):
         self.components = components
 
 
-class TfIdfSvdEncoder(NarwhalsEncoder):
+class TfIdfSvdEncoder(BaseEncoder):
     """An encoder of ``String`` columns as coordinates of their character n-grams.
 
     Each column is encoded separately. A value becomes a TF-IDF vector over

@@ -23,8 +23,8 @@ from tusk.sklearn._column_encoders import (
     TimeEncoder,
 )
 from tusk.sklearn._narwhals import (
-    NarwhalsEncoder,
-    NarwhalsMixin,
+    BaseEncoder,
+    ConvertInputMixin,
     table_to_numpy,
 )
 
@@ -42,12 +42,12 @@ GROUPS = (
 )
 
 
-class TableEncoder(NarwhalsEncoder, auto_wrap_output_keys=None):
+class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
     """An encoder of every column of a table by its narwhals dtype.
 
     Each parameter names a dtype group and takes an estimator,
     ``"passthrough"`` or ``"drop"``. Each column belongs to exactly one
-    group. An estimator with :class:`NarwhalsMixin` receives a narwhals table
+    group. An estimator with :class:`ConvertInputMixin` receives a narwhals table
     and converts it itself. Any other estimator receives numpy.
 
     Output names are ``{group}__{name}``. Groups appear in parameter order.
@@ -474,13 +474,13 @@ def fits_on_schema(estimator: Any) -> bool:
         estimator: An estimator or ``"passthrough"``.
 
     Returns:
-        True for ``"passthrough"`` and for a ``NarwhalsEncoder`` that keeps
+        True for ``"passthrough"`` and for a ``BaseEncoder`` that keeps
         ``_fits_on_schema`` true and does not override :meth:`_transform`.
     """
     return estimator == "passthrough" or (
-        isinstance(estimator, NarwhalsEncoder)
+        isinstance(estimator, BaseEncoder)
         and estimator._fits_on_schema
-        and type(estimator)._transform is NarwhalsEncoder._transform
+        and type(estimator)._transform is BaseEncoder._transform
     )
 
 
@@ -508,10 +508,10 @@ def to_estimator_input(estimator: Any, table: nw.DataFrame | nw.LazyFrame) -> An
         table: The group's columns.
 
     Returns:
-        The narwhals table for an estimator with :class:`NarwhalsMixin`, else
+        The narwhals table for an estimator with :class:`ConvertInputMixin`, else
         a numpy array.
     """
-    if isinstance(estimator, NarwhalsMixin):
+    if isinstance(estimator, ConvertInputMixin):
         return table
     return table_to_numpy(table.lazy().collect())
 

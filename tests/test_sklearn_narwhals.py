@@ -14,16 +14,17 @@ from sklearn.preprocessing import StandardScaler, TargetEncoder
 
 import tusk
 from tusk.exceptions import EncoderError
-from tusk.sklearn import DFSTransformer, NarwhalsEncoder, NarwhalsMixin
+from tusk.sklearn import ConvertInputMixin, DFSTransformer, TableConverter
+from tusk.sklearn._narwhals import BaseEncoder
 
 NUMBERS = pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [2.0, 4.0, 6.0, 9.0]})
 
 
-class NarwhalsScaler(NarwhalsMixin, StandardScaler):
+class NarwhalsScaler(ConvertInputMixin, StandardScaler):
     pass
 
 
-class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
+class PandasTargetEncoder(ConvertInputMixin, TargetEncoder):
     convert_to = "pandas"
 
 
@@ -69,7 +70,7 @@ def test_the_mixin_accepts_any_backend(backend):
     ],
 )
 def test_convert_to_sets_what_the_estimator_receives(convert_to, expected):
-    recorder = type("Recorder", (NarwhalsMixin, TypeRecorder), {})
+    recorder = type("Recorder", (ConvertInputMixin, TypeRecorder), {})
     recorder.convert_to = convert_to
     assert recorder().fit(as_duckdb(NUMBERS)).received_ is expected
 
@@ -105,38 +106,57 @@ def test_the_encoder_fits_a_lazy_table_without_collecting(monkeypatch):
         raise AssertionError("fit collected the table")
 
     monkeypatch.setattr(nw.LazyFrame, "collect", refuse)
-    encoder = NarwhalsEncoder().fit(relation)
+    encoder = BaseEncoder().fit(relation)
     assert list(encoder.feature_names_in_) == ["a", "b"]
 
 
 def test_the_encoder_returns_what_set_output_asks_for():
     categories = pl.DataFrame({"c": pl.Series(["x", "y"]).cast(pl.Categorical)})
-    assert isinstance(NarwhalsEncoder().fit_transform(categories), np.ndarray)
-    as_pandas = NarwhalsEncoder().set_output(transform="pandas")
+    assert isinstance(BaseEncoder().fit_transform(categories), np.ndarray)
+    as_pandas = BaseEncoder().set_output(transform="pandas")
     assert str(as_pandas.fit_transform(categories)["c"].dtype) == "category"
-    as_polars = NarwhalsEncoder().set_output(transform="polars")
+    as_polars = BaseEncoder().set_output(transform="polars")
     assert isinstance(as_polars.fit_transform(as_duckdb(NUMBERS)), pl.DataFrame)
 
 
 def test_clone_keeps_the_output_setting():
-    encoder = NarwhalsEncoder().set_output(transform="polars").fit(NUMBERS)
+    encoder = BaseEncoder().set_output(transform="polars").fit(NUMBERS)
     assert isinstance(clone(encoder).fit_transform(NUMBERS), pl.DataFrame)
 
 
 def test_set_output_rejects_an_unsupported_value():
     with pytest.raises(ValueError, match="choose from"):
-        NarwhalsEncoder().set_output(transform="pyarrow")
+        BaseEncoder().set_output(transform="pyarrow")
 
 
 def test_the_encoder_rejects_other_columns_or_dtypes():
-    encoder = NarwhalsEncoder().fit(NUMBERS)
+    encoder = BaseEncoder().fit(NUMBERS)
     with pytest.raises(EncoderError, match="absent"):
         encoder.transform(NUMBERS.select("a"))
     with pytest.raises(EncoderError, match="'a'"):
         encoder.transform(NUMBERS.with_columns(pl.col("a").cast(pl.Int64)))
 
 
-def test_the_encoder_is_a_convert_step_between_dfs_and_a_model():
+def test_the_converter_returns_what_to_names():
+    categories = pl.DataFrame({"c": pl.Series(["x", "y"]).cast(pl.Categorical)})
+    assert isinstance(TableConverter().fit_transform(categories), np.ndarray)
+    as_pandas = TableConverter(to="pandas").fit_transform(categories)
+    assert str(as_pandas["c"].dtype) == "category"
+    as_polars = TableConverter(to="polars").fit_transform(as_duckdb(NUMBERS))
+    assert isinstance(as_polars, pl.DataFrame)
+
+
+def test_the_converter_ignores_set_output():
+    converter = TableConverter(to="polars").set_output(transform="pandas")
+    assert isinstance(converter.fit_transform(NUMBERS), pl.DataFrame)
+
+
+def test_the_converter_rejects_an_unsupported_target():
+    with pytest.raises(ValueError, match="choose from"):
+        TableConverter(to="pyarrow").fit(NUMBERS)  # ty: ignore[invalid-argument-type]
+
+
+def test_the_converter_is_a_step_between_dfs_and_a_model():
     customers = duckdb.sql(
         "select * from (values "
         "(1, 30.0, timestamp '2024-01-01'), "
@@ -158,7 +178,7 @@ def test_the_encoder_is_a_convert_step_between_dfs_and_a_model():
         pipeline = Pipeline(
             [
                 ("dfs", DFSTransformer(target_table="customers")),
-                ("convert", NarwhalsEncoder().set_output(transform="pandas")),
+                ("convert", TableConverter(to="pandas")),
                 ("model", Model()),
             ]
         )

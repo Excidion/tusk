@@ -1,8 +1,8 @@
 """Estimators that accept any table narwhals can read.
 
-:class:`NarwhalsMixin` makes a scikit-learn estimator accept such a table.
-:class:`NarwhalsEncoder` is the base of the tusk encoders. Used alone, it
-converts a table to what ``set_output`` asks for.
+:class:`ConvertInputMixin` makes a scikit-learn estimator accept such a table.
+:class:`BaseEncoder` is the base of the tusk encoders.
+:class:`TableConverter` converts a table to numpy, pandas or polars.
 """
 
 from __future__ import annotations
@@ -18,10 +18,12 @@ from sklearn.utils.validation import check_is_fitted
 from tusk.exceptions import EncoderError
 
 ConvertTo = Literal["narwhals", "numpy", "pandas", "polars"]
+ConverterTarget = Literal["numpy", "pandas", "polars"]
 OUTPUTS = ("default", "pandas", "polars")
+CONVERTER_TARGETS = ("numpy", "pandas", "polars")
 
 
-class NarwhalsMixin:
+class ConvertInputMixin:
     """A mixin that lets an estimator accept any table narwhals can read.
 
     Mix it in before the estimator's class. The class attribute
@@ -121,17 +123,15 @@ class NarwhalsMixin:
         return convert_table(table, self.convert_to)
 
 
-class NarwhalsEncoder(
-    NarwhalsMixin,
+class BaseEncoder(
+    ConvertInputMixin,
     TransformerMixin,
     BaseEstimator,
     auto_wrap_output_keys=None,
 ):
     """An encoder that works on narwhals tables, on any backend.
 
-    Used alone, it passes every column through unchanged. ``set_output``
-    sets what it returns: numpy, pandas or polars. It is then the step that
-    hands a feature matrix to scikit-learn.
+    ``set_output`` sets what it returns: numpy, pandas or polars.
 
     :meth:`fit` reads the schema and does not collect. It sets
     ``schema_in_``, column name to narwhals dtype, ``feature_names_in_`` and
@@ -146,7 +146,7 @@ class NarwhalsEncoder(
     convert_to: ClassVar[ConvertTo] = "narwhals"
     _fits_on_schema: ClassVar[bool] = True
 
-    def fit(self, X: Any, y: Any = None, **params: Any) -> NarwhalsEncoder:
+    def fit(self, X: Any, y: Any = None, **params: Any) -> BaseEncoder:
         """Read the schema of ``X`` and fit the encoder.
 
         Args:
@@ -205,7 +205,7 @@ class NarwhalsEncoder(
         """
         return self.fit(X, y).transform(X)
 
-    def set_output(self, *, transform: str | None = None) -> NarwhalsEncoder:
+    def set_output(self, *, transform: str | None = None) -> BaseEncoder:
         """Set what :meth:`transform` returns.
 
         Args:
@@ -296,6 +296,60 @@ class NarwhalsEncoder(
         if output == "polars":
             return table.to_polars()
         return table_to_numpy(table)
+
+
+class TableConverter(BaseEncoder):
+    """A step that converts a table from any backend to numpy, pandas or polars.
+
+    It passes every column through unchanged. ``to`` sets what it returns,
+    and ``set_output`` does not change it.
+    """
+
+    def __init__(self, to: ConverterTarget = "numpy") -> None:
+        """Set what the converter returns.
+
+        Args:
+            to: ``"numpy"``, ``"pandas"`` or ``"polars"``.
+        """
+        self.to = to
+
+    def set_output(self, *, transform: str | None = None) -> TableConverter:
+        """Accept ``set_output`` from a pipeline and keep ``to``.
+
+        Args:
+            transform: Ignored.
+
+        Returns:
+            This converter.
+        """
+        return self
+
+    def _fit(self, table: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
+        """Check that ``to`` is one of the accepted values.
+
+        Args:
+            table: The input table.
+            y: Ignored.
+
+        Raises:
+            ValueError: If ``to`` is not one of the accepted values.
+        """
+        if self.to not in CONVERTER_TARGETS:
+            raise ValueError(
+                f"TableConverter(to={self.to!r}) is not supported; choose from "
+                f"{list(CONVERTER_TARGETS)}",
+            )
+
+    def _convert_output(self, table: nw.DataFrame) -> Any:
+        """Return ``table`` as ``to``.
+
+        Args:
+            table: The table.
+
+        Returns:
+            A numpy array, a pandas DataFrame or a polars DataFrame.
+        """
+        return convert_table(table, self.to)
 
 
 def convert_table(table: nw.DataFrame | nw.LazyFrame, convert_to: ConvertTo) -> Any:

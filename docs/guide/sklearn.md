@@ -220,17 +220,17 @@ names.
 
 ### Any estimator, any backend
 
-A group gets numpy unless its estimator has `NarwhalsMixin`. Mix it in to
+A group gets numpy unless its estimator has `ConvertInputMixin`. Mix it in to
 give an estimator a table narwhals can read, from any backend, converted to
 `convert_to`:
 
 ```python
 from sklearn.preprocessing import TargetEncoder
 
-from tusk.sklearn import NarwhalsMixin
+from tusk.sklearn import ConvertInputMixin
 
 
-class PandasTargetEncoder(NarwhalsMixin, TargetEncoder):
+class PandasTargetEncoder(ConvertInputMixin, TargetEncoder):
     convert_to = "pandas"
 
 
@@ -239,15 +239,17 @@ TableEncoder(string=PandasTargetEncoder())
 
 `convert_to` is `"numpy"`, `"pandas"`, `"polars"` or `"narwhals"`.
 
-`NarwhalsEncoder` on its own passes every column through unchanged.
-`set_output` sets what it returns. Use it to hand a feature matrix from any
+`TableConverter` passes every column through unchanged and returns numpy,
+pandas or polars, as `to` sets. Use it to hand a feature matrix from any
 backend to scikit-learn:
 
 ```python
-from tusk.sklearn import NarwhalsEncoder
+from tusk.sklearn import TableConverter
 
-NarwhalsEncoder().set_output(transform="pandas")
+TableConverter(to="pandas")
 ```
+
+`set_output` does not change what `TableConverter` returns.
 
 ## Table backends
 
@@ -264,7 +266,7 @@ not include it. Two cases need it:
 
 - `ColumnTransformer` cannot read pyarrow tables, which is what a duckdb
   database collects to. Use `"pandas"` or `"polars"` in that case.
-  `TableEncoder` and `NarwhalsEncoder` read every backend.
+  `TableEncoder` and `TableConverter` read every backend.
 - scikit-learn reads polars DataFrames through a dataframe interchange
   protocol that polars deprecated, so fitting one emits harmless
   `DeprecationWarning`s. `"pandas"` avoids them.

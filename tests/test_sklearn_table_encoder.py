@@ -15,12 +15,12 @@ from sklearn.preprocessing import StandardScaler, TargetEncoder
 
 import tusk
 from tusk.sklearn import (
+    ConvertInputMixin,
     DFSSelectorTransformer,
-    NarwhalsEncoder,
-    NarwhalsMixin,
     TableEncoder,
     TfIdfSvdEncoder,
 )
+from tusk.sklearn._narwhals import BaseEncoder
 
 EVERY_DTYPE = pl.DataFrame(
     {
@@ -53,7 +53,7 @@ class TypeRecorder(TransformerMixin, BaseEstimator):
         return np.asarray(input_features, dtype=object)
 
 
-class PolarsRecorder(NarwhalsMixin, TypeRecorder):
+class PolarsRecorder(ConvertInputMixin, TypeRecorder):
     convert_to = "polars"
 
 
@@ -254,8 +254,8 @@ def test_fit_transform_cross_fits_value_based_groups():
     )
 
 
-class DoublingEncoder(NarwhalsEncoder):
-    """A NarwhalsEncoder subclass that overrides _transform, not _fits_on_schema."""
+class DoublingEncoder(BaseEncoder):
+    """A BaseEncoder subclass that overrides _transform, not _fits_on_schema."""
 
     def _transform(self, table):
         return table.select(
