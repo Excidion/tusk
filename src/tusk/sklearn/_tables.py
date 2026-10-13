@@ -9,8 +9,6 @@ table's backend.
 from __future__ import annotations
 
 import contextlib
-import sys
-import warnings
 from collections.abc import Iterable, Iterator
 from datetime import datetime
 from typing import Any
@@ -130,8 +128,7 @@ def backend_hint(table: Any) -> Iterator[None]:
 
     Raises:
         Exception: Whatever the wrapped block raised, unchanged, with a
-            backend hint attached as a note. On Python 3.10, the hint is
-            issued as a warning instead.
+            backend hint attached as a note.
     """
     try:
         yield
@@ -142,8 +139,5 @@ def backend_hint(table: Any) -> Iterator[None]:
             f"the feature matrix was collected as {name}; if this pipeline "
             f'needs pandas, set output_backend="pandas"'
         )
-        if sys.version_info >= (3, 11):
-            exc.add_note(hint)
-        else:
-            warnings.warn(hint, UserWarning, stacklevel=2)
+        exc.add_note(hint)
         raise

@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["narwhals>=2.24"]
 
 [project.urls]
@@ -55,7 +55,7 @@ validation = [
     "setuptools<81",
 ]
 benchmark = [
-    "relbench>=2.1",
+    "relbench>=3",
 ]
 docs = [
     "mkdocstrings[python]>=1.0.6",

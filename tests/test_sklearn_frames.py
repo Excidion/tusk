@@ -51,36 +51,20 @@ def test_read_keys_rejects_a_duplicate_key():
 
 
 def test_backend_hint_reraises_the_original_exception_type():
-    import warnings
-
     from tusk.sklearn._tables import backend_hint
 
-    # Below 3.11, backend_hint warns instead of using add_note (no such
-    # method exists yet); catch_warnings keeps that expected UserWarning
-    # from leaking into the test run's output on those interpreters.
-    with warnings.catch_warnings(record=True):
-        warnings.simplefilter("always")
-        with pytest.raises(ValueError, match="boom"):
-            with backend_hint(pl.DataFrame({"a": [1]})):
-                raise ValueError("boom")
+    with pytest.raises(ValueError, match="boom"):
+        with backend_hint(pl.DataFrame({"a": [1]})):
+            raise ValueError("boom")
 
 
 def test_backend_hint_names_the_backend_and_the_fix():
-    import warnings
-
     from tusk.sklearn._tables import backend_hint
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        try:
-            with backend_hint(pl.DataFrame({"a": [1]})):
-                raise ValueError("boom")
-        except ValueError as exc:
-            notes = " ".join(getattr(exc, "__notes__", []))
-            warned = " ".join(str(w.message) for w in caught)
-    # 3.11+ carries the hint as a note on the exception; below that, as the
-    # warning caught above -- exactly one of the two is populated.
-    hint = notes or warned
+    with pytest.raises(ValueError) as caught:
+        with backend_hint(pl.DataFrame({"a": [1]})):
+            raise ValueError("boom")
+    hint = " ".join(caught.value.__notes__)
     assert "polars" in hint.lower()
     assert "output_backend" in hint
 
