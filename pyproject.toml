@@ -53,6 +53,8 @@ validation = [
     "featuretools>=1.31",
     # featuretools imports pkg_resources, which setuptools 81 removed.
     "setuptools<81",
+    # featuretools' woodwork loses its schema on pandas 3 tables.
+    "pandas<3",
 ]
 benchmark = [
     "relbench>=3",
