@@ -20,18 +20,7 @@ nav = [
         "guide/featuretools.md",
         "guide/primitive-coverage.md",
     ] },
-    { "API reference" = [
-        "api/index.md",
-        "api/tusk.md",
-        "api/database.md",
-        "api/plotting.md",
-        "api/validation.md",
-        "api/sklearn.md",
-        "api/primitives.md",
-        "api/features.md",
-        "api/dtypes.md",
-        "api/exceptions.md",
-    ] },
+    { "API reference" = ["api/index.md"] },
 ]
 
 [[project.extra.social]]
@@ -65,6 +54,14 @@ features = [
 logo = "lucide/columns-3-cog"
 repo = "fontawesome/brands/github"
 
+[project.plugins.api-autonav]
+modules = ["src/tusk"]
+nav_section_title = "API reference"
+api_root_uri = "api"
+
+[project.plugins.api-autonav.module_options.'^tusk(\.primitives)?$']
+members = false
+
 [project.plugins.mkdocstrings.handlers.python]
 paths = ["src"]
 
@@ -76,7 +73,8 @@ show_root_full_path = false
 show_symbol_type_heading = true
 show_symbol_type_toc = true
 show_if_no_docstring = true
-members_order = "source"
+members_order = ["__all__", "source"]
+group_by_category = false
 separate_signature = true
 signature_crossrefs = true
 merge_init_into_class = true

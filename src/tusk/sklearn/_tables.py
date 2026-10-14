@@ -1,8 +1,8 @@
 """Key handling for scikit-learn.
 
-:func:`read_keys` normalizes the primary key ``X`` to a list.
-:func:`check_keys_are_visible` rejects keys the target table has no row for.
-:func:`backend_hint` annotates exceptions from a user's pipeline with the
+`read_keys` normalizes the primary key `X` to a list.
+`check_keys_are_visible` rejects keys the target table has no row for.
+`backend_hint` annotates exceptions from a user's pipeline with the
 table's backend.
 """
 
@@ -20,7 +20,7 @@ from tusk.exceptions import SchemaError
 
 
 def read_keys(X: Iterable[Any]) -> list[Any]:
-    """Return the primary-key values in ``X`` as a list, in the order given.
+    """Return the primary-key values in `X` as a list, in the order given.
 
     The order given becomes the feature matrix's row order.
 
@@ -32,9 +32,9 @@ def read_keys(X: Iterable[Any]) -> list[Any]:
         The key values.
 
     Raises:
-        TypeError: If ``X`` is not iterable. If its elements are not single
+        TypeError: If `X` is not iterable. If its elements are not single
             values.
-        SchemaError: If ``X`` repeats a key.
+        SchemaError: If `X` repeats a key.
     """
     try:
         keys = list(X)
@@ -63,11 +63,11 @@ def check_keys_are_visible(
     keys: list[Any],
     cutoff_time: datetime | None,
 ) -> None:
-    """Fail if the target table has no row for a key at ``cutoff_time``.
+    """Fail if the target table has no row for a key at `cutoff_time`.
 
     It reads the target's primary key alone. The function reports a stale
     key before it computes the feature matrix. Raises
-    :class:`~tusk.exceptions.SchemaError`, from :func:`_reject_missing_keys`,
+    [`SchemaError`][tusk.exceptions.SchemaError], from `_reject_missing_keys`,
     if a key names no visible row.
 
     Args:
@@ -112,8 +112,8 @@ def backend_hint(table: Any) -> Iterator[None]:
     """Attach a backend hint to whatever the user's pipeline raises.
 
     Many sklearn transformers reject non-pandas tables in ways that read as
-    unrelated type errors -- ``ColumnTransformer`` on pyarrow gives
-    ``TypeError: Index must either be string or integer``. The hint names the
+    unrelated type errors -- `ColumnTransformer` on pyarrow gives
+    `TypeError: Index must either be string or integer`. The hint names the
     backend and the fix.
 
     This context manager re-raises the exception **unchanged**, with its
@@ -124,7 +124,7 @@ def backend_hint(table: Any) -> Iterator[None]:
             backend.
 
     Yields:
-        None: Control returns to the caller's ``with`` block.
+        None: Control returns to the caller's `with` block.
 
     Raises:
         Exception: Whatever the wrapped block raised, unchanged, with a

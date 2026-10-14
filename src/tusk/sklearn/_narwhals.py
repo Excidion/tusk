@@ -1,8 +1,9 @@
 """Estimators that accept any table narwhals can read.
 
-:class:`ConvertInputMixin` makes a scikit-learn estimator accept such a table.
-:class:`BaseEncoder` is the base of the tusk encoders.
-:class:`TableConverter` converts a table to numpy, pandas or polars.
+[`ConvertInputMixin`][tusk.sklearn.ConvertInputMixin] makes a scikit-learn
+estimator accept such a table. `BaseEncoder` is the base of the tusk encoders.
+[`TableConverter`][tusk.sklearn.TableConverter] converts a table to numpy,
+pandas or polars.
 """
 
 from __future__ import annotations
@@ -27,12 +28,13 @@ class ConvertInputMixin:
     """A mixin that lets an estimator accept any table narwhals can read.
 
     Mix it in before the estimator's class. The class attribute
-    ``convert_to`` sets what the estimator receives: ``"numpy"``,
-    ``"pandas"``, ``"polars"`` or ``"narwhals"``. Input that is not a table,
+    `convert_to` sets what the estimator receives: `"numpy"`,
+    `"pandas"`, `"polars"` or `"narwhals"`. Input that is not a table,
     such as a numpy array, reaches the estimator unchanged.
 
-    Fitting sets ``narwhals_columns_``, the column names of the table.
-    :meth:`get_feature_names_out` uses them when it is given no names.
+    Fitting sets `narwhals_columns_`, the column names of the table.
+    [`get_feature_names_out`][tusk.sklearn.ConvertInputMixin.get_feature_names_out]
+    uses them when it is given no names.
 
     Attributes:
         convert_to: What the estimator receives.
@@ -41,7 +43,7 @@ class ConvertInputMixin:
     convert_to: ClassVar[ConvertTo] = "numpy"
 
     def fit(self, X: Any, y: Any = None, **params: Any) -> Any:
-        """Fit the estimator on ``X`` converted to ``convert_to``.
+        """Fit the estimator on `X` converted to `convert_to`.
 
         Args:
             X: A table narwhals can read, eager or lazy.
@@ -55,7 +57,7 @@ class ConvertInputMixin:
         return super().fit(self._convert(X), y, **params)  # ty: ignore[unresolved-attribute]
 
     def transform(self, X: Any, **params: Any) -> Any:
-        """Transform ``X`` converted to ``convert_to``.
+        """Transform `X` converted to `convert_to`.
 
         Args:
             X: A table narwhals can read, eager or lazy.
@@ -67,7 +69,7 @@ class ConvertInputMixin:
         return super().transform(self._convert(X), **params)  # ty: ignore[unresolved-attribute]
 
     def fit_transform(self, X: Any, y: Any = None, **params: Any) -> Any:
-        """Fit and transform ``X`` converted to ``convert_to``.
+        """Fit and transform `X` converted to `convert_to`.
 
         Args:
             X: A table narwhals can read, eager or lazy.
@@ -85,7 +87,7 @@ class ConvertInputMixin:
 
         Args:
             input_features: Input column names. None uses
-                ``narwhals_columns_``.
+                `narwhals_columns_`.
 
         Returns:
             The output names.
@@ -95,7 +97,7 @@ class ConvertInputMixin:
         return super().get_feature_names_out(input_features)  # ty: ignore[unresolved-attribute]
 
     def _record_columns(self, X: Any) -> None:
-        """Store the column names of ``X`` if it is a table.
+        """Store the column names of `X` if it is a table.
 
         Args:
             X: The input to fit.
@@ -107,13 +109,13 @@ class ConvertInputMixin:
             self.narwhals_columns_ = list(table.collect_schema().names())
 
     def _convert(self, X: Any) -> Any:
-        """Return ``X`` as ``convert_to``.
+        """Return `X` as `convert_to`.
 
         Args:
             X: The input.
 
         Returns:
-            The converted table, or ``X`` unchanged if it is not a table.
+            The converted table, or `X` unchanged if it is not a table.
         """
         # TransformerMixin.fit_transform calls fit again on the converted
         # input, which is no table any more.
@@ -131,27 +133,27 @@ class BaseEncoder(
 ):
     """An encoder that works on narwhals tables, on any backend.
 
-    ``set_output`` sets what it returns: numpy, pandas or polars.
+    `set_output` sets what it returns: numpy, pandas or polars.
 
-    :meth:`fit` reads the schema and does not collect. It sets
-    ``schema_in_``, column name to narwhals dtype, ``feature_names_in_`` and
-    ``n_features_in_``. Subclasses override :meth:`_fit`,
-    :meth:`_expressions`, :meth:`_output_names` and, if they need values,
-    :meth:`_transform`.
+    `fit` reads the schema and does not collect. It sets
+    `schema_in_`, column name to narwhals dtype, `feature_names_in_` and
+    `n_features_in_`. Subclasses override `_fit`,
+    `_expressions`, `_output_names` and, if they need values,
+    `_transform`.
 
     Attributes:
-        convert_to: ``"narwhals"``. The encoder receives a narwhals table.
+        convert_to: `"narwhals"`. The encoder receives a narwhals table.
     """
 
     convert_to: ClassVar[ConvertTo] = "narwhals"
     _fits_on_schema: ClassVar[bool] = True
 
     def fit(self, X: Any, y: Any = None, **params: Any) -> BaseEncoder:
-        """Read the schema of ``X`` and fit the encoder.
+        """Read the schema of `X` and fit the encoder.
 
         Args:
             X: A table narwhals can read, eager or lazy.
-            y: Targets, passed to :meth:`_fit`.
+            y: Targets, passed to `_fit`.
             **params: Ignored. Present for the scikit-learn signature.
 
         Returns:
@@ -162,7 +164,7 @@ class BaseEncoder(
         return self
 
     def _read_schema(self, X: Any) -> nw.DataFrame | nw.LazyFrame:
-        """Read ``X`` as a table and set the schema attributes from it.
+        """Read `X` as a table and set the schema attributes from it.
 
         Args:
             X: A table narwhals can read, eager or lazy.
@@ -177,7 +179,7 @@ class BaseEncoder(
         return table
 
     def transform(self, X: Any, **params: Any) -> Any:
-        """Encode ``X`` and return it as ``set_output`` asks.
+        """Encode `X` and return it as `set_output` asks.
 
         Args:
             X: A table narwhals can read, eager or lazy, with the columns and
@@ -193,11 +195,11 @@ class BaseEncoder(
         return self._convert_output(self._transform(table).lazy().collect())
 
     def fit_transform(self, X: Any, y: Any = None, **params: Any) -> Any:
-        """Fit on ``X``, then encode it.
+        """Fit on `X`, then encode it.
 
         Args:
             X: A table narwhals can read, eager or lazy.
-            y: Targets, passed to :meth:`fit`.
+            y: Targets, passed to `fit`.
             **params: Ignored. Present for the scikit-learn signature.
 
         Returns:
@@ -206,17 +208,17 @@ class BaseEncoder(
         return self.fit(X, y).transform(X)
 
     def set_output(self, *, transform: str | None = None) -> BaseEncoder:
-        """Set what :meth:`transform` returns.
+        """Set what `transform` returns.
 
         Args:
-            transform: ``"default"`` for numpy, ``"pandas"`` or ``"polars"``.
+            transform: `"default"` for numpy, `"pandas"` or `"polars"`.
                 None leaves the setting unchanged.
 
         Returns:
             This encoder.
 
         Raises:
-            ValueError: If ``transform`` is not one of the accepted values.
+            ValueError: If `transform` is not one of the accepted values.
         """
         if transform is None:
             return self
@@ -275,12 +277,12 @@ class BaseEncoder(
             table: The input table, eager or lazy.
 
         Returns:
-            The encoded table. The default selects :meth:`_expressions`.
+            The encoded table. The default selects `_expressions`.
         """
         return table.select(self._expressions())
 
     def _convert_output(self, table: nw.DataFrame) -> Any:
-        """Return ``table`` as ``set_output`` asks.
+        """Return `table` as `set_output` asks.
 
         Args:
             table: The encoded table.
@@ -301,20 +303,20 @@ class BaseEncoder(
 class TableConverter(BaseEncoder):
     """A step that converts a table from any backend to numpy, pandas or polars.
 
-    It passes every column through unchanged. ``to`` sets what it returns,
-    and ``set_output`` does not change it.
+    It passes every column through unchanged. `to` sets what it returns,
+    and `set_output` does not change it.
     """
 
     def __init__(self, to: ConverterTarget = "numpy") -> None:
         """Set what the converter returns.
 
         Args:
-            to: ``"numpy"``, ``"pandas"`` or ``"polars"``.
+            to: `"numpy"`, `"pandas"` or `"polars"`.
         """
         self.to = to
 
     def set_output(self, *, transform: str | None = None) -> TableConverter:
-        """Accept ``set_output`` from a pipeline and keep ``to``.
+        """Accept `set_output` from a pipeline and keep `to`.
 
         Args:
             transform: Ignored.
@@ -325,14 +327,14 @@ class TableConverter(BaseEncoder):
         return self
 
     def _fit(self, table: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
-        """Check that ``to`` is one of the accepted values.
+        """Check that `to` is one of the accepted values.
 
         Args:
             table: The input table.
             y: Ignored.
 
         Raises:
-            ValueError: If ``to`` is not one of the accepted values.
+            ValueError: If `to` is not one of the accepted values.
         """
         if self.to not in CONVERTER_TARGETS:
             raise ValueError(
@@ -341,7 +343,7 @@ class TableConverter(BaseEncoder):
             )
 
     def _convert_output(self, table: nw.DataFrame) -> Any:
-        """Return ``table`` as ``to``.
+        """Return `table` as `to`.
 
         Args:
             table: The table.
@@ -353,14 +355,14 @@ class TableConverter(BaseEncoder):
 
 
 def convert_table(table: nw.DataFrame | nw.LazyFrame, convert_to: ConvertTo) -> Any:
-    """Return ``table`` as ``convert_to``.
+    """Return `table` as `convert_to`.
 
     Args:
         table: The narwhals table.
         convert_to: What to convert to.
 
     Returns:
-        The table itself for ``"narwhals"``, else a numpy array, a pandas
+        The table itself for `"narwhals"`, else a numpy array, a pandas
         DataFrame or a polars DataFrame.
     """
     if convert_to == "narwhals":
@@ -372,12 +374,12 @@ def convert_table(table: nw.DataFrame | nw.LazyFrame, convert_to: ConvertTo) -> 
 
 
 def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
-    """Return ``table`` as numpy, with a null ``Categorical`` value as ``None``.
+    """Return `table` as numpy, with a null `Categorical` value as `None`.
 
-    A pyarrow dictionary column's own ``to_numpy`` fills a null with a
+    A pyarrow dictionary column's own `to_numpy` fills a null with a
     category value, and a pandas category casts a null to the string
-    ``"nan"``. Casting ``Categorical`` to ``String`` and setting the null
-    positions to ``None`` afterwards gives every backend the same array.
+    `"nan"`. Casting `Categorical` to `String` and setting the null
+    positions to `None` afterwards gives every backend the same array.
 
     Args:
         table: The eager table.
@@ -401,7 +403,7 @@ def table_to_numpy(table: nw.DataFrame) -> np.ndarray:
 def check_schema_equality(
     fitted: dict[str, nw.dtypes.DType], given: dict[str, nw.dtypes.DType]
 ) -> None:
-    """Raise if ``given`` has other columns or dtypes than ``fitted``.
+    """Raise if `given` has other columns or dtypes than `fitted`.
 
     Args:
         fitted: The schema seen at fit.

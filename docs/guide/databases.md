@@ -79,7 +79,7 @@ this. When the assertion is false, tusk does not fail. A duplicated key
 multiplies the rows of every join that lands on the table. `COUNT`, `SUM`
 and `MEAN` then come back inflated by a factor you cannot see.
 
-[`validate()`][tusk.Database.validate] runs real queries to check that the
+[`validate()`][tusk.database.Database.validate] runs real queries to check that the
 declarations hold:
 ```python
 db.validate()

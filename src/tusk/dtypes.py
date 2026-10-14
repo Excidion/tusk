@@ -16,17 +16,18 @@ import narwhals as nw
 class DtypeFamily(Enum):
     """A group of narwhals dtypes that a primitive can accept.
 
-    ``STRING`` and ``CATEGORICAL`` are disjoint. A ``String`` column is not
-    a ``Categorical`` or ``Enum`` one, even though all three hold
-    text-like values. :class:`~tusk.exceptions.CategoricalDtypeWarning`
-    reports this distinction.
+    `STRING` and `CATEGORICAL` are disjoint. A `String` column is not
+    a `Categorical` or `Enum` one, even though all three hold
+    text-like values.
+    [`CategoricalDtypeWarning`][tusk.exceptions.CategoricalDtypeWarning] reports this
+    distinction.
 
-    ``TEMPORAL`` matches every dtype the narrower temporal families match,
-    plus every dtype that is temporal. ``HAS_DATE`` matches ``Datetime``
-    and ``Date``, the dtypes a calendar position can be read from.
-    ``HAS_TIME`` matches ``Datetime`` and ``Time``, the dtypes an hour or
-    minute can be read from. Both families match ``Datetime``.
-    ``DURATION`` is elapsed time. Neither ``HAS_DATE`` nor ``HAS_TIME``
+    `TEMPORAL` matches every dtype the narrower temporal families match,
+    plus every dtype that is temporal. `HAS_DATE` matches `Datetime`
+    and `Date`, the dtypes a calendar position can be read from.
+    `HAS_TIME` matches `Datetime` and `Time`, the dtypes an hour or
+    minute can be read from. Both families match `Datetime`.
+    `DURATION` is elapsed time. Neither `HAS_DATE` nor `HAS_TIME`
     matches it, even though it is temporal.
     """
 

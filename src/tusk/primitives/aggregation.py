@@ -875,7 +875,7 @@ class CountBelowMean(GroupRelativeAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class CountInsideNthStd(GroupRelativeAggregationPrimitive):
-    """Number of non-null values within ``n`` standard deviations of the group's mean.
+    """Number of non-null values within `n` standard deviations of the group's mean.
 
     The standard deviation is the population one, over the group's non-null
     values.
@@ -899,12 +899,12 @@ class CountInsideNthStd(GroupRelativeAggregationPrimitive):
     n: float = 1
 
     def __post_init__(self) -> None:
-        """Reject a negative ``n`` with a :class:`~tusk.exceptions.PrimitiveError`."""
+        """Reject a negative `n` with a `PrimitiveError`."""
         _require_non_negative_width(self.name, self.n)
 
     @property
     def stem(self) -> str:
-        """The name with ``n`` spelled in, e.g. ``COUNT_INSIDE_1_STD``."""
+        """The name with `n` spelled in, e.g. `COUNT_INSIDE_1_STD`."""
         return f"COUNT_INSIDE_{_spell_width(self.n)}_STD"
 
     def compare_with_group(self, expr: nw.Expr) -> nw.Expr:
@@ -933,7 +933,7 @@ class CountInsideNthStd(GroupRelativeAggregationPrimitive):
 @register
 @dataclass(frozen=True)
 class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
-    """Number of non-null values over ``n`` standard deviations from the group's mean.
+    """Number of non-null values over `n` standard deviations from the group's mean.
 
     The standard deviation is the population one, over the group's non-null
     values.
@@ -957,12 +957,12 @@ class CountOutsideNthStd(GroupRelativeAggregationPrimitive):
     n: float = 1
 
     def __post_init__(self) -> None:
-        """Reject a negative ``n`` with a :class:`~tusk.exceptions.PrimitiveError`."""
+        """Reject a negative `n` with a `PrimitiveError`."""
         _require_non_negative_width(self.name, self.n)
 
     @property
     def stem(self) -> str:
-        """The name with ``n`` spelled in, e.g. ``COUNT_OUTSIDE_1_STD``."""
+        """The name with `n` spelled in, e.g. `COUNT_OUTSIDE_1_STD`."""
         return f"COUNT_OUTSIDE_{_spell_width(self.n)}_STD"
 
     def compare_with_group(self, expr: nw.Expr) -> nw.Expr:
@@ -1013,7 +1013,7 @@ def _measure_distance_from_mean(expr: nw.Expr) -> nw.Expr:
 
 
 def _measure_band_width(expr: nw.Expr, n: float) -> nw.Expr:
-    """Build ``n`` population standard deviations of the group.
+    """Build `n` population standard deviations of the group.
 
     Args:
         expr: The numeric column.
@@ -1032,8 +1032,8 @@ def _spell_width(n: float) -> str:
         n: How many standard deviations the band reaches.
 
     Returns:
-        A whole ``n`` without its decimals, e.g. ``3``. Otherwise, the
-        decimal point becomes an underscore, e.g. ``1_5``.
+        A whole `n` without its decimals, e.g. `3`. Otherwise, the
+        decimal point becomes an underscore, e.g. `1_5`.
     """
     spelled = str(int(n)) if float(n).is_integer() else str(n)
     return spelled.replace(".", "_")
@@ -1047,7 +1047,7 @@ def _require_non_negative_width(name: str, n: float) -> None:
         n: How many standard deviations the band reaches.
 
     Raises:
-        PrimitiveError: If ``n`` is negative.
+        PrimitiveError: If `n` is negative.
     """
     if n < 0:
         raise PrimitiveError(f"primitive {name!r} needs n >= 0, got n={n}")

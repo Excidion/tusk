@@ -1,9 +1,13 @@
 """Encoders for the columns of one narwhals dtype.
 
-:class:`EnumOrdinalEncoder` encodes ``Enum`` columns as codes. :class:`DateEncoder`,
-:class:`TimeEncoder`, :class:`DatetimeEncoder` and :class:`DurationEncoder`
-encode temporal columns as numeric components. :class:`TfIdfSvdEncoder`
-encodes ``String`` columns as coordinates of their character n-grams.
+[`EnumOrdinalEncoder`][tusk.sklearn.EnumOrdinalEncoder] encodes
+`Enum` columns as codes. [`DateEncoder`][tusk.sklearn.DateEncoder],
+[`TimeEncoder`][tusk.sklearn.TimeEncoder],
+[`DatetimeEncoder`][tusk.sklearn.DatetimeEncoder] and
+[`DurationEncoder`][tusk.sklearn.DurationEncoder] encode temporal
+columns as numeric components.
+[`TfIdfSvdEncoder`][tusk.sklearn.TfIdfSvdEncoder] encodes `String`
+columns as coordinates of their character n-grams.
 """
 
 from __future__ import annotations
@@ -38,14 +42,14 @@ DURATION_COMPONENTS = (
 
 
 class EnumOrdinalEncoder(BaseEncoder):
-    """An encoder of ``Enum`` columns as their position in the category order.
+    """An encoder of `Enum` columns as their position in the category order.
 
     The categories come from the dtype, so fitting reads no rows. A null
     becomes NaN. Output name: the input name.
     """
 
     def _fit(self, table: nw.DataFrame | nw.LazyFrame, y: Any) -> None:
-        """Check that every column is an ``Enum``.
+        """Check that every column is an `Enum`.
 
         Args:
             table: The input table.
@@ -68,13 +72,13 @@ class EnumOrdinalEncoder(BaseEncoder):
 class TemporalEncoder(BaseEncoder):
     """The base of the encoders of temporal columns as numeric components.
 
-    A subclass sets ``accepted_dtype`` and ``allowed_components``, and takes
-    ``components`` in its ``__init__``. Each component is a method of
-    narwhals' ``dt`` namespace. Output name: ``{column}_{component}``.
+    A subclass sets `accepted_dtype` and `allowed_components`, and takes
+    `components` in its `__init__`. Each component is a method of
+    narwhals' `dt` namespace. Output name: `{column}_{component}`.
 
     Attributes:
         accepted_dtype: The dtype class the encoder encodes.
-        allowed_components: The components ``components`` may name.
+        allowed_components: The components `components` may name.
         components: The components to compute, in output order.
     """
 
@@ -90,8 +94,8 @@ class TemporalEncoder(BaseEncoder):
             y: Ignored.
 
         Raises:
-            TypeError: If ``components`` is a string.
-            ValueError: If a component is not in ``allowed_components``.
+            TypeError: If `components` is a string.
+            ValueError: If a component is not in `allowed_components`.
         """
         if isinstance(self.components, str):
             raise TypeError(
@@ -120,7 +124,7 @@ class TemporalEncoder(BaseEncoder):
         ]
 
     def _output_names(self) -> list[str]:
-        """Return ``{column}_{component}``, column by column.
+        """Return `{column}_{component}`, column by column.
 
         Returns:
             The names.
@@ -133,12 +137,12 @@ class TemporalEncoder(BaseEncoder):
 
 
 class DateEncoder(TemporalEncoder):
-    """An encoder of ``Date`` columns as calendar components.
+    """An encoder of `Date` columns as calendar components.
 
     Attributes:
-        accepted_dtype: ``Date``.
-        allowed_components: ``year``, ``month``, ``day``, ``weekday``,
-            ``ordinal_day`` and ``timestamp``.
+        accepted_dtype: `Date`.
+        allowed_components: `year`, `month`, `day`, `weekday`,
+            `ordinal_day` and `timestamp`.
     """
 
     accepted_dtype = nw.Date
@@ -148,19 +152,19 @@ class DateEncoder(TemporalEncoder):
         """Configure the components.
 
         Args:
-            components: Any of ``year``, ``month``, ``day``, ``weekday``,
-                ``ordinal_day`` and ``timestamp``.
+            components: Any of `year`, `month`, `day`, `weekday`,
+                `ordinal_day` and `timestamp`.
         """
         self.components = components
 
 
 class TimeEncoder(TemporalEncoder):
-    """An encoder of ``Time`` columns as clock components.
+    """An encoder of `Time` columns as clock components.
 
     Attributes:
-        accepted_dtype: ``Time``.
-        allowed_components: ``hour``, ``minute``, ``second``,
-            ``millisecond``, ``microsecond`` and ``nanosecond``.
+        accepted_dtype: `Time`.
+        allowed_components: `hour`, `minute`, `second`,
+            `millisecond`, `microsecond` and `nanosecond`.
     """
 
     accepted_dtype = nw.Time
@@ -170,19 +174,20 @@ class TimeEncoder(TemporalEncoder):
         """Configure the components.
 
         Args:
-            components: Any of ``hour``, ``minute``, ``second``,
-                ``millisecond``, ``microsecond`` and ``nanosecond``.
+            components: Any of `hour`, `minute`, `second`,
+                `millisecond`, `microsecond` and `nanosecond`.
         """
         self.components = components
 
 
 class DatetimeEncoder(TemporalEncoder):
-    """An encoder of ``Datetime`` columns as calendar and clock components.
+    """An encoder of `Datetime` columns as calendar and clock components.
 
     Attributes:
-        accepted_dtype: ``Datetime``.
-        allowed_components: The components of :class:`DateEncoder` and
-            :class:`TimeEncoder`.
+        accepted_dtype: `Datetime`.
+        allowed_components: The components of
+            [`DateEncoder`][tusk.sklearn.DateEncoder] and
+            [`TimeEncoder`][tusk.sklearn.TimeEncoder].
     """
 
     accepted_dtype = nw.Datetime
@@ -194,20 +199,21 @@ class DatetimeEncoder(TemporalEncoder):
         """Configure the components.
 
         Args:
-            components: Any component of :class:`DateEncoder` or
-                :class:`TimeEncoder`.
+            components: Any component of
+                [`DateEncoder`][tusk.sklearn.DateEncoder] or
+                [`TimeEncoder`][tusk.sklearn.TimeEncoder].
         """
         self.components = components
 
 
 class DurationEncoder(TemporalEncoder):
-    """An encoder of ``Duration`` columns as their total length.
+    """An encoder of `Duration` columns as their total length.
 
     Attributes:
-        accepted_dtype: ``Duration``.
-        allowed_components: ``total_minutes``, ``total_seconds``,
-            ``total_milliseconds``, ``total_microseconds`` and
-            ``total_nanoseconds``.
+        accepted_dtype: `Duration`.
+        allowed_components: `total_minutes`, `total_seconds`,
+            `total_milliseconds`, `total_microseconds` and
+            `total_nanoseconds`.
     """
 
     accepted_dtype = nw.Duration
@@ -217,23 +223,23 @@ class DurationEncoder(TemporalEncoder):
         """Configure the components.
 
         Args:
-            components: Any of ``total_minutes``, ``total_seconds``,
-                ``total_milliseconds``, ``total_microseconds`` and
-                ``total_nanoseconds``.
+            components: Any of `total_minutes`, `total_seconds`,
+                `total_milliseconds`, `total_microseconds` and
+                `total_nanoseconds`.
         """
         self.components = components
 
 
 class TfIdfSvdEncoder(BaseEncoder):
-    """An encoder of ``String`` columns as coordinates of their character n-grams.
+    """An encoder of `String` columns as coordinates of their character n-grams.
 
     Each column is encoded separately. A value becomes a TF-IDF vector over
-    the character 3- and 4-grams seen at fit. ``TruncatedSVD`` reduces that
-    vector to ``n_components`` coordinates. A null is encoded as ``""``. Zero
+    the character 3- and 4-grams seen at fit. `TruncatedSVD` reduces that
+    vector to `n_components` coordinates. A null is encoded as `""`. Zero
     columns fill the output when the column has too few n-grams or rows for
-    ``n_components``. Output name: ``{column}_svd_{i}``.
+    `n_components`. Output name: `{column}_svd_{i}`.
 
-    Fitting sets ``vectorizers_``, column name to its fitted TF-IDF and SVD
+    Fitting sets `vectorizers_`, column name to its fitted TF-IDF and SVD
     steps.
     """
 
@@ -262,7 +268,7 @@ class TfIdfSvdEncoder(BaseEncoder):
         }
 
     def _output_names(self) -> list[str]:
-        """Return ``{column}_svd_{i}``, column by column.
+        """Return `{column}_svd_{i}`, column by column.
 
         Returns:
             The names.
@@ -322,14 +328,14 @@ class TfIdfSvdEncoder(BaseEncoder):
         fitted: tuple[TfidfVectorizer, TruncatedSVD | None] | None,
         values: list[str],
     ) -> np.ndarray:
-        """Encode one column's values, padded to ``n_components`` columns.
+        """Encode one column's values, padded to `n_components` columns.
 
         Args:
-            fitted: The steps from :meth:`_fit_column`.
+            fitted: The steps from `_fit_column`.
             values: The column's values.
 
         Returns:
-            An array of shape ``(len(values), n_components)``.
+            An array of shape `(len(values), n_components)`.
         """
         if fitted is None:
             return np.zeros((len(values), self.n_components))
@@ -347,7 +353,7 @@ def reject_other_dtypes(
     accepted: type[nw.dtypes.DType],
     owner: str,
 ) -> None:
-    """Raise if a column is not of the ``accepted`` dtype.
+    """Raise if a column is not of the `accepted` dtype.
 
     Args:
         schema: Column name to dtype.
@@ -366,14 +372,14 @@ def reject_other_dtypes(
 
 
 def code_expression(name: str, categories: list[str]) -> nw.Expr:
-    """Return the position of each value of ``name`` in ``categories``.
+    """Return the position of each value of `name` in `categories`.
 
     Args:
         name: The column name.
         categories: The categories, in order.
 
     Returns:
-        A ``Float64`` expression, null where the value is null.
+        A `Float64` expression, null where the value is null.
     """
     # default=None: pandas casts a null category to the string "nan", which
     # replace_strict would otherwise reject as a value with no code.
@@ -390,7 +396,7 @@ def code_expression(name: str, categories: list[str]) -> nw.Expr:
 
 
 def read_strings(table: nw.DataFrame, name: str) -> list[str]:
-    """Return the values of column ``name``, with null as ``""``.
+    """Return the values of column `name`, with null as `""`.
 
     Args:
         table: The table.

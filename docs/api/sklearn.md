@@ -1,3 +1,0 @@
-# scikit-learn
-
-::: tusk.sklearn

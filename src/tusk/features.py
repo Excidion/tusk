@@ -31,21 +31,21 @@ class Feature(ABC):
     def name(self) -> str:
         """The column name in the feature matrix.
 
-        It is a plain SQL identifier. The name joins parts with ``__``, not
+        It is a plain SQL identifier. The name joins parts with `__`, not
         with the dots, parentheses and spaces a conventional DFS name
         uses. A backend that builds SQL reads those characters as table
         qualifiers and function calls, not as part of one identifier. See
-        :attr:`display_name` for the readable form.
+        [`display_name`][tusk.features.Feature.display_name] for the readable form.
         """
 
     @property
     @abstractmethod
     def display_name(self) -> str:
-        """The readable name, e.g. ``MEAN(transactions.amount)``.
+        """The readable name, e.g. `MEAN(transactions.amount)`.
 
-        Carries the same meaning as :attr:`name` in the conventional DFS
-        notation. It appears in documentation, logging and error messages,
-        never as a column name.
+        Carries the same meaning as [`name`][tusk.features.Feature.name] in the
+        conventional DFS notation. It appears in documentation, logging and error
+        messages, never as a column name.
         """
 
     @property
@@ -78,22 +78,22 @@ class Feature(ABC):
 
     @property
     def display_output_names(self) -> tuple[str, ...]:
-        """One readable name per output, parallel to :attr:`output_names`."""
+        """One readable name per output, parallel to `output_names`."""
         return (self.display_name,)
 
     @property
     def is_multi_output(self) -> bool:
         """Whether this feature materializes more than one column.
 
-        Only the indexed names in :attr:`output_names` are ever
-        materialized. A multi-output feature has no single column another
+        Only the indexed names in [`output_names`][tusk.features.Feature.output_names]
+        are ever materialized. A multi-output feature has no single column another
         primitive could read. It is a valid output of synthesis. It is
         never a valid input.
 
-        The value comes from :attr:`output_names`, not from a primitive's
-        ``number_of_outputs``. It is defined even for
-        :class:`IdentityFeature` and :class:`DirectFeature`, which have no
-        primitive.
+        The value comes from [`output_names`][tusk.features.Feature.output_names], not
+        from a primitive's `number_of_outputs`. It is defined even for
+        [`IdentityFeature`][tusk.features.IdentityFeature] and
+        [`DirectFeature`][tusk.features.DirectFeature], which have no primitive.
         """
         return len(self.output_names) > 1
 
@@ -159,10 +159,11 @@ class TransformFeature(Feature):
         """Confirm the primitive is a transform that reads only its own row.
 
         Raises:
-            PrimitiveError: If the primitive does not transform, or if it is
-                a :class:`~tusk.primitives.base.GroupTransformPrimitive`,
+            PrimitiveError: If the primitive does not transform, or if it is a
+                [`GroupTransformPrimitive`][tusk.primitives.base.GroupTransformPrimitive],
                 which reads other rows and belongs in a
-                :class:`GroupByTransformFeature` instead.
+                [`GroupByTransformFeature`][tusk.features.GroupByTransformFeature]
+                instead.
         """
         _require_kind(self.primitive, TransformPrimitive, "a transform feature")
         if isinstance(self.primitive, GroupTransformPrimitive):
@@ -174,12 +175,12 @@ class TransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """The built name, e.g. ``MONTH__started_at``."""
+        """The built name, e.g. `MONTH__started_at`."""
         return self.primitive.build_name([b.name for b in self.bases])
 
     @property
     def display_name(self) -> str:
-        """The readable name, e.g. ``MONTH(started_at)``."""
+        """The readable name, e.g. `MONTH(started_at)`."""
         return self.primitive.build_display_name(
             [b.display_name for b in self.bases],
         )
@@ -222,10 +223,10 @@ class AggregationFeature(Feature):
     Attributes:
         primitive: The aggregation primitive.
         bases: Input features on the child table. Empty for zero-arity
-            primitives such as ``count``.
+            primitives such as `count`.
         relationship: The parent-child link being aggregated across.
         condition: The condition masking the child's rows, as a (kind, key)
-            pair where kind is ``"where"`` or ``"when"``. None aggregates
+            pair where kind is `"where"` or `"when"`. None aggregates
             every row.
     """
 
@@ -237,8 +238,8 @@ class AggregationFeature(Feature):
     def __post_init__(self) -> None:
         """Confirm the primitive aggregates rather than transforms.
 
-        This raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_kind`, if the primitive does not aggregate.
+        This raises [`PrimitiveError`][tusk.exceptions.PrimitiveError], via
+        `_require_kind`, if the primitive does not aggregate.
         """
         _require_kind(
             self.primitive,
@@ -248,11 +249,11 @@ class AggregationFeature(Feature):
 
     @property
     def name(self) -> str:
-        """The built name, e.g. ``MEAN__transactions__amount``.
+        """The built name, e.g. `MEAN__transactions__amount`.
 
         Zero-arity primitives name the child table instead of a column,
-        giving ``COUNT__transactions``. A condition adds two trailing
-        parts, giving ``COUNT__transactions__WHEN__current``.
+        giving `COUNT__transactions`. A condition adds two trailing
+        parts, giving `COUNT__transactions__WHEN__current`.
         """
         child = self.relationship.child
         if not self.bases:
@@ -262,10 +263,10 @@ class AggregationFeature(Feature):
 
     @property
     def display_name(self) -> str:
-        """The readable name, e.g. ``MEAN(transactions.amount)``.
+        """The readable name, e.g. `MEAN(transactions.amount)`.
 
         The name appends the condition to the final argument, giving
-        ``COUNT(transactions WHEN current)``.
+        `COUNT(transactions WHEN current)`.
         """
         child = self.relationship.child
         if not self.bases:
@@ -336,12 +337,12 @@ class DirectFeature(Feature):
 
     @property
     def name(self) -> str:
-        """The built name, e.g. ``customers__age``."""
+        """The built name, e.g. `customers__age`."""
         return f"{self.relationship.parent}__{self.base_feature.name}"
 
     @property
     def display_name(self) -> str:
-        """The readable name, e.g. ``customers.age``."""
+        """The readable name, e.g. `customers.age`."""
         return f"{self.relationship.parent}.{self.base_feature.display_name}"
 
     @property
@@ -382,9 +383,9 @@ class GroupByTransformFeature(Feature):
     def __post_init__(self) -> None:
         """Confirm the primitive runs within foreign-key groups.
 
-        This raises :class:`~tusk.exceptions.PrimitiveError`, via
-        :func:`_require_kind`, if the primitive is not a
-        :class:`~tusk.primitives.base.GroupTransformPrimitive`.
+        This raises [`PrimitiveError`][tusk.exceptions.PrimitiveError], via
+        `_require_kind`, if the primitive is not a
+        [`GroupTransformPrimitive`][tusk.primitives.base.GroupTransformPrimitive].
         """
         _require_kind(
             self.primitive,
@@ -394,13 +395,13 @@ class GroupByTransformFeature(Feature):
 
     @property
     def name(self) -> str:
-        """The built name, e.g. ``CUM_SUM__amount__by__session_id``."""
+        """The built name, e.g. `CUM_SUM__amount__by__session_id`."""
         stem = self.primitive.build_name([b.name for b in self.bases])
         return f"{stem}__by__{self.relationship.foreign_key}"
 
     @property
     def display_name(self) -> str:
-        """The readable name, e.g. ``CUM_SUM(amount) by session_id``."""
+        """The readable name, e.g. `CUM_SUM(amount) by session_id`."""
         stem = self.primitive.build_display_name(
             [b.display_name for b in self.bases],
         )
@@ -442,7 +443,7 @@ def _require_kind(
     required: type[Primitive],
     where: str,
 ) -> None:
-    """Confirm a primitive is the kind ``where`` requires.
+    """Confirm a primitive is the kind `where` requires.
 
     Args:
         primitive: The primitive to check.
@@ -450,7 +451,7 @@ def _require_kind(
         where: What requires it, named for the error message.
 
     Raises:
-        PrimitiveError: If ``primitive`` is not an instance of ``required``.
+        PrimitiveError: If `primitive` is not an instance of `required`.
     """
     if not isinstance(primitive, required):
         raise PrimitiveError(

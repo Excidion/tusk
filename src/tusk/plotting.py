@@ -1,10 +1,10 @@
 """A Mermaid entity-relationship diagram of a database's schema.
 
-:class:`SchemaDiagram` is the whole public surface. It builds itself from a
-:class:`tusk.Database`, displays itself in a notebook, and writes itself to a
-file. :meth:`tusk.Database.plot` is a shortcut for its constructor. Everything
-below it escapes narwhals dtypes and column names to fit Mermaid's narrower
-grammar.
+[`SchemaDiagram`][tusk.plotting.SchemaDiagram] is the whole public surface. It builds
+itself from a [`tusk.Database`][tusk.database.Database], displays itself in a notebook,
+and writes itself to a file. [`tusk.Database.plot`][tusk.database.Database.plot] is a
+shortcut for its constructor. Everything below it escapes narwhals dtypes and column
+names to fit Mermaid's narrower grammar.
 """
 
 from __future__ import annotations
@@ -23,11 +23,11 @@ if TYPE_CHECKING:
 class SchemaDiagram:
     """A Mermaid diagram of a database's schema.
 
-    Build one with :meth:`from_database`, or with
-    :meth:`tusk.Database.plot`, which is a shortcut for it.
+    Build one with [`from_database`][tusk.plotting.SchemaDiagram.from_database], or with
+    [`tusk.Database.plot`][tusk.database.Database.plot], which is a shortcut for it.
 
-    Printing it, or reading :attr:`source`, gives the Mermaid source. Any
-    Mermaid renderer accepts this source directly.
+    Printing it, or reading [`source`][tusk.plotting.SchemaDiagram.source], gives the
+    Mermaid source. Any Mermaid renderer accepts this source directly.
     """
 
     @classmethod
@@ -42,18 +42,18 @@ class SchemaDiagram:
         Args:
             database: The database to draw.
             columns: True lists every column. False lists no columns.
-                ``"structural"`` lists only the primary key, the foreign
-                keys, the ``row_creation_time``, the ``row_update_times``,
+                `"structural"` lists only the primary key, the foreign
+                keys, the `row_creation_time`, the `row_update_times`,
                 and the columns they update.
             config: The Mermaid configuration of the diagram, for example
-                ``{"theme": "forest"}``. :func:`json.dumps` must accept it.
+                `{"theme": "forest"}`. `json.dumps` must accept it.
                 None sets no configuration.
 
         Returns:
             The diagram.
 
         Raises:
-            ValueError: If ``columns`` is not True, False, or ``"structural"``.
+            ValueError: If `columns` is not True, False, or `"structural"`.
         """
         # Identity, not equality: `0 == False` and `1 == True`.
         if not any(columns is mode for mode in (True, False, "structural")):
@@ -74,7 +74,7 @@ class SchemaDiagram:
         Args:
             title: The title shown above the diagram, or None for no title.
             config: The Mermaid configuration of the diagram, for example
-                ``{"theme": "forest"}``. :func:`json.dumps` must accept it.
+                `{"theme": "forest"}`. `json.dumps` must accept it.
                 None sets no configuration.
         """
         self.lines = ["erDiagram"]
@@ -92,10 +92,11 @@ class SchemaDiagram:
 
     @property
     def source(self) -> str:
-        """The Mermaid ``erDiagram`` source, as one newline-terminated string.
+        """The Mermaid `erDiagram` source, as one newline-terminated string.
 
-        A diagram with a :attr:`title` or a :attr:`config` starts with a
-        front matter block. This block holds the title and the configuration.
+        A diagram with a [`title`][tusk.plotting.SchemaDiagram.title] or a
+        [`config`][tusk.plotting.SchemaDiagram.config] starts with a front matter block.
+        This block holds the title and the configuration.
         """
         return self._front_matter + "\n".join(self.lines) + "\n"
 
@@ -125,7 +126,7 @@ class SchemaDiagram:
 
     @property
     def markdown(self) -> str:
-        """The source in a ``mermaid`` code fence, newline-terminated.
+        """The source in a `mermaid` code fence, newline-terminated.
 
         Jupyter, GitHub and the documentation site all render this as a
         picture.
@@ -136,18 +137,18 @@ class SchemaDiagram:
         """Return the fenced block, for notebooks and docs.
 
         Returns:
-            The diagram as :attr:`markdown`.
+            The diagram as [`markdown`][tusk.plotting.SchemaDiagram.markdown].
         """
         return self.markdown
 
     def save(self, path: str | Path) -> None:
         """Write the diagram to a file.
 
-        The suffix selects the format. ``.mmd`` writes the bare source and
-        ``.md`` writes it in a ``mermaid`` code fence. Both need nothing
-        installed. ``.svg``, ``.png`` and ``.pdf`` render the diagram and
-        need ``tusk-ml[plot]``. Saving to these formats raises
-        ``ImportError`` if ``tusk-ml[plot]`` is not installed.
+        The suffix selects the format. `.mmd` writes the bare source and
+        `.md` writes it in a `mermaid` code fence. Both need nothing
+        installed. `.svg`, `.png` and `.pdf` render the diagram and
+        need `tusk-ml[plot]`. Saving to these formats raises
+        `ImportError` if `tusk-ml[plot]` is not installed.
 
         Args:
             path: The file path to write to, including the suffix.
@@ -225,7 +226,7 @@ def render_table(database: Database, name: str, columns: bool | str) -> list[str
         database: The database the table belongs to.
         name: The table's name.
         columns: The column mode, as documented on
-            :meth:`SchemaDiagram.from_database`.
+            [`SchemaDiagram.from_database`][tusk.plotting.SchemaDiagram.from_database].
 
     Returns:
         The entity's lines, unindented apart from the attributes, which are
@@ -248,7 +249,7 @@ def render_attributes(database: Database, name: str, columns: bool | str) -> lis
         database: The database the table belongs to.
         name: The table's name.
         columns: The column mode, as documented on
-            :meth:`SchemaDiagram.from_database`.
+            [`SchemaDiagram.from_database`][tusk.plotting.SchemaDiagram.from_database].
 
     Returns:
         One line per shown column, in schema order.
@@ -341,8 +342,8 @@ def describe_comments(
     information travel in the comment slot instead:
 
     - the tables a foreign key points at
-    - the ``row_creation_time``
-    - every ``row_update_times`` role
+    - the `row_creation_time`
+    - every `row_update_times` role
 
     Args:
         column: The column's name.
@@ -373,7 +374,8 @@ def render_comment(comments: list[str]) -> str:
     """Render a column's comment phrases as one Mermaid comment.
 
     Args:
-        comments: The phrases to show, as built by :func:`describe_comments`.
+        comments: The phrases to show, as built by
+            [`describe_comments`][tusk.plotting.describe_comments].
 
     Returns:
         The phrases joined and double quoted, or an empty string when there
@@ -406,7 +408,7 @@ def render_table_name(name: str) -> str:
 
     Any double quote in the name is dropped before quoting. A name that
     becomes empty from this, or a name that starts empty, would quote to
-    `` "" ``, which Mermaid also rejects. The function then uses `` "_" ``
+    ` "" `, which Mermaid also rejects. The function then uses ` "_" `
     instead.
 
     Args:

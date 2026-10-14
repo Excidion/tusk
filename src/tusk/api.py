@@ -1,8 +1,9 @@
 """The public entry points.
 
-:func:`deep_feature_synthesis` builds feature definitions and computes
-them. :func:`apply_features` computes existing ones.
-:func:`collect_feature_matrix` collects the resulting feature matrix.
+[`deep_feature_synthesis`][tusk.api.deep_feature_synthesis] builds feature definitions
+and computes them. [`apply_features`][tusk.api.apply_features] computes existing ones.
+[`collect_feature_matrix`][tusk.api.collect_feature_matrix] collects the resulting
+feature matrix.
 """
 
 from __future__ import annotations
@@ -33,25 +34,25 @@ def deep_feature_synthesis(
 ) -> Any:
     """Run deep feature synthesis over a database.
 
-    Synthesis raises :class:`~tusk.exceptions.SchemaError` if the target
+    Synthesis raises [`SchemaError`][tusk.exceptions.SchemaError] if the target
     table is unknown, or if the walk builds no features at all.
 
-    It raises :class:`~tusk.exceptions.PrimitiveError` in three cases:
+    It raises [`PrimitiveError`][tusk.exceptions.PrimitiveError] in three cases:
 
     - The primitive name is unknown.
     - An order-dependent primitive lands on a table with no
-      ``row_creation_time``.
+      `row_creation_time`.
     - A primitive is the wrong kind for the argument it is passed to.
 
-    Compilation raises :class:`~tusk.exceptions.SchemaError` if the target
-    table has no ``primary_key``. It also raises whatever
-    :func:`apply_features` documents for ``cutoff_time``.
+    Compilation raises [`SchemaError`][tusk.exceptions.SchemaError] if the target
+    table has no `primary_key`. It also raises whatever
+    [`apply_features`][tusk.api.apply_features] documents for `cutoff_time`.
 
     Args:
         database: The tables and relationships to synthesize over.
         target_table: The table to build features for. The result has one
             row per *visible* row of this table, keyed by its
-            ``primary_key``. With no ``cutoff_time``, that is every row.
+            `primary_key`. With no `cutoff_time`, that is every row.
             With one, the target table is filtered like any other, so the
             feature matrix may have fewer rows.
         agg_primitives: Aggregation primitives, as names or instances. None
@@ -62,33 +63,34 @@ def deep_feature_synthesis(
             primitive to each row. None selects the defaults.
         conditional_primitives: Aggregation primitives to compute over only
             the rows each declared condition keeps, as names or instances.
-            This is a separate list from ``agg_primitives``. A primitive
+            This is a separate list from `agg_primitives`. A primitive
             named here yields only the conditional features, so name it in
             both lists for the unconditional ones too. None selects
-            ``CONDITIONAL_DEFAULTS``. ``()`` computes no conditional
+            `CONDITIONAL_DEFAULTS`. `()` computes no conditional
             features.
         max_depth: Maximum number of stacked primitive applications.
-        cutoff_time: Only rows whose ``row_creation_time`` is at or before
+        cutoff_time: Only rows whose `row_creation_time` is at or before
             this value are visible, on the target table as well as its
             relatives. Its tz awareness must match the database's Datetime
-            columns'. A table with no ``row_creation_time`` is timeless and
-            keeps every row. Setting ``cutoff_time`` changes nothing on a
-            database where no table declares ``row_creation_time``. None
+            columns'. A table with no `row_creation_time` is timeless and
+            keeps every row. Setting `cutoff_time` changes nothing on a
+            database where no table declares `row_creation_time`. None
             disables filtering. A column listed in a table's
-            ``row_update_times`` holds the value it had before the update,
+            `row_update_times` holds the value it had before the update,
             wherever that update happened after the cutoff time.
-            ``cutoff_time`` is ignored entirely when ``features_only`` is
-            true. :func:`deep_feature_synthesis` does not compute the
-            features in that case.
+            `cutoff_time` is ignored entirely when `features_only` is
+            true. [`deep_feature_synthesis`][tusk.api.deep_feature_synthesis] does not
+            compute the features in that case.
         features_only: Return the feature definitions without computing
             them.
 
     Returns:
         feature_matrix: The features on the caller's backend, as the
             backend's native lazy table, if the backend supports lazy
-            tables. It is not returned when ``features_only`` is true.
+            tables. It is not returned when `features_only` is true.
         features (FeatureList): The feature definitions, reusable with
-            :meth:`~tusk.FeatureList.apply` or :func:`apply_features`.
+            [`apply`][tusk.feature_list.FeatureList.apply] or
+            [`apply_features`][tusk.api.apply_features].
 
     Warns:
         CategoricalDtypeWarning: If a Categorical or Enum column is skipped
@@ -117,44 +119,44 @@ def apply_features(
     """Apply existing feature definitions to a database.
 
     Use this to apply a feature set fitted on training data to new data. It
-    accepts any sequence of features. A :class:`~tusk.FeatureList` can
-    compute itself with :meth:`~tusk.FeatureList.apply` instead.
+    accepts any sequence of features. A [`FeatureList`][tusk.feature_list.FeatureList]
+    can compute itself with [`apply`][tusk.feature_list.FeatureList.apply] instead.
 
-    It raises :class:`~tusk.exceptions.SchemaError` if any of these are
+    It raises [`SchemaError`][tusk.exceptions.SchemaError] if any of these are
     true:
 
-    - ``features`` is empty.
-    - ``features`` spans more than one table.
-    - ``features`` targets a table with no ``primary_key``.
+    - `features` is empty.
+    - `features` spans more than one table.
+    - `features` targets a table with no `primary_key`.
 
-    It raises :class:`~tusk.exceptions.PrimitiveError` if an
+    It raises [`PrimitiveError`][tusk.exceptions.PrimitiveError] if an
     order-dependent primitive lands on a table with no
-    ``row_creation_time``.
+    `row_creation_time`.
 
-    It raises :class:`~tusk.exceptions.ValidationError` if any of these are
+    It raises [`ValidationError`][tusk.exceptions.ValidationError] if any of these are
     true:
 
-    - ``cutoff_time`` differs from the database's Datetime columns in tz
+    - `cutoff_time` differs from the database's Datetime columns in tz
       awareness.
     - The database's Datetime columns disagree with each other in tz
       awareness.
-    - A feature's primitive measures against ``cutoff_time`` and none was
+    - A feature's primitive measures against `cutoff_time` and none was
       given.
 
-    It raises ``TypeError`` if ``cutoff_time`` is not a ``datetime``.
+    It raises `TypeError` if `cutoff_time` is not a `datetime`.
 
     Args:
         features: Feature definitions, all on the same target table.
         database: The database to compute over.
-        cutoff_time: Only rows whose ``row_creation_time`` is at or before
+        cutoff_time: Only rows whose `row_creation_time` is at or before
             this value are visible, on the target table as well as its
             relatives. The feature matrix may then have fewer rows than
             the target. Its tz awareness must match the database's
-            Datetime columns'. A table with no ``row_creation_time`` is
-            timeless and keeps every row. Setting ``cutoff_time`` changes
+            Datetime columns'. A table with no `row_creation_time` is
+            timeless and keeps every row. Setting `cutoff_time` changes
             nothing on a database where no table declares
-            ``row_creation_time``. None disables filtering. A column
-            listed in a table's ``row_update_times`` holds the value it
+            `row_creation_time`. None disables filtering. A column
+            listed in a table's `row_update_times` holds the value it
             had before the update, wherever that update happened after
             the cutoff time.
 
@@ -174,8 +176,9 @@ def collect_feature_matrix(
     """Collect a feature matrix.
 
     Args:
-        feature_matrix: A feature matrix from :func:`deep_feature_synthesis`
-            or :func:`apply_features`.
+        feature_matrix: A feature matrix from
+            [`deep_feature_synthesis`][tusk.api.deep_feature_synthesis] or
+            [`apply_features`][tusk.api.apply_features].
         backend: Backend to collect to. None collects to the feature
             matrix's own backend.
         batch_size: Number of feature columns to collect per query. None
@@ -183,11 +186,11 @@ def collect_feature_matrix(
 
     Returns:
         feature_matrix: The collected feature matrix, as the backend's native
-            eager table. With ``batch_size``, the rows are sorted by the
+            eager table. With `batch_size`, the rows are sorted by the
             primary key.
 
     Raises:
-        TuskError: If ``backend`` needs a package that is not installed.
+        TuskError: If `backend` needs a package that is not installed.
     """
     feature_matrix = nw.from_native(feature_matrix)
     try:
@@ -203,7 +206,7 @@ def _collect_batchwise(
     backend: str | None,
     batch_size: int,
 ) -> Any:
-    """Collect ``batch_size`` columns at a time, sorted by the primary key."""
+    """Collect `batch_size` columns at a time, sorted by the primary key."""
     if not isinstance(batch_size, int):
         raise TypeError(f"{batch_size=} is not an integer.")
     primary_key, *feature_columns = feature_matrix.collect_schema().names()
@@ -222,6 +225,6 @@ def _collect_columns(
     columns: Sequence[str],
     backend: str | None,
 ) -> nw.DataFrame:
-    """Collect the primary key and ``columns``, sorted by the primary key."""
+    """Collect the primary key and `columns`, sorted by the primary key."""
     batch = feature_matrix.select(primary_key, *columns).sort(primary_key)
     return batch.lazy().collect(backend=backend)  # ty: ignore[invalid-argument-type]

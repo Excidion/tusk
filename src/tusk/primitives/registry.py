@@ -14,7 +14,7 @@ _P = TypeVar("_P", bound=Primitive)
 
 
 def register(cls: type[_P]) -> type[_P]:
-    """Register a primitive class under its ``name``.
+    """Register a primitive class under its `name`.
 
     Args:
         cls: The primitive class to register.

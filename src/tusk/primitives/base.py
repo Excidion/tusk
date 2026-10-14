@@ -22,16 +22,18 @@ class Primitive(ABC):
     """Base class for every primitive.
 
     Attributes:
-        name: The registry key. It is also the default :attr:`stem` for
-            the names this primitive builds.
+        name: The registry key. It is also the default
+            [`stem`][tusk.primitives.base.Primitive.stem] for the names this primitive
+            builds.
         input_dtypes: One dtype family per input. It holds several such
             tuples when the primitive accepts alternative input shapes. An
             empty tuple means the primitive takes no column input, for
-            example ``count``. Read it through :attr:`signatures`.
+            example `count`. Read it through
+            [`signatures`][tusk.primitives.base.Primitive.signatures].
         output_dtype: The output dtype every output column is cast to. It
             is None when the output keeps the first input's dtype.
         commutative: Whether argument order is irrelevant. When it is True,
-            synthesis builds only one of ``f(a, b)`` and ``f(b, a)``.
+            synthesis builds only one of `f(a, b)` and `f(b, a)`.
         stack_on_self: Whether synthesis can apply this primitive to its
             own output.
         default_value: The value the compiler substitutes for empty groups
@@ -66,7 +68,7 @@ class Primitive(ABC):
             takes no column input has none.
 
         Raises:
-            PrimitiveError: If ``input_dtypes`` mixes a flat shape with
+            PrimitiveError: If `input_dtypes` mixes a flat shape with
                 nested alternatives. If an alternative is not a non-empty
                 tuple of dtype families. If the shapes do not all take the
                 same number of inputs.
@@ -103,15 +105,16 @@ class Primitive(ABC):
     def build_name(self, arg_names: Sequence[str]) -> str:
         """Build the column name for an application of this primitive.
 
-        Every part is joined with ``__``, so the result is a plain SQL
+        Every part is joined with `__`, so the result is a plain SQL
         identifier. A SQL backend parses parentheses and commas as a
-        function call. See :meth:`build_display_name` for the
-        readable form.
+        function call. See
+        [`build_display_name`][tusk.primitives.base.Primitive.build_display_name] for
+        the readable form.
 
         Args:
             arg_names: Names of the inputs. For a zero-input aggregation,
                 this is the child table's name. For example, it gives
-                ``COUNT__transactions``.
+                `COUNT__transactions`.
 
         Returns:
             The feature name.
@@ -126,7 +129,7 @@ class Primitive(ABC):
 
         Returns:
             The conventional parenthesised form, for example
-            ``MEAN(amount)``.
+            `MEAN(amount)`.
         """
         return f"{self.stem}({', '.join(arg_names)})"
 
@@ -134,7 +137,8 @@ class Primitive(ABC):
         """Expand a feature name into one name per output column.
 
         Args:
-            base_name: The name from :meth:`build_name`.
+            base_name: The name from
+                [`build_name`][tusk.primitives.base.Primitive.build_name].
 
         Returns:
             One name per output column. When there is more than one, each
@@ -148,7 +152,8 @@ class Primitive(ABC):
         """Expand a display name into one readable name per output column.
 
         Args:
-            base_name: The name from :meth:`build_display_name`.
+            base_name: The name from
+                [`build_display_name`][tusk.primitives.base.Primitive.build_display_name].
 
         Returns:
             One name per output column. When there is more than one, each
@@ -159,13 +164,14 @@ class Primitive(ABC):
         return tuple(f"{base_name}[{i}]" for i in range(self.number_of_outputs))
 
     def outputs(self, *inputs: nw.Expr) -> tuple[nw.Expr, ...]:
-        """Normalize :meth:`build` to a tuple of expressions of the output dtype.
+        """Normalize `build` to a tuple of expressions of the output dtype.
 
         Args:
             *inputs: One expression per declared input.
 
         Returns:
-            One expression per output column, cast to :attr:`output_dtype`.
+            One expression per output column, cast to
+            [`output_dtype`][tusk.primitives.base.Primitive.output_dtype].
         """
         return _cast_to_output_dtype(self.output_dtype, self.build(*inputs))
 
@@ -186,10 +192,10 @@ class AggregationPrimitive(Primitive):
 
 
 class OrderedAggregationPrimitive(AggregationPrimitive):
-    """An aggregation that reads its group's rows in ``row_creation_time`` order.
+    """An aggregation that reads its group's rows in `row_creation_time` order.
 
     The compiler supplies the ordering columns when it builds the
-    expression. The child table needs a ``row_creation_time`` column.
+    expression. The child table needs a `row_creation_time` column.
     """
 
     def outputs(
@@ -197,14 +203,15 @@ class OrderedAggregationPrimitive(AggregationPrimitive):
         *inputs: nw.Expr,
         order_by: Sequence[str],
     ) -> tuple[nw.Expr, ...]:
-        """Normalize :meth:`build` to a tuple of expressions of the output dtype.
+        """Normalize `build` to a tuple of expressions of the output dtype.
 
         Args:
             *inputs: One expression per declared input.
             order_by: The columns that order the group's rows.
 
         Returns:
-            One expression per output column, cast to :attr:`output_dtype`.
+            One expression per output column, cast to
+            [`output_dtype`][tusk.primitives.base.Primitive.output_dtype].
         """
         return _cast_to_output_dtype(
             self.output_dtype,
@@ -232,11 +239,12 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
     """An aggregation that compares each row with its group before reducing.
 
     SQL backends reject an aggregate nested inside another aggregate, such
-    as ``SUM(x > AVG(x))``. The compiler adds :meth:`compare_with_group` to
-    the child table as a column. It computes this column within each
-    foreign-key group. :meth:`build` and :meth:`outputs` take that column
-    as their only input. The comparison must read an aggregate of the
-    group, such as ``expr.mean()``.
+    as `SUM(x > AVG(x))`. The compiler adds
+    [`compare_with_group`][tusk.primitives.base.GroupRelativeAggregationPrimitive.compare_with_group]
+    to the child table as a column. It computes this column within each foreign-key
+    group. [`build`][tusk.primitives.base.GroupRelativeAggregationPrimitive.build] and
+    [`outputs`][tusk.primitives.base.Primitive.outputs] take that column as their only
+    input. The comparison must read an aggregate of the group, such as `expr.mean()`.
     """
 
     @abstractmethod
@@ -255,7 +263,9 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
         """Build the expression that reduces the comparisons.
 
         Args:
-            comparisons: The column that :meth:`compare_with_group` builds.
+            comparisons: The column that
+                [`compare_with_group`][tusk.primitives.base.GroupRelativeAggregationPrimitive.compare_with_group]
+                builds.
 
         Returns:
             A narwhals expression.
@@ -265,8 +275,9 @@ class GroupRelativeAggregationPrimitive(AggregationPrimitive):
 class ValueCountAggregationPrimitive(GroupRelativeAggregationPrimitive):
     """A group-relative aggregation that reads each row's value and its count.
 
-    It takes one input column. :meth:`compare_with_group` receives that
-    column. It also receives, for each row, how often the row's value
+    It takes one input column.
+    [`compare_with_group`][tusk.primitives.base.ValueCountAggregationPrimitive.compare_with_group]
+    receives that column. It also receives, for each row, how often the row's value
     occurs in its group.
     """
 
@@ -292,16 +303,16 @@ class GroupTransformPrimitive(TransformPrimitive):
     """A transform that reads the other rows sharing its row's foreign key.
 
     Synthesis applies it within each foreign-key group: the compiler wraps its
-    expression in ``.over(foreign_key)``.
+    expression in `.over(foreign_key)`.
     """
 
 
 class OrderedTransformPrimitive(GroupTransformPrimitive):
-    """A group transform that reads its group's rows in ``row_creation_time`` order.
+    """A group transform that reads its group's rows in `row_creation_time` order.
 
     The compiler wraps its expression in
-    ``.over(foreign_key, order_by=(row_creation_time, primary_key))``. The
-    table needs a ``row_creation_time`` column.
+    `.over(foreign_key, order_by=(row_creation_time, primary_key))`. The
+    table needs a `row_creation_time` column.
     """
 
 
@@ -310,19 +321,20 @@ class NeedsCutoffTime(Primitive):
 
     The cutoff time describes the question, not the feature. tusk never
     stores it on a primitive. The compiler supplies the cutoff time when it
-    builds the expression. This lets one :class:`~tusk.FeatureList` apply
-    at several cutoff times.
+    builds the expression. This lets one [`FeatureList`][tusk.feature_list.FeatureList]
+    apply at several cutoff times.
     """
 
     def outputs(self, *inputs: nw.Expr, cutoff_time: datetime) -> tuple[nw.Expr, ...]:
-        """Normalize :meth:`build` to a tuple of expressions of the output dtype.
+        """Normalize `build` to a tuple of expressions of the output dtype.
 
         Args:
             *inputs: One expression per declared input.
             cutoff_time: The reference moment for measuring the values.
 
         Returns:
-            One expression per output column, cast to :attr:`output_dtype`.
+            One expression per output column, cast to
+            [`output_dtype`][tusk.primitives.base.Primitive.output_dtype].
         """
         return _cast_to_output_dtype(
             self.output_dtype,
@@ -350,11 +362,11 @@ def _validated_alternatives(
     name: str,
     declared: tuple[Any, ...],
 ) -> tuple[tuple[DtypeFamily, ...], ...]:
-    """Validate a declared ``input_dtypes`` that is not a single flat shape.
+    """Validate a declared `input_dtypes` that is not a single flat shape.
 
     Args:
         name: The declaring primitive's name, for the error message.
-        declared: The primitive's raw ``input_dtypes``.
+        declared: The primitive's raw `input_dtypes`.
 
     Returns:
         The declared alternatives, unchanged.
@@ -384,12 +396,12 @@ def _cast_to_output_dtype(
     """Cast what a primitive built to its declared output dtype.
 
     Args:
-        output_dtype: The primitive's ``output_dtype``.
-        built: What :meth:`Primitive.build` returned.
+        output_dtype: The primitive's `output_dtype`.
+        built: What [`Primitive.build`][tusk.primitives.base.Primitive.build] returned.
 
     Returns:
         One expression per output column. It is uncast when
-        ``output_dtype`` is None or a parametric dtype class without its
+        `output_dtype` is None or a parametric dtype class without its
         parameters.
     """
     expressions = _as_tuple(built)
@@ -405,8 +417,8 @@ def _is_bare_parametric_dtype(dtype: Any) -> bool:
         dtype: A narwhals dtype class or instance.
 
     Returns:
-        True for a parametric dtype class, for example ``nw.Duration``.
-        False for an instance, for example ``nw.Duration("ms")``.
+        True for a parametric dtype class, for example `nw.Duration`.
+        False for an instance, for example `nw.Duration("ms")`.
     """
     # Casting to the bare class would impose narwhals' default parameters,
     # e.g. turn a backend's millisecond Duration into microseconds.
@@ -426,7 +438,7 @@ def _as_tuple(built: nw.Expr | Sequence[nw.Expr]) -> tuple[nw.Expr, ...]:
     """Normalize what a primitive built to a tuple of expressions.
 
     Args:
-        built: What :meth:`Primitive.build` returned.
+        built: What [`Primitive.build`][tusk.primitives.base.Primitive.build] returned.
 
     Returns:
         One expression per output column.

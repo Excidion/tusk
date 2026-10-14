@@ -1,7 +1,8 @@
 """Checks that confirm a table's declarations hold against its data.
 
 Nothing here runs unless the caller asks, through
-:meth:`tusk.Database.validate` or ``add_table(validate=…)``.
+[`tusk.Database.validate`][tusk.database.Database.validate] or
+`add_table(validate=…)`.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard
 def check_non_null_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared primary key holds no null.
 
-    A table with no ``primary_key`` is skipped.
+    A table with no `primary_key` is skipped.
 
     Args:
         table: The table, as a narwhals LazyFrame.
@@ -46,7 +47,7 @@ def check_non_null_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None
 def check_unique_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared primary key holds no repeated value.
 
-    A table with no ``primary_key`` is skipped. Nulls count as one distinct
+    A table with no `primary_key` is skipped. Nulls count as one distinct
     value, so repeated nulls fail and a single null passes.
 
     Args:
@@ -82,7 +83,7 @@ def check_unique_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
 def check_dtype_row_creation_time(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm the declared row creation time is a Datetime, not a Date.
 
-    A table with no ``row_creation_time`` is skipped. The check reads the schema only.
+    A table with no `row_creation_time` is skipped. The check reads the schema only.
 
     Args:
         table: The table, as a narwhals LazyFrame. Unused.
@@ -107,7 +108,7 @@ def check_dtype_row_creation_time(table: nw.LazyFrame, schema: TableSchema) -> N
 def check_dtype_row_update_times(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm every declared row update time is a Datetime, not a Date.
 
-    A table with no ``row_update_times`` is skipped. The check reads the schema only.
+    A table with no `row_update_times` is skipped. The check reads the schema only.
 
     Args:
         table: The table, as a narwhals LazyFrame. Unused.
@@ -129,7 +130,7 @@ def check_dtype_row_update_times(table: nw.LazyFrame, schema: TableSchema) -> No
 def check_never_updated_primary_key(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row update time rewrites the primary key.
 
-    A table with no ``primary_key`` is skipped. The check reads the schema only.
+    A table with no `primary_key` is skipped. The check reads the schema only.
 
     Args:
         table: The table, as a narwhals LazyFrame. Unused.
@@ -154,7 +155,7 @@ def check_never_updated_row_creation_time(
 ) -> None:
     """Confirm no row update time rewrites the row creation time.
 
-    A table with no ``row_creation_time`` is skipped. The check reads the schema only.
+    A table with no `row_creation_time` is skipped. The check reads the schema only.
 
     Args:
         table: The table, as a narwhals LazyFrame. Unused.
@@ -177,7 +178,7 @@ def check_never_updated_row_creation_time(
 def check_unchained_row_update_times(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row update time is rewritten by another row update time.
 
-    The entry that ``add_table`` adds when an update time does not list
+    The entry that `add_table` adds when an update time does not list
     itself does not count as a chain. The check reads the schema only.
 
     Args:
@@ -201,7 +202,7 @@ def check_unchained_row_update_times(table: nw.LazyFrame, schema: TableSchema) -
 def check_singly_updated_columns(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no column is rewritten by two row update times.
 
-    The entry that ``add_table`` adds when an update time does not list
+    The entry that `add_table` adds when an update time does not list
     itself counts like any other. The check reads the schema only.
 
     Args:
@@ -249,8 +250,8 @@ def check_matching_earlier_value_dtypes(
 def check_ordered_row_times(table: nw.LazyFrame, schema: TableSchema) -> None:
     """Confirm no row's update time comes before its row creation time.
 
-    The check scans the table. A table with no ``row_creation_time`` or no
-    ``row_update_times`` is skipped. A row whose update time is null is
+    The check scans the table. A table with no `row_creation_time` or no
+    `row_update_times` is skipped. A row whose update time is null is
     also skipped.
 
     Args:
@@ -283,7 +284,7 @@ def check_where_conditions_are_expressions(
     table: nw.LazyFrame,
     schema: TableSchema,
 ) -> None:
-    """Confirm every ``where`` condition is a narwhals expression.
+    """Confirm every `where` condition is a narwhals expression.
 
     The check reads the schema only.
 
@@ -292,7 +293,7 @@ def check_where_conditions_are_expressions(
         schema: The table's schema, holding the conditions to check.
 
     Raises:
-        ValidationError: If a ``where`` condition is not an ``nw.Expr``.
+        ValidationError: If a `where` condition is not an `nw.Expr`.
     """
     for key, condition in schema.where.items():
         if isinstance(condition, nw.Expr):
@@ -307,7 +308,7 @@ def check_when_conditions_are_callable(
     table: nw.LazyFrame,
     schema: TableSchema,
 ) -> None:
-    """Confirm every ``when`` condition is callable.
+    """Confirm every `when` condition is callable.
 
     The check reads the schema only.
 
@@ -316,7 +317,7 @@ def check_when_conditions_are_callable(
         schema: The table's schema, holding the conditions to check.
 
     Raises:
-        ValidationError: If a ``when`` condition is not callable.
+        ValidationError: If a `when` condition is not callable.
     """
     for key, condition in schema.when.items():
         if callable(condition):
@@ -337,7 +338,7 @@ def check_condition_keys(table: nw.LazyFrame, schema: TableSchema) -> None:
         schema: The table's schema, holding the keys to check.
 
     Raises:
-        ValidationError: If a condition key contains ``__``.
+        ValidationError: If a condition key contains `__`.
     """
     for _, key in schema.conditions:
         if "__" not in key:
@@ -349,18 +350,18 @@ def check_condition_keys(table: nw.LazyFrame, schema: TableSchema) -> None:
 
 
 def check_cutoff_time(database: Database, cutoff_time: datetime | None) -> None:
-    """Confirm a cutoff time is a ``datetime`` that the database can compare against.
+    """Confirm a cutoff time is a `datetime` that the database can compare against.
 
-    None passes. It raises :class:`~tusk.exceptions.ValidationError`, from
-    :func:`check_cutoff_time_zone`, if the cutoff time's tz awareness differs
-    from the database's Datetime columns'.
+    None passes. It raises [`ValidationError`][tusk.exceptions.ValidationError], from
+    [`check_cutoff_time_zone`][tusk.validation.check_cutoff_time_zone], if the cutoff
+    time's tz awareness differs from the database's Datetime columns'.
 
     Args:
         database: The database the cutoff time will measure against.
         cutoff_time: The cutoff time, or None.
 
     Raises:
-        TypeError: If ``cutoff_time`` is not a ``datetime``.
+        TypeError: If `cutoff_time` is not a `datetime`.
     """
     if cutoff_time is None:
         return
@@ -409,8 +410,8 @@ def is_time_zone_aware(database: Database) -> bool | None:
         database: The database to inspect.
 
     Returns:
-        awareness: ``True`` if every Datetime column is tz-aware, ``False`` if
-            every one is naive, ``None`` if the database has no Datetime
+        awareness: `True` if every Datetime column is tz-aware, `False` if
+            every one is naive, `None` if the database has no Datetime
             column.
 
     Raises:
@@ -616,20 +617,20 @@ DATABASE_CHECKS = {
 
 
 def _select_checks(checks: bool | str | Iterable[str], registry: dict) -> list[str]:
-    """Return the names in ``registry`` that ``checks`` selects.
+    """Return the names in `registry` that `checks` selects.
 
     Args:
-        checks: ``True`` for every name in ``registry``, ``False`` for none, a
+        checks: `True` for every name in `registry`, `False` for none, a
             check name, or an iterable of check names.
         registry: The registry to select from.
 
     Returns:
-        names: Selected names, in registry order for ``True`` and in the given
+        names: Selected names, in registry order for `True` and in the given
             order otherwise.
 
     Raises:
-        ValueError: If ``checks`` is not one of those forms, or names a check
-            outside ``registry``.
+        ValueError: If `checks` is not one of those forms, or names a check
+            outside `registry`.
     """
     if checks is True:
         return list(registry)
@@ -661,13 +662,13 @@ def validate_table(
     """Run the selected table checks against one table.
 
     Checks run in the order given. The first failure raises
-    :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
-    is not in :data:`TABLE_CHECKS` raises :class:`ValueError`.
+    [`ValidationError`][tusk.exceptions.ValidationError] and stops the run. A name that
+    is not in [`TABLE_CHECKS`][tusk.validation.TABLE_CHECKS] raises `ValueError`.
 
     Args:
         table: The table, as a narwhals LazyFrame.
         schema: The table's schema.
-        checks: ``True`` for every table check, ``False`` for none, a check
+        checks: `True` for every table check, `False` for none, a check
             name, or an iterable of check names.
     """
     for name in _select_checks(checks, TABLE_CHECKS):
@@ -682,13 +683,14 @@ def validate_relationship(
     """Run the selected relationship checks against one relationship.
 
     Checks run in the order given. The first failure raises
-    :class:`~tusk.exceptions.ValidationError` and stops the run. A name that
-    is not in :data:`RELATIONSHIP_CHECKS` raises :class:`ValueError`.
+    [`ValidationError`][tusk.exceptions.ValidationError] and stops the run. A name that
+    is not in [`RELATIONSHIP_CHECKS`][tusk.validation.RELATIONSHIP_CHECKS] raises
+    `ValueError`.
 
     Args:
         database: The database holding both tables.
         relationship: The link to check.
-        checks: ``True`` for every relationship check, ``False`` for none, a
+        checks: `True` for every relationship check, `False` for none, a
             check name, or an iterable of check names.
     """
     for name in _select_checks(checks, RELATIONSHIP_CHECKS):
@@ -710,15 +712,17 @@ def validate_database(
     2. Relationship checks against every relationship.
     3. Database-wide checks, once.
 
-    The first failure raises :class:`~tusk.exceptions.ValidationError` and
+    The first failure raises [`ValidationError`][tusk.exceptions.ValidationError] and
     stops the run. A name outside the registry its selector draws from
-    raises :class:`ValueError`.
+    raises `ValueError`.
 
     Args:
         database: The database to check.
-        database_checks: Selects from :data:`DATABASE_CHECKS`.
-        table_checks: Selects from :data:`TABLE_CHECKS`.
-        relationship_checks: Selects from :data:`RELATIONSHIP_CHECKS`.
+        database_checks: Selects from
+            [`DATABASE_CHECKS`][tusk.validation.DATABASE_CHECKS].
+        table_checks: Selects from [`TABLE_CHECKS`][tusk.validation.TABLE_CHECKS].
+        relationship_checks: Selects from
+            [`RELATIONSHIP_CHECKS`][tusk.validation.RELATIONSHIP_CHECKS].
     """
     tables = _select_checks(table_checks, TABLE_CHECKS)
     relationships = _select_checks(relationship_checks, RELATIONSHIP_CHECKS)

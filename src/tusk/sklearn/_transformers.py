@@ -1,13 +1,14 @@
 """Deep feature synthesis as scikit-learn estimators.
 
-Both estimators take ``X`` as the target table's primary key. Both receive
+Both estimators take `X` as the target table's primary key. Both receive
 the database and the cutoff time as routed metadata. Using them inside a
-``Pipeline`` needs ``sklearn.set_config(enable_metadata_routing=True)``.
+`Pipeline` needs `sklearn.set_config(enable_metadata_routing=True)`.
 
-:class:`DFSTransformer` synthesizes features and computes them for the keys
-in ``X``. :class:`DFSSelectorTransformer` additionally fits a supplied
-encode-and-select pipeline. It drops the features whose columns the selector
-did not keep. It then computes only the rest.
+[`DFSTransformer`][tusk.sklearn.DFSTransformer] synthesizes features and
+computes them for the keys in `X`.
+[`DFSSelectorTransformer`][tusk.sklearn.DFSSelectorTransformer]
+additionally fits a supplied encode-and-select pipeline. It drops the features whose
+columns the selector did not keep. It then computes only the rest.
 """
 
 from __future__ import annotations
@@ -51,10 +52,11 @@ from tusk.validation import check_cutoff_time
 class DFSTransformer(TransformerMixin, BaseEstimator):
     """Deep feature synthesis as a pipeline step.
 
-    :meth:`fit` sets ``features_``, the synthesized definitions as a
-    :class:`~tusk.FeatureList`, ``database_``, the database it was given, and
-    ``cutoff_time_``, the cutoff time it was given. :meth:`transform` computes
-    those features for the keys in ``X``. It returns one row per key, in key
+    [`fit`][tusk.sklearn.DFSTransformer.fit] sets `features_`, the
+    synthesized definitions as a [`FeatureList`][tusk.feature_list.FeatureList],
+    `database_`, the database it was given, and `cutoff_time_`, the cutoff time it
+    was given. [`transform`][tusk.sklearn.DFSTransformer.transform]
+    computes those features for the keys in `X`. It returns one row per key, in key
     order.
     """
 
@@ -82,7 +84,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
             output_backend: Backend to collect the feature matrix to. None
                 collects to the database's own backend.
             batch_size: Feature columns per query, as in
-                :func:`tusk.collect_feature_matrix`.
+                [`tusk.collect_feature_matrix`][tusk.api.collect_feature_matrix].
         """
         self.target_table = target_table
         self.agg_primitives = agg_primitives
@@ -100,7 +102,9 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
     ) -> DFSTransformer:
         """Synthesize feature definitions from the database's schema.
 
-        This reads no rows. :meth:`transform` does the computation.
+        This reads no rows.
+        [`transform`][tusk.sklearn.DFSTransformer.transform] does the
+        computation.
 
         Args:
             X: Ignored. Synthesis depends only on the schema.
@@ -139,7 +143,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         database: Database | None = None,
         cutoff_time: datetime | None = None,
     ) -> Any:
-        """Compute the feature matrix for the keys in ``X``.
+        """Compute the feature matrix for the keys in `X`.
 
         Args:
             X: The target's primary key. Its order becomes the feature
@@ -185,7 +189,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         cutoff_time: datetime | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Fit, then transform, passing ``database`` and ``cutoff_time`` to both.
+        """Fit, then transform, passing `database` and `cutoff_time` to both.
 
         Args:
             X: The target's primary key.
@@ -205,7 +209,7 @@ class DFSTransformer(TransformerMixin, BaseEstimator):
         """Return the feature matrix's column names, in column order.
 
         A multi-output primitive contributes several names. The result is
-        then wider than ``len(features_)``.
+        then wider than `len(features_)`.
 
         Args:
             input_features: Ignored. Present for the scikit-learn signature.
@@ -224,19 +228,19 @@ class DFSSelectorTransformer(DFSTransformer):
     then computes only forty on new data.
 
     Two column spaces meet here. Do not mix them. *tusk space*
-    is the feature matrix, indexed by feature ``output_names``. *encoded
-    space* is the encoder's output, indexed by ``get_feature_names_out()``.
+    is the feature matrix, indexed by feature `output_names`. *encoded
+    space* is the encoder's output, indexed by `get_feature_names_out()`.
     The selector's mask indexes encoded space. Pruning happens in tusk
     space. Sentinel lineage is the only bridge between the two spaces.
 
     Fitting adds three attributes. As with the parent class's fitted
     attributes, none is declared at class level. Each is available only
-    once :meth:`fit` has run:
+    once [`fit`][tusk.sklearn.DFSSelectorTransformer.fit] has run:
 
-    - ``encoder_``, the encoder prefix refitted on the kept columns.
-    - ``kept_names_``, the encoded-space names the selector chose, in
+    - `encoder_`, the encoder prefix refitted on the kept columns.
+    - `kept_names_`, the encoded-space names the selector chose, in
       encoder order.
-    - ``sentinels_``, the renaming that recovers lineage.
+    - `sentinels_`, the renaming that recovers lineage.
     """
 
     def __init__(
@@ -253,7 +257,7 @@ class DFSSelectorTransformer(DFSTransformer):
 
         Args:
             target_table: Table to build features for.
-            selection_pipeline: An estimator ending in a ``SelectorMixin``.
+            selection_pipeline: An estimator ending in a `SelectorMixin`.
                 Everything before it encodes.
             agg_primitives: Aggregation primitives. None selects the
                 defaults.
@@ -262,7 +266,7 @@ class DFSSelectorTransformer(DFSTransformer):
             max_depth: Maximum stacked primitive applications.
             output_backend: Backend to collect to. None collects natively.
             batch_size: Feature columns per query, as in
-                :func:`tusk.collect_feature_matrix`.
+                [`tusk.collect_feature_matrix`][tusk.api.collect_feature_matrix].
         """
         super().__init__(
             target_table=target_table,
@@ -401,7 +405,7 @@ class DFSSelectorTransformer(DFSTransformer):
             input_features: Ignored. Present for the scikit-learn signature.
 
         Returns:
-            Readable names such as ``oh__MODE__transactions__category_a``.
+            Readable names such as `oh__MODE__transactions__category_a`.
         """
         check_is_fitted(self, "kept_names_")
         names = [self.sentinels_.restore(n) for n in self.kept_names_]

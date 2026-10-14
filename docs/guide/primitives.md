@@ -5,7 +5,7 @@ The whole computation stays on your backend.
 
 ## What ships with tusk
 
-See the [API reference](../api/primitives.md) for the full list of
+See the [API reference][tusk.primitives] for the full list of
 aggregation, transform, group transform and ordered transform primitives tusk
 ships.
 
@@ -26,8 +26,8 @@ and `Count` are the same kind of object as anything you write yourself. See
 
 Passing `agg_primitives=None` or `trans_primitives=None` selects the
 primitives featuretools uses by default, where tusk has them:
-[`AGG_DEFAULTS`][tusk.primitives.aggregation.AGG_DEFAULTS] for aggregation
-and [`TRANS_DEFAULTS`][tusk.primitives.transform.TRANS_DEFAULTS] for
+[`AGG_DEFAULTS`][tusk.primitives.AGG_DEFAULTS] for aggregation
+and [`TRANS_DEFAULTS`][tusk.primitives.TRANS_DEFAULTS] for
 transforms.
 
 The defaults exclude arithmetic primitives because arithmetic primitives
@@ -138,7 +138,7 @@ one by its class:
   ([`OrderedTransformPrimitive`][tusk.primitives.OrderedTransformPrimitive])
   runs within each foreign-key group and reads the group's rows in
   `row_creation_time` order, such as `cum_sum`. The [API
-  reference](../api/primitives.md#ordered-transform-primitives) lists them all.
+  reference][tusk.primitives.OrderedTransformPrimitive] lists them all.
 
 A group or ordered transform gives one feature per parent relationship of the
 table, named after the foreign key it groups by, such as

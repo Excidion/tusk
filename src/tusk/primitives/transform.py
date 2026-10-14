@@ -1,9 +1,9 @@
 """Built-in transform primitives.
 
-Group transforms subclass ``GroupTransformPrimitive``. The compiler wraps
-them in ``.over(foreign_key)``. Ordered transforms subclass
-``OrderedTransformPrimitive``. The compiler wraps them in
-``.over(foreign_key, order_by=...)``. narwhals requires the ordering on lazy
+Group transforms subclass `GroupTransformPrimitive`. The compiler wraps
+them in `.over(foreign_key)`. Ordered transforms subclass
+`OrderedTransformPrimitive`. The compiler wraps them in
+`.over(foreign_key, order_by=...)`. narwhals requires the ordering on lazy
 backends. It raises an exception when the caller omits the ordering.
 """
 
@@ -319,7 +319,7 @@ class Negate(TransformPrimitive):
     """The value with its sign flipped, as a float.
 
     An integer above 2**53 in magnitude, or a high-precision decimal, loses
-    precision in the round trip through ``Float64``.
+    precision in the round trip through `Float64`.
     """
 
     name = "negate"
@@ -345,7 +345,7 @@ class SquareRoot(TransformPrimitive):
     """Square root.
 
     A negative input gives null. Backends disagree on the unguarded square
-    root of a negative value. Zero gives ``0.0``.
+    root of a negative value. Zero gives `0.0`.
     """
 
     name = "square_root"
@@ -1156,7 +1156,7 @@ class AbsoluteDiff(OrderedTransformPrimitive):
 
     The first row is null. A row whose own or previous value is null is
     also null. An integer above 2**53 in magnitude, or a high-precision
-    decimal, loses precision in the round trip through ``Float64``.
+    decimal, loses precision in the round trip through `Float64`.
     """
 
     name = "absolute_diff"
@@ -1302,7 +1302,7 @@ def _split_into_words(expr: nw.Expr) -> nw.Expr:
     """Reduce a string to its words, separated by one space each.
 
     Words are separated by whitespace. A word keeps the punctuation inside
-    it, so ``"a-b"`` is one word. Punctuation around a word is not part of
+    it, so `"a-b"` is one word. Punctuation around a word is not part of
     the word. A run of punctuation alone is not a word.
 
     Args:
@@ -1329,10 +1329,10 @@ def _count_unless_empty(words: nw.Expr, count: nw.Expr) -> nw.Expr:
 
     Args:
         words: A string expression of words joined by single spaces.
-        count: A counting expression over ``words``.
+        count: A counting expression over `words`.
 
     Returns:
-        A narwhals expression of the count. It is zero where ``words`` is
+        A narwhals expression of the count. It is zero where `words` is
         empty. An empty string splits into one empty word, not zero.
     """
     return nw.when(words == "").then(nw.lit(0)).otherwise(count)

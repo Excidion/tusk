@@ -1,9 +1,9 @@
 """Mapping of encoded column names to their source feature matrix columns.
 
-:func:`make_sentinels` renames a feature matrix's columns to opaque tokens.
-:class:`Sentinels` then reads those tokens back out of an encoder's
-``get_feature_names_out()``. :meth:`Sentinels.sources` reports which feature
-matrix columns an encoded name derives from. :meth:`Sentinels.restore`
+`make_sentinels` renames a feature matrix's columns to opaque tokens.
+`Sentinels` then reads those tokens back out of an encoder's
+`get_feature_names_out()`. `Sentinels.sources` reports which feature
+matrix columns an encoded name derives from. `Sentinels.restore`
 substitutes the real names back for display.
 """
 
@@ -41,11 +41,11 @@ class Sentinels:
         """Return the columns an encoded name derives from.
 
         This collects every match, not only the first. A multi-input
-        transformer, such as ``PolynomialFeatures``, then reports each
+        transformer, such as `PolynomialFeatures`, then reports each
         source column, and tusk keeps the feature of every source column.
 
         Args:
-            name: One name from the encoder's ``get_feature_names_out()``.
+            name: One name from the encoder's `get_feature_names_out()`.
 
         Returns:
             columns: The tusk-space columns it mentions, in column order. Empty
@@ -59,19 +59,19 @@ class Sentinels:
         """Replace each sentinel with its real column name.
 
         Args:
-            name: One name from the encoder's ``get_feature_names_out()``.
+            name: One name from the encoder's `get_feature_names_out()`.
 
         Returns:
             name: The same name with every sentinel replaced. Users then
-                read ``oh__N_UNIQUE__transactions__category`` instead of
-                ``oh___t9f3a_0001``.
+                read `oh__N_UNIQUE__transactions__category` instead of
+                `oh___t9f3a_0001`.
         """
 
         def replace(match: re.Match[str]) -> str:
             """Map a matched sentinel to its source column name.
 
             Args:
-                match: A single regex match of ``_pattern`` against ``name``.
+                match: A single regex match of `_pattern` against `name`.
 
             Returns:
                 column: The source column for the matched index, or the
@@ -84,7 +84,7 @@ class Sentinels:
 
 
 def make_sentinels(columns: Sequence[str]) -> Sentinels:
-    """Build an opaque renaming of ``columns`` for one fit.
+    """Build an opaque renaming of `columns` for one fit.
 
     Args:
         columns: The feature matrix's column names, in order.

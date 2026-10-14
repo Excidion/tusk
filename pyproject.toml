@@ -61,7 +61,7 @@ benchmark = [
 ]
 docs = [
     "mkdocstrings[python]>=1.0.6",
-    "zensical>=0.0.56",
+    "zensical>=0.0.67",
 ]
 
 [tool.pytest.ini_options]

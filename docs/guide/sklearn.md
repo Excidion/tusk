@@ -82,7 +82,7 @@ pipeline.fit(
 pipeline.predict(new_keys, database=db, cutoff_time=now)
 ```
 
-[`Database.get_keys`][tusk.Database.get_keys] returns the primary key column
+[`Database.get_keys`][tusk.database.Database.get_keys] returns the primary key column
 of a table at a cutoff time, as the backend's native (lazy) table. Compute
 the labels based on this table. `X` and `y` have to have the same row order.
 

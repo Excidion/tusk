@@ -15,8 +15,8 @@ from tusk.features import Feature
 class FeatureList(Sequence[Feature]):
     """An immutable, non-empty, single-table collection of feature definitions.
 
-    It behaves as a :class:`~collections.abc.Sequence` of :class:`Feature`.
-    Slicing returns another ``FeatureList``.
+    It behaves as a `Sequence` of [`Feature`][tusk.features.Feature].
+    Slicing returns another `FeatureList`.
     """
 
     def __init__(self, features: Iterable[Feature]) -> None:
@@ -26,7 +26,7 @@ class FeatureList(Sequence[Feature]):
             features: The definitions to hold. All must be on one table.
 
         Raises:
-            SchemaError: If ``features`` is empty or spans more than one table.
+            SchemaError: If `features` is empty or spans more than one table.
         """
         self._features = tuple(features)
         if not self._features:
@@ -45,7 +45,7 @@ class FeatureList(Sequence[Feature]):
     def output_names(self) -> tuple[str, ...]:
         """Every column name the feature matrix will carry, in column order.
 
-        It is wider than ``len(self)`` when any feature is multi-output.
+        It is wider than `len(self)` when any feature is multi-output.
         """
         return tuple(n for f in self._features for n in f.output_names)
 
@@ -56,36 +56,36 @@ class FeatureList(Sequence[Feature]):
     ) -> Any:
         """Compute these features against a database.
 
-        It raises :class:`~tusk.exceptions.SchemaError` if any of these are
+        It raises [`SchemaError`][tusk.exceptions.SchemaError] if any of these are
         true:
 
-        - The target table has no ``primary_key``.
+        - The target table has no `primary_key`.
         - Two features compile to the same column name.
         - A feature's condition key is not declared on the table it masks
-          in ``database``.
+          in `database`.
 
-        It raises :class:`~tusk.exceptions.PrimitiveError` if an
+        It raises [`PrimitiveError`][tusk.exceptions.PrimitiveError] if an
         order-dependent primitive lands on a table with no
-        ``row_creation_time``.
+        `row_creation_time`.
 
-        It raises ``TypeError`` if ``cutoff_time`` is not a ``datetime``.
+        It raises `TypeError` if `cutoff_time` is not a `datetime`.
 
-        It raises :class:`~tusk.exceptions.ValidationError` if
-        ``cutoff_time`` disagrees with the database's Datetime columns in
+        It raises [`ValidationError`][tusk.exceptions.ValidationError] if
+        `cutoff_time` disagrees with the database's Datetime columns in
         tz awareness. It also raises that error if a feature's primitive
-        measures against ``cutoff_time`` and none was given.
+        measures against `cutoff_time` and none was given.
 
         Args:
             database: The database to compute over.
-            cutoff_time: Only rows whose ``row_creation_time`` is at or
+            cutoff_time: Only rows whose `row_creation_time` is at or
                 before this value are visible, on the target table as well
                 as its relatives. The feature matrix may then have fewer
                 rows than the target. Its tz awareness must match the
                 database's Datetime columns'. None disables filtering. A
-                column listed in a table's ``row_update_times`` holds the
+                column listed in a table's `row_update_times` holds the
                 value it had before the update, wherever that update
                 happened after the cutoff time, as declared by
-                ``database``.
+                `database`.
 
         Returns:
             feature_matrix: The features on the caller's backend, as the
@@ -101,16 +101,16 @@ class FeatureList(Sequence[Feature]):
     def __getitem__(self, index: slice) -> FeatureList: ...
 
     def __getitem__(self, index: int | slice) -> Feature | FeatureList:
-        """Return a feature by index, or a narrower ``FeatureList`` by slice.
+        """Return a feature by index, or a narrower `FeatureList` by slice.
 
         A slice that selects nothing raises
-        :class:`~tusk.exceptions.SchemaError`.
+        [`SchemaError`][tusk.exceptions.SchemaError].
 
         Args:
             index: The position or slice.
 
         Returns:
-            The feature at ``index``, or the sliced list.
+            The feature at `index`, or the sliced list.
         """
         if isinstance(index, slice):
             return FeatureList(self._features[index])
@@ -125,7 +125,7 @@ class FeatureList(Sequence[Feature]):
         return iter(self._features)
 
     def __eq__(self, other: object) -> bool:
-        """Compare structurally against another ``FeatureList``."""
+        """Compare structurally against another `FeatureList`."""
         if not isinstance(other, FeatureList):
             return NotImplemented
         return self._features == other._features

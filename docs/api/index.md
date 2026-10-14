@@ -2,12 +2,14 @@
 
 Everything importable from `tusk` and its submodules.
 
-- [Top level](tusk.md): `deep_feature_synthesis()`, `apply_features()` and
-  `FeatureList`.
-- [Databases](database.md): `Database`, `Relationship`, `TableSchema`.
-- [Plotting](plotting.md): `SchemaDiagram`, what `Database.plot()` returns.
-- [Validation](validation.md): the checks and the registries they live in.
-- [Primitives](primitives.md): base classes, the built-ins, and the registry.
-- [Features](features.md): the definitions DFS produces.
-- [Dtypes](dtypes.md): the families primitives match on.
-- [Exceptions](exceptions.md): errors and warnings.
+- [api][tusk.api]: `deep_feature_synthesis()`, `apply_features()` and
+  `collect_feature_matrix()`.
+- [feature_list][tusk.feature_list]: `FeatureList`.
+- [database][tusk.database]: `Database`, `Relationship`, `TableSchema`.
+- [plotting][tusk.plotting]: `SchemaDiagram`, what `Database.plot()` returns.
+- [validation][tusk.validation]: the checks and the registries they live in.
+- [primitives][tusk.primitives]: base classes, the registry, and the built-ins.
+- [features][tusk.features]: the definitions DFS produces.
+- [dtypes][tusk.dtypes]: the families primitives match on.
+- [exceptions][tusk.exceptions]: errors and warnings.
+- [sklearn][tusk.sklearn]: estimators for pipelines.

@@ -55,35 +55,35 @@ def synthesize(
 ) -> FeatureList:
     """Build feature definitions for a target table.
 
-    ``database.get_schema()`` raises :class:`~tusk.exceptions.SchemaError` if
+    `database.get_schema()` raises [`SchemaError`][tusk.exceptions.SchemaError] if
     the target table is unknown.
 
-    It also raises :class:`~tusk.exceptions.PrimitiveError`, via
-    :func:`~tusk.features._require_kind`, if a primitive resolved from
-    ``agg_primitives`` is not an
-    :class:`~tusk.primitives.base.AggregationPrimitive`, or if one resolved
-    from ``trans_primitives`` is not a
-    :class:`~tusk.primitives.base.TransformPrimitive`. This function checks
-    that eagerly, instead of leaving it to each :class:`Feature` subclass's
-    own check. A primitive that matches no column is never built into a
-    feature at all, so only the argument it was passed to can name the
-    mistake.
+    It also raises [`PrimitiveError`][tusk.exceptions.PrimitiveError], via
+    `_require_kind`, if a primitive resolved from
+    `agg_primitives` is not an
+    [`AggregationPrimitive`][tusk.primitives.base.AggregationPrimitive], or if one
+    resolved from `trans_primitives` is not a
+    [`TransformPrimitive`][tusk.primitives.base.TransformPrimitive]. This function
+    checks that eagerly, instead of leaving it to each
+    [`Feature`][tusk.features.Feature] subclass's own check. A primitive that matches no
+    column is never built into a feature at all, so only the argument it was passed to
+    can name the mistake.
 
     Args:
         database: The schema to walk.
         target_table: Table to build features for.
         agg_primitives: Aggregation primitives, as names or instances. None
-            selects ``AGG_DEFAULTS``.
+            selects `AGG_DEFAULTS`.
         trans_primitives: Transform primitives, as names or instances. Each
-            :class:`~tusk.primitives.base.GroupTransformPrimitive` applies
-            within each foreign-key group. Every other transform primitive
-            applies to each row. None selects ``TRANS_DEFAULTS``.
+            [`GroupTransformPrimitive`][tusk.primitives.base.GroupTransformPrimitive]
+            applies within each foreign-key group. Every other transform primitive
+            applies to each row. None selects `TRANS_DEFAULTS`.
         conditional_primitives: Aggregation primitives to compute over only
             the rows each declared condition keeps, as names or instances.
-            This is a separate list from ``agg_primitives``. A primitive
+            This is a separate list from `agg_primitives`. A primitive
             named here yields only the conditional features, so name it in
             both lists for the unconditional ones too. None selects
-            ``CONDITIONAL_DEFAULTS``. ``()`` computes no conditional
+            `CONDITIONAL_DEFAULTS`. `()` computes no conditional
             features.
         max_depth: Maximum number of stacked primitive applications.
 
@@ -102,9 +102,9 @@ def synthesize(
             column.
         UnmatchedPrimitiveWarning: If a requested primitive matched no column
             of its input dtypes anywhere in the walk.
-        UnmatchedConditionWarning: If ``conditional_primitives`` was explicitly
-            requested but no table in the database declares a ``where`` or
-            ``when`` condition.
+        UnmatchedConditionWarning: If `conditional_primitives` was explicitly
+            requested but no table in the database declares a `where` or
+            `when` condition.
     """
     database.get_schema(target_table)
     agg = resolve_all(AGG_DEFAULTS if agg_primitives is None else agg_primitives)
@@ -156,29 +156,29 @@ def _warn_if_conditional_primitives_are_unusable(
     conditional_primitives: Iterable[str | Primitive] | None,
     conditional_agg: Sequence[Primitive],
 ) -> None:
-    """Warn when ``conditional_primitives`` was requested but no condition can use it.
+    """Warn when `conditional_primitives` was requested but no condition can use it.
 
-    This check cannot use ``_matched``/``_unmatched``. A conditional
-    primitive such as ``count`` or ``sum`` is usually also in
-    ``agg_primitives``. There, it counts as matched already, so a warning
+    This check cannot use `_matched`/`_unmatched`. A conditional
+    primitive such as `count` or `sum` is usually also in
+    `agg_primitives`. There, it counts as matched already, so a warning
     keyed on the primitive would stay suppressed. This check instead keys on
     the condition dimension, independent of primitive matching.
 
-    ``conditional_primitives=None`` selects ``CONDITIONAL_DEFAULTS`` and
-    stays silent. ``conditional_primitives=()`` explicitly disables
+    `conditional_primitives=None` selects `CONDITIONAL_DEFAULTS` and
+    stays silent. `conditional_primitives=()` explicitly disables
     conditional features and stays silent too.
 
     Args:
         database: The database to check for declared conditions.
         conditional_primitives: The caller's own argument, unresolved, used
-            only to tell an explicit request apart from the ``None`` default.
-        conditional_agg: ``conditional_primitives`` resolved to primitive
+            only to tell an explicit request apart from the `None` default.
+        conditional_agg: `conditional_primitives` resolved to primitive
             instances.
 
     Warns:
-        UnmatchedConditionWarning: If ``conditional_primitives`` is neither
+        UnmatchedConditionWarning: If `conditional_primitives` is neither
             None nor empty, and no table in the database declares a
-            ``where`` or ``when`` condition.
+            `where` or `when` condition.
     """
     if conditional_primitives is None or not conditional_agg:
         return
@@ -232,7 +232,7 @@ class _Context:
         depth_limit: int,
         path: tuple[Relationship, ...],
     ) -> list[Feature]:
-        """Build every feature on ``table`` of depth at most ``depth_limit``.
+        """Build every feature on `table` of depth at most `depth_limit`.
 
         Args:
             table: Table to build features for.
@@ -272,10 +272,10 @@ class _Context:
             path: Relationships already traversed.
 
         Returns:
-            Aggregation features on the table. ``_check_ordering`` raises
-                :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
+            Aggregation features on the table. `_check_ordering` raises
+                [`PrimitiveError`][tusk.exceptions.PrimitiveError] if an order-dependent
                 primitive is requested for a child table with no
-                ``row_creation_time``.
+                `row_creation_time`.
         """
         out: list[Feature] = []
         for rel in self.database.children_of(table):
@@ -408,10 +408,10 @@ class _Context:
 
         Returns:
             features: Groupby-transform features on the table, one per parent
-                relationship not on ``path``. ``_check_ordering`` raises
-                :class:`~tusk.exceptions.PrimitiveError` if an order-dependent
+                relationship not on `path`. `_check_ordering` raises
+                [`PrimitiveError`][tusk.exceptions.PrimitiveError] if an order-dependent
                 primitive is requested for a table with no
-                ``row_creation_time``.
+                `row_creation_time`.
         """
         if not self.groupby:
             return []
@@ -431,7 +431,7 @@ class _Context:
         return out
 
     def _record_ungroupable(self, table: str) -> None:
-        """Record every group transform primitive as unmatched on ``table``.
+        """Record every group transform primitive as unmatched on `table`.
 
         The caller passes only a table with no parent relationship. A table
         whose parents the walk already consumed on its path still has a
@@ -453,7 +453,7 @@ class _Context:
         """Warn about requested primitives that matched nothing anywhere.
 
         Skipping is the right behaviour. Raising would break a
-        zero-configuration ``deep_feature_synthesis()`` on any schema
+        zero-configuration `deep_feature_synthesis()` on any schema
         lacking a dtype family. However, skipping silently leaves the user
         with a primitive they asked for, no column, and no explanation.
 
@@ -478,7 +478,7 @@ class _Context:
     ) -> None:
         """Warn when a Categorical or Enum column is skipped by a STRING slot.
 
-        Casting a column to ``Categorical`` asserts that its values are
+        Casting a column to `Categorical` asserts that its values are
         labels, not text. So it is correct for a string primitive to skip
         it. Skipping it *silently* is not correct. The user would then get
         a feature matrix with columns quietly absent and no explanation for
@@ -530,8 +530,8 @@ class _Context:
     def _check_ordering(self, primitive: Primitive, table: str) -> None:
         """Reject order-dependent primitives on tables that cannot be ordered.
 
-        Narwhals requires ``order_by`` for these expressions on lazy
-        backends. The ordering column is the table's ``row_creation_time``.
+        Narwhals requires `order_by` for these expressions on lazy
+        backends. The ordering column is the table's `row_creation_time`.
         This check runs in phase 1, before any query is built.
 
         Args:
@@ -540,9 +540,10 @@ class _Context:
 
         Raises:
             PrimitiveError: If the primitive is an
-                :class:`~tusk.primitives.base.OrderedTransformPrimitive` or an
-                :class:`~tusk.primitives.base.OrderedAggregationPrimitive` and
-                the table has no ``row_creation_time``.
+                [`OrderedTransformPrimitive`][tusk.primitives.base.OrderedTransformPrimitive]
+                or an
+                [`OrderedAggregationPrimitive`][tusk.primitives.base.OrderedAggregationPrimitive]
+                and the table has no `row_creation_time`.
         """
         if not isinstance(
             primitive,
@@ -559,13 +560,13 @@ class _Context:
         """Drop join keys, which identify rows rather than measuring anything.
 
         Only the primary key and foreign keys are dropped here. The
-        ``row_creation_time`` is a genuine measurement, so it stays available
-        as a primitive input. This is what makes ``MONTH(signed_up_at)``-style
-        temporal transforms reachable, along with ``N_UNIQUE`` or
-        ``CUM_COUNT`` over a temporal column. The ``row_creation_time`` is
+        `row_creation_time` is a genuine measurement, so it stays available
+        as a primitive input. This is what makes `MONTH(signed_up_at)`-style
+        temporal transforms reachable, along with `N_UNIQUE` or
+        `CUM_COUNT` over a temporal column. The `row_creation_time` is
         dropped later instead, from the feature matrix's raw passthrough
         columns only (see
-        :meth:`~tusk.database.Database.output_excluded_columns`).
+        [`output_excluded_columns`][tusk.database.Database.output_excluded_columns]).
 
         Args:
             table: The table the features belong to.
@@ -599,7 +600,7 @@ class _Context:
             One tuple per valid input combination.
         """
         # A multi-output feature materializes only its indexed columns
-        # (``QUANTILES(x)[0]`` ...), never the bare stem, so nothing can read
+        # (`QUANTILES(x)[0]` ...), never the bare stem, so nothing can read
         # it as an input. It stays a valid output; it is just not stackable.
         candidates = [f for f in candidates if not f.is_multi_output]
         self._warn_categorical(primitive, candidates)

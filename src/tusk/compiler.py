@@ -1,8 +1,8 @@
 """Phase 2: the single lazy query plan built from feature definitions.
 
 Nothing here materializes a table, and neither does the caller. The only
-``collect()`` calls in tusk are the ones :mod:`tusk.validation` makes when a
-check is explicitly requested.
+`collect()` calls in tusk are the ones [`tusk.validation`][tusk.validation] makes when
+a check is explicitly requested.
 """
 
 from __future__ import annotations
@@ -43,22 +43,22 @@ def compile_features(
 ) -> nw.LazyFrame:
     """Compute a lazy feature matrix from feature definitions.
 
-    It raises :class:`~tusk.exceptions.SchemaError`, from
-    :meth:`~tusk.Database.require_primary_key`, if the target table has no
-    primary key. It raises :class:`~tusk.exceptions.ValidationError`, from
-    :func:`_require_cutoff_time`, if a primitive measures against
-    ``cutoff_time`` and none was given.
+    It raises [`SchemaError`][tusk.exceptions.SchemaError], from
+    [`require_primary_key`][tusk.database.Database.require_primary_key], if the target
+    table has no primary key. It raises
+    [`ValidationError`][tusk.exceptions.ValidationError], from `_require_cutoff_time`,
+    if a primitive measures against `cutoff_time` and none was given.
 
     Args:
         features: Features to compute.
         database: The database holding the tables.
-        cutoff_time: Only rows whose ``row_creation_time`` is at or before this
+        cutoff_time: Only rows whose `row_creation_time` is at or before this
             value are visible. None disables filtering.
 
     Returns:
         feature_matrix: A narwhals LazyFrame with the target's primary key
             plus one column per feature output, and one row per target row
-            visible at ``cutoff_time``. This may have fewer rows than the
+            visible at `cutoff_time`. This may have fewer rows than the
             target table holds, because the target is filtered like any
             other table.
     """
@@ -77,9 +77,9 @@ def compile_features(
 def _reject_colliding_names(features: Sequence[Feature]) -> None:
     """Fail if two distinct features want the same column.
 
-    Column names join their parts with ``__``. A source column already
-    containing ``__`` can collide with a built name. For example,
-    ``MEAN(a.b)`` and ``MEAN(a__b)`` both want ``MEAN__a__b``. Silently
+    Column names join their parts with `__`. A source column already
+    containing `__` can collide with a built name. For example,
+    `MEAN(a.b)` and `MEAN(a__b)` both want `MEAN__a__b`. Silently
     keeping one and dropping the other would put the wrong values under a
     plausible-looking name, so this function raises an error instead.
 
@@ -134,7 +134,7 @@ def _require_cutoff_time(features: set[Feature], cutoff_time: datetime | None) -
 
     Raises:
         ValidationError: If a primitive or `when` condition measures against
-            ``cutoff_time`` and none was given.
+            `cutoff_time` and none was given.
     """
     if cutoff_time is not None:
         return
@@ -156,7 +156,7 @@ def _names_measuring_against_cutoff_time(feature: Feature) -> tuple[str, ...]:
 
     Returns:
         The primitive's name when it measures against the cutoff time, the
-        condition's name when it is a ``when`` condition, or both.
+        condition's name when it is a `when` condition, or both.
     """
     names = []
     primitive = getattr(feature, "primitive", None)
@@ -174,7 +174,7 @@ def _read_table(
     needed: set[Feature],
     cutoff_time: datetime | None,
 ) -> nw.LazyFrame:
-    """Build a table for ``table_name`` carrying a column for every needed feature.
+    """Build a table for `table_name` carrying a column for every needed feature.
 
     This function joins aggregations onto the table first, batched by
     relationship. This keeps join count independent of feature count. It
@@ -192,7 +192,7 @@ def _read_table(
             needed features.
 
     Raises:
-        SchemaError: If ``needed`` contains a feature type this compiler does
+        SchemaError: If `needed` contains a feature type this compiler does
             not know how to compute.
     """
     table = database._get_table(table_name, cutoff_time)
@@ -289,7 +289,7 @@ def _build_condition_mask(
     Args:
         schema: The child table's schema, holding the declared conditions.
         condition: The (kind, key) pair, or None for an unconditioned feature.
-        cutoff_time: The cutoff time, passed to a ``when`` condition's callable.
+        cutoff_time: The cutoff time, passed to a `when` condition's callable.
 
     Returns:
         The mask expression, or None when the feature has no condition.
@@ -579,19 +579,19 @@ def _apply(
 ) -> nw.LazyFrame:
     """Add a row-wise feature's columns to a table.
 
-    This function wraps a groupby transform in ``.over(foreign_key)``. It
+    This function wraps a groupby transform in `.over(foreign_key)`. It
     wraps an ordered transform primitive in ``.over(foreign_key,
     order_by=...)``. Neither relies on a table-level sort. On lazy backends,
     a sort is not guaranteed to survive later operations. Narwhals also
-    requires ``order_by`` for these expressions in any case.
+    requires `order_by` for these expressions in any case.
 
     Args:
         table: The table to extend.
         feature: The feature to compute.
         database: The database, used to find ordering columns.
         cutoff_time: The cutoff time, passed as a keyword argument to a
-            :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
-            its expression.
+            [`NeedsCutoffTime`][tusk.primitives.base.NeedsCutoffTime] primitive's
+            `outputs()` when it builds its expression.
 
     Returns:
         The extended table.
@@ -631,8 +631,8 @@ def _build_expressions(
         primitive: The primitive to build.
         inputs: One expression per declared input.
         cutoff_time: The cutoff time, passed as a keyword argument to a
-            :class:`NeedsCutoffTime` primitive's ``outputs()`` when it builds
-            its expression.
+            [`NeedsCutoffTime`][tusk.primitives.base.NeedsCutoffTime] primitive's
+            `outputs()` when it builds its expression.
 
     Returns:
         One expression per output column.
@@ -654,7 +654,7 @@ def _order_by(database: Database, table: str, primitive_name: str) -> tuple[str,
         The row creation time, followed by the primary key when one exists.
 
     Raises:
-        PrimitiveError: If the table has no ``row_creation_time``.
+        PrimitiveError: If the table has no `row_creation_time`.
     """
     schema = database.get_schema(table)
     if schema.row_creation_time is None:

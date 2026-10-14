@@ -76,7 +76,7 @@ class TableSchema:
 class Relationship:
     """A one-to-many link from a parent table to a child table.
 
-    The parent side is always the parent's ``primary_key``. ``foreign_key``
+    The parent side is always the parent's `primary_key`. `foreign_key`
     names the child's column.
 
     Attributes:
@@ -131,7 +131,7 @@ class Database:
         """Add a table to the database.
 
         A selected check that fails raises
-        :class:`~tusk.exceptions.ValidationError`.
+        [`ValidationError`][tusk.exceptions.ValidationError].
 
         Args:
             name: The name to register the table under.
@@ -148,7 +148,7 @@ class Database:
             row_update_times: Maps each column that holds when a row was
                 updated to the columns that update rewrote, each mapped to the
                 value it held before. Computing a feature matrix under a
-                ``cutoff_time`` gives those columns their earlier value on
+                `cutoff_time` gives those columns their earlier value on
                 every row updated after the cutoff time. An update time
                 column that does not list itself is added to its own mapping
                 with a null value.
@@ -174,8 +174,8 @@ class Database:
                 earlier tables.
 
         Warns:
-            MissingPrimaryKeyWarning: If ``primary_key`` is omitted.
-            ImplicitEarlierValueWarning: If a ``row_update_times`` key
+            MissingPrimaryKeyWarning: If `primary_key` is omitted.
+            ImplicitEarlierValueWarning: If a `row_update_times` key
                 does not list itself, so tusk gives it a null value.
         """
         if name in self._schemas:
@@ -254,7 +254,7 @@ class Database:
         """Link a parent table to a child table.
 
         Args:
-            parent: The name of the parent table. Must have a ``primary_key``.
+            parent: The name of the parent table. Must have a `primary_key`.
             child: The name of the child table.
             foreign_key: The child's column that points at the parent's
                 primary key.
@@ -333,21 +333,21 @@ class Database:
         Reads no rows. The diagram is built entirely from the declared
         schema.
 
-        A ``columns`` value other than True, False, or ``"structural"`` raises
-        :class:`ValueError`.
+        A `columns` value other than True, False, or `"structural"` raises
+        `ValueError`.
 
         Args:
             columns: True lists every column. False lists no columns.
-                ``"structural"`` lists only the primary key, the foreign
-                keys, the ``row_creation_time``, the ``row_update_times``,
+                `"structural"` lists only the primary key, the foreign
+                keys, the `row_creation_time`, the `row_update_times`,
                 and the columns they update.
             config: The Mermaid configuration of the diagram, for example
-                ``{"theme": "forest"}``. :func:`json.dumps` must accept it.
+                `{"theme": "forest"}`. `json.dumps` must accept it.
                 None sets no configuration.
 
         Returns:
             The diagram. It renders itself in a notebook and writes itself
-            to a file with :meth:`~tusk.SchemaDiagram.save`.
+            to a file with [`save`][tusk.plotting.SchemaDiagram.save].
         """
         return SchemaDiagram.from_database(self, columns, config)
 
@@ -355,7 +355,8 @@ class Database:
         """Return a fenced markdown block, for notebooks and docs.
 
         Returns:
-            The diagram as :attr:`markdown`.
+            The diagram as
+            [`SchemaDiagram.markdown`][tusk.plotting.SchemaDiagram.markdown].
         """
         return self.plot()._repr_markdown_()
 
@@ -385,8 +386,8 @@ class Database:
 
         Rows created after the cutoff time are dropped. Columns updated after
         the cutoff time hold the value they held before. A table with no
-        ``row_creation_time`` keeps every row, and a table declaring no
-        ``row_update_times`` keeps every value.
+        `row_creation_time` keeps every row, and a table declaring no
+        `row_update_times` keeps every value.
 
         Args:
             name: The table's name.
@@ -408,8 +409,8 @@ class Database:
 
         Rows created after the cutoff time are dropped. Columns updated after
         the cutoff time hold the value they held before. A table with no
-        ``row_creation_time`` keeps every row, and a table declaring no
-        ``row_update_times`` keeps every value.
+        `row_creation_time` keeps every row, and a table declaring no
+        `row_update_times` keeps every value.
 
         Args:
             name: The table's name.
@@ -444,7 +445,7 @@ class Database:
             The primary key's column name.
 
         Raises:
-            SchemaError: If the table is unknown or has no ``primary_key``.
+            SchemaError: If the table is unknown or has no `primary_key`.
         """
         primary_key = self.get_schema(name).primary_key
         if primary_key is None:
@@ -457,20 +458,20 @@ class Database:
         cutoff_time: datetime | None = None,
         sort: bool = True,
     ) -> Any:
-        """Return a table's primary key column at ``cutoff_time``.
+        """Return a table's primary key column at `cutoff_time`.
 
         For the target table, these are the keys the feature matrix at
-        ``cutoff_time`` has rows for.
+        `cutoff_time` has rows for.
 
-        It raises :class:`~tusk.exceptions.SchemaError` if the table is unknown
-        or has no ``primary_key``. It raises
-        :class:`~tusk.exceptions.ValidationError` if ``cutoff_time`` disagrees
-        with the database's Datetime columns in tz awareness, and
-        ``TypeError`` if it is not a ``datetime``.
+        It raises [`SchemaError`][tusk.exceptions.SchemaError] if the table is unknown
+        or has no `primary_key`. It raises
+        [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
+        disagrees with the database's Datetime columns in tz awareness, and
+        `TypeError` if it is not a `datetime`.
 
         Args:
             name: The table's name.
-            cutoff_time: Only rows whose ``row_creation_time`` is at or before
+            cutoff_time: Only rows whose `row_creation_time` is at or before
                 this are returned. None returns every row.
             sort: Wether keys should be sorted. Ensure consistent results with
                 lazy backends.
@@ -513,11 +514,12 @@ class Database:
         Only join keys: the primary key and every foreign key. Foreign keys
         remain usable as groupby keys.
 
-        The ``row_creation_time`` is not included here. Primitives can
-        still use it, for example for ``MONTH(signed_up_at)``-style
-        temporal transforms, or for ``N_UNIQUE`` or ``CUM_COUNT`` over a
-        temporal column. Contrast :meth:`output_excluded_columns`, which
-        does exclude it.
+        The `row_creation_time` is not included here. Primitives can
+        still use it, for example for `MONTH(signed_up_at)`-style
+        temporal transforms, or for `N_UNIQUE` or `CUM_COUNT` over a
+        temporal column. Contrast
+        [`output_excluded_columns`][tusk.database.Database.output_excluded_columns],
+        which does exclude it.
 
         Args:
             name: The table's name.
@@ -535,11 +537,11 @@ class Database:
     def output_excluded_columns(self, name: str) -> frozenset[str]:
         """Return raw columns that never appear in the feature matrix.
 
-        Everything in :meth:`input_excluded_columns`, plus the
-        ``row_creation_time``. featuretools also drops this column from its
-        feature matrix. Derived features *over* the row creation time, such
-        as ``MONTH(signed_up_at)``, are not affected. Only the raw column is
-        dropped.
+        Everything in
+        [`input_excluded_columns`][tusk.database.Database.input_excluded_columns], plus
+        the `row_creation_time`. featuretools also drops this column from its feature
+        matrix. Derived features *over* the row creation time, such as
+        `MONTH(signed_up_at)`, are not affected. Only the raw column is dropped.
 
         Args:
             name: The table's name.
@@ -651,7 +653,7 @@ def _warn_about_incomplete_row_update_times(incomplete: list[str], table: str) -
 
     Args:
         incomplete: The update time columns that have no given value, as
-            built by :func:`_row_update_times_without_a_value`.
+            built by `_row_update_times_without_a_value`.
         table: The table's name, used in the message.
     """
     for update_time in incomplete:
@@ -668,7 +670,7 @@ def _insert_own_values(
     row_update_times: Mapping[str, Mapping[str, Any]],
     incomplete: list[str],
 ) -> dict[str, dict[str, Any]]:
-    """Give each update time column named in ``incomplete`` a null value.
+    """Give each update time column named in `incomplete` a null value.
 
     Args:
         row_update_times: The normalized declaration.

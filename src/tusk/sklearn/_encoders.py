@@ -1,8 +1,8 @@
 """Inspection and validation of a selection pipeline.
 
-:func:`get_last_step` and :func:`get_encoder_prefix` split a pipeline into the
+`get_last_step` and `get_encoder_prefix` split a pipeline into the
 part that encodes and the selector that ends it.
-:func:`validate_selection_pipeline` rejects pipelines this module cannot
+`validate_selection_pipeline` rejects pipelines this module cannot
 support.
 """
 
@@ -19,14 +19,14 @@ from tusk.exceptions import EncoderError
 
 
 def get_last_step(selection_pipeline: Any) -> Any:
-    """Return the final step of ``selection_pipeline``.
+    """Return the final step of `selection_pipeline`.
 
     Args:
         selection_pipeline: The user's encode-and-select estimator.
 
     Returns:
-        step: Its last step if it is a pipeline, else ``selection_pipeline``
-            itself. After :func:`validate_selection_pipeline` runs, this is
+        step: Its last step if it is a pipeline, else `selection_pipeline`
+            itself. After `validate_selection_pipeline` runs, this is
             the selector. This function does not check that.
     """
     return (
@@ -37,7 +37,7 @@ def get_last_step(selection_pipeline: Any) -> Any:
 
 
 def get_encoder_prefix(selection_pipeline: Any) -> Any:
-    """Return everything in ``selection_pipeline`` before its final step.
+    """Return everything in `selection_pipeline` before its final step.
 
     A bare selector, or a one-step pipeline wrapping one, has no encoder. An
     identity transformer stands in for it.
@@ -56,14 +56,14 @@ def get_encoder_prefix(selection_pipeline: Any) -> Any:
 
 
 def validate_selection_pipeline(selection_pipeline: Any) -> None:
-    """Raise unless ``selection_pipeline`` can be used for selection.
+    """Raise unless `selection_pipeline` can be used for selection.
 
     Args:
         selection_pipeline: The user's encode-and-select estimator.
 
     Raises:
-        EncoderError: If it does not end in a ``SelectorMixin``. If any
-            ``ColumnTransformer`` within it names its columns explicitly.
+        EncoderError: If it does not end in a `SelectorMixin`. If any
+            `ColumnTransformer` within it names its columns explicitly.
     """
     if not isinstance(get_last_step(selection_pipeline), SelectorMixin):
         raise EncoderError(
@@ -105,7 +105,7 @@ def _require_feature_names(estimator: Any) -> None:
 
 
 def _reject_explicit_columns(estimator: Any) -> None:
-    """Raise if a ``ColumnTransformer`` names its columns explicitly.
+    """Raise if a `ColumnTransformer` names its columns explicitly.
 
     Args:
         estimator: An estimator to inspect, recursively.

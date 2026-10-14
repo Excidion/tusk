@@ -1,7 +1,7 @@
 """Encoding of every column of a table by its narwhals dtype.
 
-:class:`TableEncoder` splits the columns into disjoint dtype groups and
-encodes each group with its own estimator.
+[`TableEncoder`][tusk.sklearn.TableEncoder] splits the columns into
+disjoint dtype groups and encodes each group with its own estimator.
 """
 
 from __future__ import annotations
@@ -46,14 +46,15 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
     """An encoder of every column of a table by its narwhals dtype.
 
     Each parameter names a dtype group and takes an estimator,
-    ``"passthrough"`` or ``"drop"``. Each column belongs to exactly one
-    group. An estimator with :class:`ConvertInputMixin` receives a narwhals table
-    and converts it itself. Any other estimator receives numpy.
+    `"passthrough"` or `"drop"`. Each column belongs to exactly one
+    group. An estimator with
+    [`ConvertInputMixin`][tusk.sklearn.ConvertInputMixin] receives a narwhals
+    table and converts it itself. Any other estimator receives numpy.
 
-    Output names are ``{group}__{name}``. Groups appear in parameter order.
+    Output names are `{group}__{name}`. Groups appear in parameter order.
 
-    Fitting sets ``groups_``, group name to its fitted estimator or
-    ``"passthrough"`` and its input columns. Empty and dropped groups are
+    Fitting sets `groups_`, group name to its fitted estimator or
+    `"passthrough"` and its input columns. Empty and dropped groups are
     absent.
     """
 
@@ -75,17 +76,17 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         """Configure the estimator of each dtype group.
 
         Args:
-            numeric: For ``Int*``, ``UInt*``, ``Float*`` and ``Decimal``.
-                ``Decimal`` is cast to ``Float64`` first.
-            boolean: For ``Boolean``.
-            string: For ``String``.
-            categorical: For ``Categorical``.
-            enum: For ``Enum``.
-            date: For ``Date``.
-            time: For ``Time``.
-            datetime: For ``Datetime``.
-            duration: For ``Duration``.
-            other: For every other dtype, such as ``List`` or ``Struct``.
+            numeric: For `Int*`, `UInt*`, `Float*` and `Decimal`.
+                `Decimal` is cast to `Float64` first.
+            boolean: For `Boolean`.
+            string: For `String`.
+            categorical: For `Categorical`.
+            enum: For `Enum`.
+            date: For `Date`.
+            time: For `Time`.
+            datetime: For `Datetime`.
+            duration: For `Duration`.
+            other: For every other dtype, such as `List` or `Struct`.
         """
         self.numeric = numeric
         self.boolean = boolean
@@ -99,10 +100,10 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         self.other = other
 
     def set_params(self, **params: Any) -> TableEncoder:
-        """Set parameters, including nested ones such as ``date__components``.
+        """Set parameters, including nested ones such as `date__components`.
 
         A key whose prefix is not a group parameter is left to scikit-learn's
-        own ``set_params``, which raises ``ValueError``.
+        own `set_params`, which raises `ValueError`.
 
         Args:
             **params: Parameter names and values.
@@ -122,12 +123,12 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         return super().set_params(**params)
 
     def fit_transform(self, X: Any, y: Any = None, **params: Any) -> Any:
-        """Fit the encoder on ``X`` and return its encoding of ``X``.
+        """Fit the encoder on `X` and return its encoding of `X`.
 
         A value-based group's estimator cross-fits through its own
-        ``fit_transform``, for example ``TargetEncoder``, instead of fitting
+        `fit_transform`, for example `TargetEncoder`, instead of fitting
         and then transforming the same rows. Every group is read from one
-        collected ``select``, as in :meth:`transform`.
+        collected `select`, as in `transform`.
 
         Args:
             X: A table narwhals can read, eager or lazy.
@@ -161,7 +162,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         """Fit the groups that were left unfitted, on one collected table.
 
         Args:
-            cast: The input table with ``Decimal`` cast to ``Float64``.
+            cast: The input table with `Decimal` cast to `Float64`.
             y: Targets.
         """
         unfitted_groups = {
@@ -185,7 +186,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         """Fit the groups that need no rows and leave the others unfitted.
 
         Args:
-            cast: The input table with ``Decimal`` cast to ``Float64``.
+            cast: The input table with `Decimal` cast to `Float64`.
             y: Targets.
 
         Returns:
@@ -206,7 +207,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         """Return each kept group's estimator clone or keyword, and its columns.
 
         Returns:
-            Group name to its estimator clone or ``"passthrough"``, and its
+            Group name to its estimator clone or `"passthrough"`, and its
             columns, in group order. Empty and dropped groups are absent.
         """
         plan = {
@@ -216,7 +217,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         return {g: (e, c) for g, (e, c) in plan.items() if e != "drop"}
 
     def _output_names(self) -> list[str]:
-        """Return ``{group}__{name}`` for every output column.
+        """Return `{group}__{name}` for every output column.
 
         Returns:
             The names, group by group.
@@ -246,18 +247,18 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
     def _concat_checked(
         self, selected: nw.DataFrame, blocks: list[nw.DataFrame]
     ) -> nw.DataFrame:
-        """Join ``blocks`` horizontally, by position.
+        """Join `blocks` horizontally, by position.
 
         Args:
             selected: The collected table the blocks were made from.
-            blocks: One block per group, in ``groups_`` order.
+            blocks: One block per group, in `groups_` order.
 
         Returns:
             The joined table.
 
         Raises:
             EncoderError: If a group's output has another row count than
-                ``selected``.
+                `selected`.
         """
         for group, block in zip(self.groups_, blocks, strict=True):
             if len(block) != len(selected):
@@ -276,7 +277,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
             group: The group name.
 
         Returns:
-            The estimator clone, ``"passthrough"`` or ``"drop"``.
+            The estimator clone, `"passthrough"` or `"drop"`.
 
         Raises:
             ValueError: If the parameter is neither an estimator nor a
@@ -292,7 +293,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
         return clone(value)
 
     def _selection(self) -> list[nw.Expr]:
-        """Return the one ``select`` that feeds every group.
+        """Return the one `select` that feeds every group.
 
         Schema-only estimators contribute their expressions. Every other
         kept group contributes its columns. Every name is prefixed with its
@@ -326,10 +327,10 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
 
         Args:
             group: The group name.
-            selected: The collected result of :meth:`_selection`.
+            selected: The collected result of `_selection`.
 
         Returns:
-            The group's output, with ``{group}__`` names.
+            The group's output, with `{group}__` names.
         """
         estimator, columns = self.groups_[group]
         if fits_on_schema(estimator):
@@ -349,11 +350,11 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
 
         Args:
             group: The group name.
-            selected: The collected result of :meth:`_selection`.
+            selected: The collected result of `_selection`.
             y: Targets.
 
         Returns:
-            The group's output, with ``{group}__`` names.
+            The group's output, with `{group}__` names.
         """
         estimator, columns = self.groups_[group]
         if fits_on_schema(estimator):
@@ -370,7 +371,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
 
         Args:
             group: The group name.
-            selected: The collected result of :meth:`_selection`.
+            selected: The collected result of `_selection`.
 
         Returns:
             The group's columns.
@@ -398,7 +399,7 @@ class TableEncoder(BaseEncoder, auto_wrap_output_keys=None):
             backend: The narwhals implementation to build the table on.
 
         Returns:
-            The output, with ``{group}__`` names.
+            The output, with `{group}__` names.
         """
         names = group_output_names(estimator, columns)
         return nw.from_numpy(
@@ -453,7 +454,7 @@ def find_group(dtype: nw.dtypes.DType) -> str:
 def build_expressions_casting_decimals(
     schema: dict[str, nw.dtypes.DType],
 ) -> list[nw.Expr]:
-    """Return one expression per column, with ``Decimal`` cast to ``Float64``.
+    """Return one expression per column, with `Decimal` cast to `Float64`.
 
     Args:
         schema: Column name to dtype.
@@ -471,11 +472,11 @@ def fits_on_schema(estimator: Any) -> bool:
     """Report whether an estimator fits on the schema alone.
 
     Args:
-        estimator: An estimator or ``"passthrough"``.
+        estimator: An estimator or `"passthrough"`.
 
     Returns:
-        True for ``"passthrough"`` and for a ``BaseEncoder`` that keeps
-        ``_fits_on_schema`` true and does not override :meth:`_transform`.
+        True for `"passthrough"` and for a `BaseEncoder` that keeps
+        `_fits_on_schema` true and does not override `_transform`.
     """
     return estimator == "passthrough" or (
         isinstance(estimator, BaseEncoder)
@@ -488,12 +489,12 @@ def fit_group(estimator: Any, table: nw.DataFrame | nw.LazyFrame, y: Any) -> Any
     """Fit a group's estimator on the group's columns.
 
     Args:
-        estimator: The cloned estimator or ``"passthrough"``.
+        estimator: The cloned estimator or `"passthrough"`.
         table: The group's columns.
         y: Targets.
 
     Returns:
-        The fitted estimator, or ``"passthrough"``.
+        The fitted estimator, or `"passthrough"`.
     """
     if estimator == "passthrough":
         return estimator
@@ -508,8 +509,9 @@ def to_estimator_input(estimator: Any, table: nw.DataFrame | nw.LazyFrame) -> An
         table: The group's columns.
 
     Returns:
-        The narwhals table for an estimator with :class:`ConvertInputMixin`, else
-        a numpy array.
+        The narwhals table for an estimator with
+        [`ConvertInputMixin`][tusk.sklearn.ConvertInputMixin], else a numpy
+        array.
     """
     if isinstance(estimator, ConvertInputMixin):
         return table
@@ -520,7 +522,7 @@ def group_output_names(estimator: Any, columns: list[str]) -> list[str]:
     """Return a group's output names, without the group prefix.
 
     Args:
-        estimator: The fitted estimator or ``"passthrough"``.
+        estimator: The fitted estimator or `"passthrough"`.
         columns: The group's input columns.
 
     Returns:
