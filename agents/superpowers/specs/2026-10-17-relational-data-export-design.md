@@ -30,8 +30,8 @@ already does.
   does not exceed the task row's query time. It exposes `data`.
 - `RelatedTables`: the sampled, per-task result. `KumoRelational` consumes it.
   The user gets it from the sampler, so tusk does not build it.
-- `TableTensor.from_arrow(table, stypes)` and `infer_stypes(arrow_table,
-  overrides)`.
+- `TableTensor.from_arrow(table, stypes)`. A column of the table that
+  `stypes` does not name is left out of the tensor.
 - `KumoRelational`'s default recipe already expands datetime columns, aligns
   categories, imputes and standardizes. It takes numerical and datetime inputs.
 
@@ -55,29 +55,42 @@ already does.
    also returns `time_columns` built from each `row_creation_time`, so the
    sampler cuts again per task row. A database with no cutoff time exports
    every row, and the sampler alone limits them.
-6. **Semantic types come from `infer_stypes`, with caller overrides.** tusk
-   adds no semantic type concept to `Database`. Revisit if a second adapter
-   repeats the same decisions.
-7. **Key columns get the semantic type `id`.** These are every primary key and
-   every foreign key of a relationship. Overrides cannot change them.
+6. **tusk maps narwhals dtypes to semantic types, and the function takes no
+   semantic type argument.** The dtype alone chooses the semantic type, as it
+   does in `TableEncoder` and the primitives. To change a column's semantic
+   type, the caller casts the column before it is added to the database.
+   `Database` gains no semantic type concept, and `infer_stypes` is not
+   used: its statistics depend on the values and would differ between runs.
+7. **Key columns get the semantic type `id`, whatever their dtype.** These are
+   every primary key and every foreign key of a relationship.
+
+### Dtype to semantic type
+
+| narwhals dtype | sdm semantic type |
+| --- | --- |
+| `Int*`, `UInt*`, `Float*`, `Decimal` | `numerical` |
+| `Boolean`, `String`, `Categorical`, `Enum` | `categorical` |
+| `Date`, `Datetime` | `datetime` |
+| `Time`, `Duration`, `Binary`, `List`, `Array`, `Struct`, `Object`, `Unknown` | none: the column is left out |
+
+A key column is `id` before this table applies. A column left out raises
+`UnsupportedDtypeWarning` once per table, naming the columns. `String` is
+`categorical`, not `text`, because `KumoRelational` takes numerical and
+datetime inputs and aligns categories itself, and `infer_stypes` also types
+strings as categorical. A `text` column is out of reach until a consumer
+needs it.
 
 ## Architecture
 
 ```python
 from tusk.sdm import to_relational_sampler
 
-sampler = to_relational_sampler(
-    db.as_of(cutoff_time),
-    stypes={"orders": {"status": "categorical"}},
-)
+sampler = to_relational_sampler(db.as_of(cutoff_time))
 data = sampler.data
 ```
 
 ```python
-def to_relational_sampler(
-    database: Database,
-    stypes: Mapping[str, Mapping[str, StypeLike]] | None = None,
-) -> RelationalSampler: ...
+def to_relational_sampler(database: Database) -> RelationalSampler: ...
 ```
 
 For each table of the database:
@@ -85,8 +98,8 @@ For each table of the database:
 1. Read it with `database.get_table(name)`, collect it, and convert it to
    pyarrow through narwhals. Every backend converts to pyarrow, and duckdb
    already collects to it.
-2. Build its semantic types with `infer_stypes(arrow_table, overrides)`, where
-   `overrides` is the caller's `stypes[name]` plus `id` for its key columns.
+2. Build its semantic types from the table's schema: `id` for its key
+   columns, the dtype table above for the rest.
 3. Build `TableTensor.from_arrow(arrow_table, types)`.
 
 Then:
@@ -114,8 +127,9 @@ The function uses only `Database`'s public methods: `table_names`,
 ## Errors
 
 - `sdm` not installed: the import raises the library's own `ImportError`.
-- A column `sdm` cannot type: `infer_stypes` raises its `TypeError`. The
-  caller declares the column in `stypes`.
+- A column of a dtype with no semantic type: the column is left out and
+  `UnsupportedDtypeWarning` names it. A key column of such a dtype is not
+  left out, and `sdm` raises its own error.
 - A `row_creation_time` column that `sdm` does not type as `datetime`: the
   sampler raises its `ValueError`. The test below shows whether a date column
   needs a cast.
@@ -139,7 +153,9 @@ The function uses only `Database`'s public methods: `table_names`,
 
 - A three table database exports tables, relationships with the child on the
   left, and `id` types on the keys.
-- Overrides change a column's type and cannot change a key's type.
+- The dtype table: one column of each dtype gets its semantic type, or is
+  left out with the warning. A cast changes a column's semantic type. A key
+  column is `id` whatever its dtype.
 - `as_of` drops later rows and restores updated columns in the exported
   tables.
 - `time_columns` holds each `row_creation_time` and omits tables without one.
@@ -156,5 +172,5 @@ limits. `docs/guide/index.md` and the API page link to it. Run the docs build.
 
 - A Kumo `Graph` export.
 - Encoding categoricals, datetimes or text for `sdm`.
-- A semantic type concept on `Database`.
+- A semantic type concept on `Database`, and a `text` semantic type.
 - Building task tables or `RelatedTables`.
