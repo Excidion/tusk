@@ -80,8 +80,8 @@ def deep_feature_synthesis(
             wherever that update happened after the cutoff time.
             `cutoff_time` is ignored entirely when `features_only` is
             true. [`deep_feature_synthesis`][tusk.api.deep_feature_synthesis] does not
-            compute the features in that case. It replaces the database's
-            own cutoff time, if it has one.
+            compute the features in that case. A `cutoff_time` replaces the
+            database's own cutoff time, if it has one.
         features_only: Return the feature definitions without computing
             them.
 
@@ -161,8 +161,8 @@ def apply_features(
             `row_creation_time`. None disables filtering. A column
             listed in a table's `row_update_times` holds the value it
             had before the update, wherever that update happened after
-            the cutoff time. It replaces the database's own cutoff time,
-            if it has one.
+            the cutoff time. A `cutoff_time` replaces the database's own
+            cutoff time, if it has one.
 
     Returns:
         feature_matrix: The features on the caller's backend, as the

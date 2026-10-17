@@ -53,8 +53,8 @@ def compile_features(
         features: Features to compute.
         database: The database holding the tables.
         cutoff_time: Only rows whose `row_creation_time` is at or before this
-            value are visible. None disables filtering. It replaces the
-            database's own cutoff time, if it has one.
+            value are visible. None disables filtering. A `cutoff_time`
+            replaces the database's own cutoff time, if it has one.
 
     Returns:
         feature_matrix: A narwhals LazyFrame with the target's primary key

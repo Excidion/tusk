@@ -120,18 +120,17 @@ class Database:
 
     @property
     def cutoff_time(self) -> datetime | None:
-        """The cutoff time the tables are seen at, or None for every row."""
+        """The cutoff time of the tables, or None when they hold every row."""
         return self._cutoff_time
 
     def as_of(self, cutoff_time: datetime | None) -> Database:
-        """Return a copy of the database seen at a cutoff time.
+        """Return a copy of the database as of a cutoff time.
 
-        Rows created after the cutoff time are dropped from every table.
+        The copy drops rows created after the cutoff time from every table.
         Columns updated after the cutoff time hold the value they held
         before. A table with no `row_creation_time` keeps every row, and a
-        table declaring no `row_update_times` keeps every value. The copy
-        reads the tables as added, so calling `as_of` on a copy gives the new
-        cutoff time alone.
+        table declaring no `row_update_times` keeps every value. Calling
+        `as_of` on a copy replaces its cutoff time.
 
         It raises `TypeError` if `cutoff_time` is not a `datetime`. It raises
         [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
@@ -416,11 +415,11 @@ class Database:
     def get_table(self, name: str) -> Any:
         """Return a table as it stands at the database's cutoff time.
 
-        Rows created after the cutoff time are dropped. Columns updated after
+        It drops rows created after the cutoff time. Columns updated after
         the cutoff time hold the value they held before. A table with no
         `row_creation_time` keeps every row, and a table declaring no
-        `row_update_times` keeps every value. Without a cutoff time the table
-        is returned as added.
+        `row_update_times` keeps every value. Without a cutoff time it returns
+        the table as added.
 
         Args:
             name: The table's name.
@@ -447,13 +446,13 @@ class Database:
             table = self._tables[name]
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
-        if self._cutoff_time is None:
+        if self.cutoff_time is None:
             return table
 
         schema = self.get_schema(name)
         if schema.row_creation_time is not None:
-            table = table.filter(nw.col(schema.row_creation_time) <= self._cutoff_time)
-        return _restore_updated_columns(table, schema, self._cutoff_time)
+            table = table.filter(nw.col(schema.row_creation_time) <= self.cutoff_time)
+        return _restore_updated_columns(table, schema, self.cutoff_time)
 
     def require_primary_key(self, name: str) -> str:
         """Return a table's primary key.

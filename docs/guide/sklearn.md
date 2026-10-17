@@ -82,10 +82,10 @@ pipeline.fit(
 pipeline.predict(new_keys, database=db, cutoff_time=now)
 ```
 
-[`Database.get_keys`][tusk.database.Database.get_keys] returns the primary key column
-of a table as the database stands at its cutoff time, as the backend's native
-(lazy) table. Build the database for it with
-[`Database.as_of`][tusk.database.Database.as_of]. Compute
+[`Database.get_keys`][tusk.database.Database.get_keys] returns a table's primary
+key column as the backend's native (lazy) table. It reads the table at the
+database's cutoff time. Use [`Database.as_of`][tusk.database.Database.as_of]
+to set the cutoff time. Compute
 the labels based on this table. `X` and `y` have to have the same row order.
 
 If `transform` gets no cutoff time, it uses the cutoff time from `fit`.

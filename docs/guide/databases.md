@@ -307,8 +307,8 @@ alone requires an interval join, tracked as
 ## As of a cutoff time
 
 `db.as_of(cutoff_time)` returns a copy of the database whose tables hold only
-what was known at the cutoff time. Rows created after it are dropped, and
-columns updated after it hold the value they held before.
+the rows and values that existed at the cutoff time. The copy drops rows
+created after it. Columns updated after it hold their earlier value.
 
 ```python
 june = db.as_of(datetime(2024, 6, 1))
@@ -317,17 +317,17 @@ june.cutoff_time           # datetime(2024, 6, 1)
 db.cutoff_time             # None: the original is unchanged
 ```
 
-The copy shares the tables with the original, so it costs nothing until you
-collect. Calling `as_of` on a copy gives the new cutoff time alone, and
-`db.as_of(None)` returns a copy with every row.
+The copy shares the tables with the original. It costs nothing until you
+collect. A second `as_of` replaces the first cutoff time. It does not combine
+them. `db.as_of(None)` returns a copy with every row.
 
 `apply_features` and `deep_feature_synthesis` take a `cutoff_time` and call
 `as_of` for you. If the database already has a different cutoff time, they use
-the one you pass and issue
+your `cutoff_time` and issue
 [`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning].
 
 [`validate`][tusk.database.Database.validate] on a copy with a cutoff time
-checks the rows that copy shows.
+checks only the rows at or before the cutoff time.
 
 ## Row update times
 

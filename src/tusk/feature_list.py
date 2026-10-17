@@ -86,8 +86,8 @@ class FeatureList(Sequence[Feature]):
                 column listed in a table's `row_update_times` holds the
                 value it had before the update, wherever that update
                 happened after the cutoff time, as declared by
-                `database`. It replaces the database's own cutoff time, if it
-                has one.
+                `database`. A `cutoff_time` replaces the database's own
+                cutoff time, if it has one.
 
         Returns:
             feature_matrix: The features on the caller's backend, as the
@@ -154,7 +154,8 @@ def _warn_if_replacing_cutoff_time(
 
     Args:
         database: The database to read.
-        cutoff_time: The cutoff time that will replace the database's, or None.
+        cutoff_time: The cutoff time that will replace the database's cutoff
+            time, or None.
 
     Warns:
         OverwrittenCutoffTimeWarning: If the database has a cutoff time that
@@ -163,7 +164,8 @@ def _warn_if_replacing_cutoff_time(
     if database.cutoff_time not in (None, cutoff_time):
         warnings.warn(
             f"cutoff_time {cutoff_time} replaces the database's cutoff time "
-            f"{database.cutoff_time}",
+            f"{database.cutoff_time}; pass the database's cutoff time as "
+            "cutoff_time to keep it",
             OverwrittenCutoffTimeWarning,
             stacklevel=3,
         )
