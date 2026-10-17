@@ -76,8 +76,7 @@ already does.
 9. **Two conversion paths, chosen by the table's backend.** A table on cudf
    goes to `TableTensor.from_cudf`, and stays on the GPU. A table on any other
    backend narwhals can convert goes to pyarrow with `to_arrow()` and then
-   `TableTensor.from_arrow`. The caller does not choose. A database may mix
-   backends, and each table takes its own path.
+   `TableTensor.from_arrow`. The caller does not choose.
 
 ### Dtype to semantic type
 
@@ -214,7 +213,6 @@ The function uses only `Database`'s public methods: `table_names`,
 - A polars, a pandas and a duckdb database export the same tables.
 - A cudf database exports the same tables as a pandas one, on a CUDA device.
   It skips without `cudf` and a GPU.
-- A database with a cudf table and a polars table exports both.
 - A `Date` `row_creation_time` builds a sampler or fails with a clear message.
 - The sampler samples one task row end to end and returns `RelatedTables`.
 - `KumoRelational` runs on the sampled tables. The test records which warnings
