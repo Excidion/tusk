@@ -14,6 +14,7 @@ import narwhals as nw
 from tusk.exceptions import (
     ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
+    OverwrittenCutoffTimeWarning,
     SchemaError,
 )
 from tusk.plotting import SchemaDiagram
@@ -123,6 +124,31 @@ class Database:
         """The cutoff time of the tables, or None when they hold every row."""
         return self._cutoff_time
 
+    @cutoff_time.setter
+    def cutoff_time(self, cutoff_time: datetime | None) -> None:
+        """Set the cutoff time of the tables.
+
+        It raises `TypeError` if `cutoff_time` is not a `datetime`. It raises
+        [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
+        disagrees with the database's Datetime columns in tz awareness. It
+        issues
+        [`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning]
+        if the database has a different cutoff time.
+
+        Args:
+            cutoff_time: The cutoff time. None selects every row.
+        """
+        check_cutoff_time(self, cutoff_time)
+        if self._cutoff_time not in (None, cutoff_time):
+            warnings.warn(
+                f"cutoff_time {cutoff_time} replaces the database's cutoff time "
+                f"{self._cutoff_time}; call as_of on a database without a "
+                "cutoff time instead",
+                OverwrittenCutoffTimeWarning,
+                stacklevel=3,
+            )
+        self._cutoff_time = cutoff_time
+
     def as_of(self, cutoff_time: datetime | None) -> Database:
         """Return a copy of the database as of a cutoff time.
 
@@ -134,7 +160,10 @@ class Database:
 
         It raises `TypeError` if `cutoff_time` is not a `datetime`. It raises
         [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
-        disagrees with the database's Datetime columns in tz awareness.
+        disagrees with the database's Datetime columns in tz awareness. It
+        issues
+        [`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning]
+        if the database has a different cutoff time.
 
         Args:
             cutoff_time: The cutoff time. None returns a copy that holds every
@@ -143,12 +172,11 @@ class Database:
         Returns:
             A new database. The original database is unchanged.
         """
-        check_cutoff_time(self, cutoff_time)
         copied = copy.copy(self)
         copied._tables = dict(self._tables)
         copied._schemas = dict(self._schemas)
         copied._relationships = list(self._relationships)
-        copied._cutoff_time = cutoff_time
+        copied.cutoff_time = cutoff_time
         return copied
 
     def add_table(

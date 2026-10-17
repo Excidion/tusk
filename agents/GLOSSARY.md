@@ -17,6 +17,7 @@ Use one term per concept, in docs, docstrings and identifiers.
 | A group without rows | empty group | |
 | A set of tables and relationships | database | entity set |
 | An operation that makes features | primitive | |
+| The work an operation does | Name the work: "copies rows", "computes values", "reads rows" | cost, costs nothing, cheap, free |
 
 Names from other libraries stay as they are, for example `nw.LazyFrame`,
 featuretools' `EntitySet` and `calculate_feature_matrix`. "Unknown" in the

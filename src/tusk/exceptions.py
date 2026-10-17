@@ -48,14 +48,14 @@ class ImplicitEarlierValueWarning(UserWarning):
 
 
 class OverwrittenCutoffTimeWarning(UserWarning):
-    """Warning issued when applying features replaces a database's cutoff time.
+    """Warning issued when a cutoff time replaces a different one on a database.
 
-    A database from `as_of` carries a cutoff time. `apply_features` and
-    `FeatureList.apply` always use the `cutoff_time` they are given, even when
-    it is `None`. The caller set the database's cutoff time on purpose. A
-    silent replacement changes which rows the feature matrix holds. This
-    warning has its own class. A caller can filter it independently of the
-    others.
+    A database from `as_of` carries a cutoff time. `as_of`,
+    `apply_features` and `FeatureList.apply` each assign a cutoff time to a
+    copy of the database, even when it is `None`. Replacing the cutoff time of
+    a copy changes which rows the tables show. Cutting from the original
+    database each time avoids the warning. This warning has its own class. A
+    caller can filter it independently of the others.
     """
 
 

@@ -317,9 +317,8 @@ june.cutoff_time           # datetime(2024, 6, 1)
 db.cutoff_time             # None: the original is unchanged
 ```
 
-The copy shares the tables with the original. It costs nothing until you
-collect. A second `as_of` replaces the first cutoff time. It does not combine
-them. `db.as_of(None)` returns a copy with every row.
+`as_of` does not copy any rows. The backend computes nothing until you
+collect the table.
 
 `apply_features` and `deep_feature_synthesis` take a `cutoff_time` and call
 `as_of` for you. If the database already has a different cutoff time, they use

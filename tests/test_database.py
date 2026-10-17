@@ -11,6 +11,7 @@ from tusk.database import Relationship
 from tusk.exceptions import (
     ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
+    OverwrittenCutoffTimeWarning,
     SchemaError,
     ValidationError,
 )
@@ -68,16 +69,42 @@ def test_as_of_leaves_the_original_database_unchanged(db):
     assert len(db.get_keys("sessions").collect()) == 3
 
 
-def test_as_of_on_a_copy_builds_a_copy_with_the_new_cutoff_time(db):
-    later = db.as_of(dt.datetime(2024, 3, 5)).as_of(dt.datetime(2024, 3, 6))
+def test_as_of_on_a_copy_replaces_the_cutoff_time_and_warns(db):
+    early = db.as_of(dt.datetime(2024, 3, 5))
+    with pytest.warns(OverwrittenCutoffTimeWarning, match="2024-03-05"):
+        later = early.as_of(dt.datetime(2024, 3, 6))
     assert later.cutoff_time == dt.datetime(2024, 3, 6)
     assert len(later.get_keys("sessions").collect()) == 3
 
 
 def test_as_of_none_returns_a_copy_without_a_cutoff_time(db):
-    unfiltered = db.as_of(dt.datetime(2024, 3, 5)).as_of(None)
+    unfiltered = db.as_of(None)
     assert unfiltered.cutoff_time is None
     assert len(unfiltered.get_keys("sessions").collect()) == 3
+
+
+def test_as_of_none_on_a_copy_with_a_cutoff_time_warns(db):
+    with pytest.warns(OverwrittenCutoffTimeWarning):
+        unfiltered = db.as_of(dt.datetime(2024, 3, 5)).as_of(None)
+    assert unfiltered.cutoff_time is None
+
+
+def test_as_of_the_same_cutoff_time_does_not_warn(db):
+    early = db.as_of(dt.datetime(2024, 3, 5))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        early.as_of(dt.datetime(2024, 3, 5))
+
+
+def test_assigning_a_cutoff_time_filters_the_tables(db):
+    db.cutoff_time = dt.datetime(2024, 3, 5)
+    assert len(db.get_keys("sessions").collect()) == 2
+
+
+def test_assigning_a_cutoff_time_that_is_not_a_datetime_raises(db):
+    with pytest.raises(TypeError, match="datetime"):
+        db.cutoff_time = dt.date(2024, 3, 5)
+    assert db.cutoff_time is None
 
 
 def test_as_of_rejects_a_cutoff_time_that_is_not_a_datetime(db):
