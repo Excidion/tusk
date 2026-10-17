@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ import narwhals as nw
 from tusk.exceptions import (
     ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
+    OverwrittenCutoffTimeWarning,
     SchemaError,
 )
 from tusk.plotting import SchemaDiagram
@@ -105,6 +107,7 @@ class Database:
         self._schemas: dict[str, TableSchema] = {}
         self._relationships: list[Relationship] = []
         self._backend: Any = None
+        self._cutoff_time: datetime | None = None
 
     @property
     def table_names(self) -> tuple[str, ...]:
@@ -115,6 +118,66 @@ class Database:
     def relationships(self) -> tuple[Relationship, ...]:
         """Every relationship in the database, in insertion order."""
         return tuple(self._relationships)
+
+    @property
+    def cutoff_time(self) -> datetime | None:
+        """The cutoff time of the tables, or None when they hold every row."""
+        return self._cutoff_time
+
+    @cutoff_time.setter
+    def cutoff_time(self, cutoff_time: datetime | None) -> None:
+        """Set the cutoff time of the tables.
+
+        It raises `TypeError` if `cutoff_time` is not a `datetime`. It raises
+        [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
+        disagrees with the database's Datetime columns in tz awareness. It
+        issues
+        [`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning]
+        if the database has a different cutoff time.
+
+        Args:
+            cutoff_time: The cutoff time. None selects every row.
+        """
+        check_cutoff_time(self, cutoff_time)
+        if self._cutoff_time not in (None, cutoff_time):
+            warnings.warn(
+                f"cutoff_time {cutoff_time} replaces the database's cutoff time "
+                f"{self._cutoff_time}; call as_of on a database without a "
+                "cutoff time instead",
+                OverwrittenCutoffTimeWarning,
+                stacklevel=3,
+            )
+        self._cutoff_time = cutoff_time
+
+    def as_of(self, cutoff_time: datetime | None) -> Database:
+        """Return a copy of the database as of a cutoff time.
+
+        The copy drops rows created after the cutoff time from every table.
+        Columns updated after the cutoff time hold the value they held
+        before. A table with no `row_creation_time` keeps every row, and a
+        table declaring no `row_update_times` keeps every value. Calling
+        `as_of` on a copy replaces its cutoff time.
+
+        It raises `TypeError` if `cutoff_time` is not a `datetime`. It raises
+        [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
+        disagrees with the database's Datetime columns in tz awareness. It
+        issues
+        [`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning]
+        if the database has a different cutoff time.
+
+        Args:
+            cutoff_time: The cutoff time. None returns a copy that holds every
+                row.
+
+        Returns:
+            A new database. The original database is unchanged.
+        """
+        copied = copy.copy(self)
+        copied._tables = dict(self._tables)
+        copied._schemas = dict(self._schemas)
+        copied._relationships = list(self._relationships)
+        copied.cutoff_time = cutoff_time
+        return copied
 
     def add_table(
         self,
@@ -377,44 +440,29 @@ class Database:
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
 
-    def get_table(
-        self,
-        name: str,
-        cutoff_time: datetime | None = None,
-    ) -> Any:
-        """Return a table as it stood at the cutoff time.
+    def get_table(self, name: str) -> Any:
+        """Return a table as it stands at the database's cutoff time.
 
-        Rows created after the cutoff time are dropped. Columns updated after
+        It drops rows created after the cutoff time. Columns updated after
         the cutoff time hold the value they held before. A table with no
         `row_creation_time` keeps every row, and a table declaring no
-        `row_update_times` keeps every value.
+        `row_update_times` keeps every value. Without a cutoff time it returns
+        the table as added.
 
         Args:
             name: The table's name.
-            cutoff_time: The cutoff time. None returns the table as added.
 
         Returns:
             The table on the caller's backend, as the backend's native lazy
             table, if the backend supports lazy tables.
-
         """
-        return self._get_table(name, cutoff_time).to_native()
+        return self._get_table(name).to_native()
 
-    def _get_table(
-        self,
-        name: str,
-        cutoff_time: datetime | None = None,
-    ) -> nw.LazyFrame:
-        """Return a table as a narwhals LazyFrame, as it stood at the cutoff time.
-
-        Rows created after the cutoff time are dropped. Columns updated after
-        the cutoff time hold the value they held before. A table with no
-        `row_creation_time` keeps every row, and a table declaring no
-        `row_update_times` keeps every value.
+    def _get_table(self, name: str) -> nw.LazyFrame:
+        """Return a table as a narwhals LazyFrame, as it stands at the cutoff time.
 
         Args:
             name: The table's name.
-            cutoff_time: The cutoff time. None returns the table as added.
 
         Returns:
             The table as a narwhals LazyFrame.
@@ -426,14 +474,13 @@ class Database:
             table = self._tables[name]
         except KeyError:
             raise SchemaError(f"unknown table {name!r}") from None
-        if cutoff_time is None:
+        if self.cutoff_time is None:
             return table
 
-        check_cutoff_time(self, cutoff_time)
         schema = self.get_schema(name)
         if schema.row_creation_time is not None:
-            table = table.filter(nw.col(schema.row_creation_time) <= cutoff_time)
-        return _restore_updated_columns(table, schema, cutoff_time)
+            table = table.filter(nw.col(schema.row_creation_time) <= self.cutoff_time)
+        return _restore_updated_columns(table, schema, self.cutoff_time)
 
     def require_primary_key(self, name: str) -> str:
         """Return a table's primary key.
@@ -452,27 +499,17 @@ class Database:
             raise SchemaError(f"table {name!r} needs a primary_key")
         return primary_key
 
-    def get_keys(
-        self,
-        name: str,
-        cutoff_time: datetime | None = None,
-        sort: bool = True,
-    ) -> Any:
-        """Return a table's primary key column at `cutoff_time`.
+    def get_keys(self, name: str, sort: bool = True) -> Any:
+        """Return a table's primary key column at the database's cutoff time.
 
-        For the target table, these are the keys the feature matrix at
-        `cutoff_time` has rows for.
+        For the target table, these are the keys the feature matrix at the
+        cutoff time has rows for.
 
         It raises [`SchemaError`][tusk.exceptions.SchemaError] if the table is unknown
-        or has no `primary_key`. It raises
-        [`ValidationError`][tusk.exceptions.ValidationError] if `cutoff_time`
-        disagrees with the database's Datetime columns in tz awareness, and
-        `TypeError` if it is not a `datetime`.
+        or has no `primary_key`.
 
         Args:
             name: The table's name.
-            cutoff_time: Only rows whose `row_creation_time` is at or before
-                this are returned. None returns every row.
             sort: Wether keys should be sorted. Ensure consistent results with
                 lazy backends.
 
@@ -481,7 +518,7 @@ class Database:
             native lazy table, if the backend supports lazy tables.
         """
         primary_key = self.require_primary_key(name)
-        keys = self._get_table(name, cutoff_time).select(primary_key)
+        keys = self._get_table(name).select(primary_key)
         if sort:
             keys = keys.sort(primary_key)
         return keys.to_native()

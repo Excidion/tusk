@@ -47,6 +47,18 @@ class ImplicitEarlierValueWarning(UserWarning):
     """
 
 
+class OverwrittenCutoffTimeWarning(UserWarning):
+    """Warning issued when a cutoff time replaces a different one on a database.
+
+    A database from `as_of` carries a cutoff time. `as_of`,
+    `apply_features` and `FeatureList.apply` each assign a cutoff time to a
+    copy of the database, even when it is `None`. Replacing the cutoff time of
+    a copy changes which rows the tables show. Cutting from the original
+    database each time avoids the warning. This warning has its own class. A
+    caller can filter it independently of the others.
+    """
+
+
 class CategoricalDtypeWarning(UserWarning):
     """Warning issued when a string primitive skips a Categorical or Enum column."""
 

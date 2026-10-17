@@ -52,6 +52,13 @@ features in a `FeatureList`, and so all features passed to
 `cutoff_time` is **one global value**, not one value per row. Only rows
 whose `row_creation_time` is at or before it are visible.
 
+`apply_features` and `deep_feature_synthesis` call
+[`Database.as_of`][tusk.database.Database.as_of] with your `cutoff_time`. If
+the database already has a different cutoff time, your `cutoff_time` replaces
+it.
+[`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning]
+warns you.
+
 It must be a `datetime`, not just a `date`. A date has no time of day, so
 its behavior can differ across backends.
 

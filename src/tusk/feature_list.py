@@ -85,12 +85,17 @@ class FeatureList(Sequence[Feature]):
                 column listed in a table's `row_update_times` holds the
                 value it had before the update, wherever that update
                 happened after the cutoff time, as declared by
-                `database`.
+                `database`. A `cutoff_time` replaces the database's own
+                cutoff time, if it has one.
 
         Returns:
             feature_matrix: The features on the caller's backend, as the
                 backend's native lazy table, if the backend supports lazy
                 tables, with one row per visible target row.
+
+        Warns:
+            OverwrittenCutoffTimeWarning: If `database` has a cutoff time that
+                differs from `cutoff_time`.
         """
         return compile_features(self, database, cutoff_time).to_native()
 

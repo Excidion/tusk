@@ -70,7 +70,7 @@ repeated key. Both would misalign the feature matrix against `y`.
 Give `cutoff_time` to `fit` and to `predict`, together with `database`:
 
 ```python
-X_train = db.get_keys("customers", train_cutoff_time)
+X_train = db.as_of(train_cutoff_time).get_keys("customers")
 y_train = compute_labels(X_train)
 
 pipeline.fit(
@@ -82,8 +82,10 @@ pipeline.fit(
 pipeline.predict(new_keys, database=db, cutoff_time=now)
 ```
 
-[`Database.get_keys`][tusk.database.Database.get_keys] returns the primary key column
-of a table at a cutoff time, as the backend's native (lazy) table. Compute
+[`Database.get_keys`][tusk.database.Database.get_keys] returns a table's primary
+key column as the backend's native (lazy) table. It reads the table at the
+database's cutoff time. Use [`Database.as_of`][tusk.database.Database.as_of]
+to set the cutoff time. Compute
 the labels based on this table. `X` and `y` have to have the same row order.
 
 If `transform` gets no cutoff time, it uses the cutoff time from `fit`.
@@ -104,7 +106,7 @@ no row for 3 of 100 keys, e.g. [17, 41, 88]; they are absent from
 ```
 `transform` finds these keys before it computes the features. It reads only
 the primary key column to do this. To prevent this error, get `X` from
-`db.get_keys` at the same cutoff time.
+`db.as_of(cutoff_time).get_keys` at the same cutoff time.
 
 ## Cross-validation and search
 

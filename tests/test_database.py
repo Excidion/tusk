@@ -11,6 +11,7 @@ from tusk.database import Relationship
 from tusk.exceptions import (
     ImplicitEarlierValueWarning,
     MissingPrimaryKeyWarning,
+    OverwrittenCutoffTimeWarning,
     SchemaError,
     ValidationError,
 )
@@ -56,10 +57,79 @@ def test_missing_primary_key_warns():
         tusk.Database("x").add_table("t", pl.LazyFrame({"a": [1]}))
 
 
-def test_get_keys_returns_the_keys_that_exist_at_the_cutoff_time(db):
+def test_as_of_filters_every_table_at_the_cutoff_time(db):
     # Sessions 10, 20 and 30 start on 2024-03-04, -05 and -06.
-    keys = db.get_keys("sessions", dt.datetime(2024, 3, 5)).collect()
+    keys = db.as_of(dt.datetime(2024, 3, 5)).get_keys("sessions").collect()
     assert sorted(keys["id"].to_list()) == [10, 20]
+
+
+def test_as_of_leaves_the_original_database_unchanged(db):
+    db.as_of(dt.datetime(2024, 3, 5))
+    assert db.cutoff_time is None
+    assert len(db.get_keys("sessions").collect()) == 3
+
+
+def test_as_of_on_a_copy_replaces_the_cutoff_time_and_warns(db):
+    early = db.as_of(dt.datetime(2024, 3, 5))
+    with pytest.warns(OverwrittenCutoffTimeWarning, match="2024-03-05"):
+        later = early.as_of(dt.datetime(2024, 3, 6))
+    assert later.cutoff_time == dt.datetime(2024, 3, 6)
+    assert len(later.get_keys("sessions").collect()) == 3
+
+
+def test_as_of_none_returns_a_copy_without_a_cutoff_time(db):
+    unfiltered = db.as_of(None)
+    assert unfiltered.cutoff_time is None
+    assert len(unfiltered.get_keys("sessions").collect()) == 3
+
+
+def test_as_of_none_on_a_copy_with_a_cutoff_time_warns(db):
+    with pytest.warns(OverwrittenCutoffTimeWarning):
+        unfiltered = db.as_of(dt.datetime(2024, 3, 5)).as_of(None)
+    assert unfiltered.cutoff_time is None
+
+
+def test_as_of_the_same_cutoff_time_does_not_warn(db):
+    early = db.as_of(dt.datetime(2024, 3, 5))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        early.as_of(dt.datetime(2024, 3, 5))
+
+
+def test_assigning_a_cutoff_time_filters_the_tables(db):
+    db.cutoff_time = dt.datetime(2024, 3, 5)
+    assert len(db.get_keys("sessions").collect()) == 2
+
+
+def test_assigning_a_cutoff_time_that_is_not_a_datetime_raises(db):
+    with pytest.raises(TypeError, match="datetime"):
+        db.cutoff_time = dt.date(2024, 3, 5)
+    assert db.cutoff_time is None
+
+
+def test_as_of_rejects_a_cutoff_time_that_is_not_a_datetime(db):
+    with pytest.raises(TypeError, match="datetime"):
+        db.as_of(dt.date(2024, 3, 5))
+
+
+def test_as_of_rejects_a_cutoff_time_with_the_wrong_time_zone_awareness(db):
+    with pytest.raises(ValidationError, match="tz-aware"):
+        db.as_of(dt.datetime(2024, 3, 5, tzinfo=dt.UTC))
+
+
+def test_validate_checks_only_the_rows_the_cutoff_time_shows():
+    table = pl.LazyFrame(
+        {"id": [1, 1], "at": [dt.datetime(2024, 1, 1), dt.datetime(2024, 6, 1)]},
+    )
+    db = tusk.Database("x").add_table(
+        "t",
+        table,
+        primary_key="id",
+        row_creation_time="at",
+    )
+    db.as_of(dt.datetime(2024, 3, 1)).validate(tables="unique_primary_key")
+    with pytest.raises(ValidationError):
+        db.validate(tables="unique_primary_key")
 
 
 def test_get_keys_returns_the_backends_native_lazy_table(db):
