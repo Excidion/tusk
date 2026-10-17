@@ -317,7 +317,7 @@ june.cutoff_time           # datetime(2024, 6, 1)
 db.cutoff_time             # None: the original is unchanged
 ```
 
-`as_of` does not copy any rows. The backend computes nothing until you
+`as_of` adds a filter to each table. The backend computes the filter when you
 collect the table.
 
 `apply_features` and `deep_feature_synthesis` take a `cutoff_time` and call
