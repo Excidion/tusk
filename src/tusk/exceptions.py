@@ -47,6 +47,17 @@ class ImplicitEarlierValueWarning(UserWarning):
     """
 
 
+class OverwrittenCutoffTimeWarning(UserWarning):
+    """Warning issued when applying features replaces a database's cutoff time.
+
+    A database from `as_of` carries a cutoff time. `apply_features` and
+    `FeatureList.apply` always use the `cutoff_time` they are given, `None`
+    included. Dropping a cutoff time the caller set on the database without
+    saying so would change which rows the feature matrix holds. This warning
+    has its own class. A caller can filter it independently of the others.
+    """
+
+
 class CategoricalDtypeWarning(UserWarning):
     """Warning issued when a string primitive skips a Categorical or Enum column."""
 

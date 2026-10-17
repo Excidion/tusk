@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Iterator, Sequence
 from datetime import datetime
 from typing import Any, overload
 
 from tusk.compiler import compile_features
 from tusk.database import Database
-from tusk.exceptions import SchemaError
+from tusk.exceptions import OverwrittenCutoffTimeWarning, SchemaError
 from tusk.features import Feature
 
 
@@ -91,7 +92,12 @@ class FeatureList(Sequence[Feature]):
             feature_matrix: The features on the caller's backend, as the
                 backend's native lazy table, if the backend supports lazy
                 tables, with one row per visible target row.
+
+        Warns:
+            OverwrittenCutoffTimeWarning: If `database` has a cutoff time that
+                differs from `cutoff_time`.
         """
+        _warn_if_replacing_cutoff_time(database, cutoff_time)
         return compile_features(self, database, cutoff_time).to_native()
 
     @overload
@@ -137,3 +143,26 @@ class FeatureList(Sequence[Feature]):
     def __repr__(self) -> str:
         """Summarize the feature count and target table."""
         return f"FeatureList({len(self._features)} features on {self._target_table!r})"
+
+
+def _warn_if_replacing_cutoff_time(
+    database: Database,
+    cutoff_time: datetime | None,
+) -> None:
+    """Warn if `cutoff_time` differs from the database's own cutoff time.
+
+    Args:
+        database: The database to read.
+        cutoff_time: The cutoff time that will replace the database's, or None.
+
+    Warns:
+        OverwrittenCutoffTimeWarning: If the database has a cutoff time that
+            differs from `cutoff_time`.
+    """
+    if database.cutoff_time not in (None, cutoff_time):
+        warnings.warn(
+            f"cutoff_time {cutoff_time} replaces the database's cutoff time "
+            f"{database.cutoff_time}",
+            OverwrittenCutoffTimeWarning,
+            stacklevel=3,
+        )

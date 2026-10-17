@@ -2,6 +2,7 @@
 
 import datetime as dt
 import pickle
+import warnings
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
@@ -11,7 +12,7 @@ import pytest
 from conftest import condition_database
 
 import tusk
-from tusk.exceptions import SchemaError
+from tusk.exceptions import OverwrittenCutoffTimeWarning, SchemaError
 from tusk.feature_list import FeatureList
 from tusk.primitives import Quantiles
 
@@ -150,6 +151,30 @@ def test_apply_matches_the_free_function(features, db):
 def test_apply_honors_the_cutoff_time(features, db):
     matrix = features.apply(db, cutoff_time=datetime(2024, 1, 1))
     assert set(features.output_names) <= set(matrix.collect().columns)
+
+
+def test_apply_warns_when_it_replaces_the_cutoff_time_of_the_database(features, db):
+    with pytest.warns(OverwrittenCutoffTimeWarning, match="2024-03-05"):
+        features.apply(
+            db.as_of(dt.datetime(2024, 3, 5)),
+            cutoff_time=dt.datetime(2024, 3, 6),
+        )
+
+
+def test_apply_with_no_cutoff_time_replaces_the_one_of_the_database(features, db):
+    with pytest.warns(OverwrittenCutoffTimeWarning):
+        matrix = features.apply(db.as_of(dt.datetime(2024, 1, 1)))
+    assert matrix.collect().height == features.apply(db).collect().height
+
+
+@pytest.mark.parametrize("database_cutoff_time", [None, dt.datetime(2024, 3, 6)])
+def test_apply_does_not_warn_when_nothing_differs(features, db, database_cutoff_time):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        features.apply(
+            db.as_of(database_cutoff_time),
+            cutoff_time=dt.datetime(2024, 3, 6),
+        )
 
 
 def test_apply_rejects_a_non_datetime_cutoff(features, db):
