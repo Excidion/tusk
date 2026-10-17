@@ -86,7 +86,8 @@ class FeatureList(Sequence[Feature]):
                 column listed in a table's `row_update_times` holds the
                 value it had before the update, wherever that update
                 happened after the cutoff time, as declared by
-                `database`.
+                `database`. It replaces the database's own cutoff time, if it
+                has one.
 
         Returns:
             feature_matrix: The features on the caller's backend, as the

@@ -52,6 +52,12 @@ features in a `FeatureList`, and so all features passed to
 `cutoff_time` is **one global value**, not one value per row. Only rows
 whose `row_creation_time` is at or before it are visible.
 
+To read a database at a cutoff time without computing features, use
+[`Database.as_of`][tusk.database.Database.as_of]. If you give `cutoff_time`
+to a database that already has a different one, the one you give wins and
+[`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning]
+tells you.
+
 It must be a `datetime`, not just a `date`. A date has no time of day, so
 its behavior can differ across backends.
 

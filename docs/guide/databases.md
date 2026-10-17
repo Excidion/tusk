@@ -304,6 +304,31 @@ over that column. Computing such a column from `car_id` and `repaired_at`
 alone requires an interval join, tracked as
 [issue #29](https://github.com/Excidion/tusk/issues/29).
 
+## As of a cutoff time
+
+`db.as_of(cutoff_time)` returns a copy of the database whose tables hold only
+what was known at the cutoff time. Rows created after it are dropped, and
+columns updated after it hold the value they held before.
+
+```python
+june = db.as_of(datetime(2024, 6, 1))
+june.get_table("orders")   # the orders table on 2024-06-01
+june.cutoff_time           # datetime(2024, 6, 1)
+db.cutoff_time             # None: the original is unchanged
+```
+
+The copy shares the tables with the original, so it costs nothing until you
+collect. Calling `as_of` on a copy gives the new cutoff time alone, and
+`db.as_of(None)` returns a copy with every row.
+
+`apply_features` and `deep_feature_synthesis` take a `cutoff_time` and call
+`as_of` for you. If the database already has a different cutoff time, they use
+the one you pass and issue
+[`OverwrittenCutoffTimeWarning`][tusk.exceptions.OverwrittenCutoffTimeWarning].
+
+[`validate`][tusk.database.Database.validate] on a copy with a cutoff time
+checks the rows that copy shows.
+
 ## Row update times
 
 `row_creation_time` decides whether a **row** is visible at a cutoff time. It
