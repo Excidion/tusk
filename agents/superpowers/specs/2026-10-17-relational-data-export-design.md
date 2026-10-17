@@ -74,11 +74,17 @@ already does.
 | `Time`, `Duration`, `Binary`, `List`, `Array`, `Struct`, `Object`, `Unknown` | none: the column is left out |
 
 A key column is `id` before this table applies. A column left out raises
-`UnsupportedDtypeWarning` once per table, naming the columns. `String` is
-`categorical`, not `text`, because `KumoRelational` takes numerical and
-datetime inputs and aligns categories itself, and `infer_stypes` also types
-strings as categorical. A `text` column is out of reach until a consumer
-needs it.
+`UnsupportedDtypeWarning` once per table, naming the columns.
+
+`String` is `categorical`, not `text`. `KumoRelational` takes numerical and
+datetime feature columns and warns that it does not consume other types. Its
+default recipe turns categorical columns into ordinal codes (`AlignCategories`
+and `ToNumerical`), and has no step for `text`: `TFIDF` and
+`SentenceTransformer` exist, but the caller must pass them in a custom recipe.
+Most `String` columns in a database hold categories, such as a status, so
+mapping them to `text` would drop them from the default model. A `text` column
+is out of reach until a consumer needs it. Whether the model's warning also
+fires for `categorical` columns that the recipe goes on to use is a test below.
 
 ## Architecture
 
@@ -162,6 +168,8 @@ The function uses only `Database`'s public methods: `table_names`,
 - A polars, a pandas and a duckdb database export the same tables.
 - A `Date` `row_creation_time` builds a sampler or fails with a clear message.
 - The sampler samples one task row end to end and returns `RelatedTables`.
+- `KumoRelational` runs on the sampled tables. The test records which warnings
+  it issues for `categorical` columns.
 
 ## Docs
 
