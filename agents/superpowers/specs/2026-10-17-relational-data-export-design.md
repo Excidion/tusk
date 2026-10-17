@@ -46,9 +46,11 @@ already does.
 3. **The function returns the `RelationalSampler`.** The user reads
    `sampler.data` for the `RelationalData`. One call returns one object, and
    no caller has to keep a `RelationalData` and its `time_columns` in step.
-4. **tusk encodes nothing.** It hands over typed, raw columns. Categories,
-   datetimes, nulls and scale are `sdm`'s recipes. This avoids encoding twice
-   and avoids rebuilding what `sdm.processing` has.
+4. **tusk settles what a column is. The `sdm` recipe settles how a model
+   treats it.** tusk gives each column the semantic type its dtype states,
+   and casts the three dtypes whose meaning is a number (below). Categories,
+   datetimes, nulls and scale stay with `sdm`'s recipes. This avoids encoding
+   twice and avoids rebuilding what `sdm.processing` has.
 5. **Time is passed through and cut at export.** The function reads the
    database as it stands, so `to_relational_sampler(db.as_of(t))` filters rows
    and restores updated columns first, with the code `as_of` already has. It
@@ -61,20 +63,38 @@ already does.
    type, the caller casts the column before it is added to the database.
    `Database` gains no semantic type concept, and `infer_stypes` is not
    used: its statistics depend on the values and would differ between runs.
+   The cast is also how a caller keeps a dtype out of its conversion: a
+   `Boolean` cast to `String` is `categorical`, and an `Enum` cast to
+   `Categorical` is unordered.
 7. **Key columns get the semantic type `id`, whatever their dtype.** These are
    every primary key and every foreign key of a relationship.
+8. **tusk ships no `sdm` recipe.** A recipe is model preprocessing, it belongs
+   to one model, and `sdm` is Alpha. The user passes their own recipe to the
+   model. Because tusk's casts only state what a column is, a recipe written
+   for `numerical`, `categorical` and `datetime` columns fits the export.
+   Revisit if the default recipe proves poor for exported databases.
 
 ### Dtype to semantic type
 
-| narwhals dtype | sdm semantic type |
-| --- | --- |
-| `Int*`, `UInt*`, `Float*`, `Decimal` | `numerical` |
-| `Boolean`, `String`, `Categorical`, `Enum` | `categorical` |
-| `Date`, `Datetime` | `datetime` |
-| `Time`, `Duration`, `Binary`, `List`, `Array`, `Struct`, `Object`, `Unknown` | none: the column is left out |
+| narwhals dtype | sdm semantic type | Column handed to `sdm` |
+| --- | --- | --- |
+| `Int*`, `UInt*`, `Float*`, `Decimal` | `numerical` | as is |
+| `Boolean` | `numerical` | 0 and 1; a null stays null |
+| `Enum` | `numerical` | position in the dtype's category order; a null stays null |
+| `Duration` | `numerical` | total seconds as `Float64`, from `total_microseconds() / 1e6` |
+| `String`, `Categorical` | `categorical` | as is |
+| `Date`, `Datetime` | `datetime` | as is |
+| `Time`, `Binary`, `List`, `Array`, `Struct`, `Object`, `Unknown` | none | the column is left out |
 
 A key column is `id` before this table applies. A column left out raises
 `UnsupportedDtypeWarning` once per table, naming the columns.
+
+`Boolean`, `Enum` and `Duration` are numbers by meaning, so tusk casts them.
+`Enum` keeps its declared order, which the default recipe would otherwise
+discard: it sorts categories by value. The recipe turns `String` and
+`Categorical` columns into ordinal codes in alphabetical order, an order with
+no meaning. That is `sdm`'s choice, and the guide says so. A caller who wants
+something else passes a recipe, for example one with `AddCategoryCounts`.
 
 `String` is `categorical`, not `text`. `KumoRelational` takes numerical and
 datetime feature columns and warns that it does not consume other types. Its
@@ -104,8 +124,9 @@ For each table of the database:
 1. Read it with `database.get_table(name)`, collect it, and convert it to
    pyarrow through narwhals. Every backend converts to pyarrow, and duckdb
    already collects to it.
-2. Build its semantic types from the table's schema: `id` for its key
-   columns, the dtype table above for the rest.
+2. Cast the columns the dtype table casts, and build the semantic types from
+   the table's schema: `id` for its key columns, the dtype table above for the
+   rest. A column left out is not given a type, so `from_arrow` ignores it.
 3. Build `TableTensor.from_arrow(arrow_table, types)`.
 
 Then:
@@ -122,6 +143,10 @@ The function uses only `Database`'s public methods: `table_names`,
 `relationships`, `get_schema`, `get_table`, `require_primary_key`.
 
 ### Package
+
+- The `Enum` code expression, `code_expression` in
+  `tusk/sklearn/_column_encoders.py`, moves to a private module that needs no
+  `sklearn`. `EnumOrdinalEncoder` and the export import it from there.
 
 - `pyproject.toml` gains the extra `sdm = ["structured-data-models>=0.2.1"]`.
   The package is Apache-2.0 and Alpha, and it requires torch, so it stays
@@ -160,7 +185,9 @@ The function uses only `Database`'s public methods: `table_names`,
 - A three table database exports tables, relationships with the child on the
   left, and `id` types on the keys.
 - The dtype table: one column of each dtype gets its semantic type, or is
-  left out with the warning. A cast changes a column's semantic type. A key
+  left out with the warning. A `Boolean` becomes 0 and 1, an `Enum` its
+  category position, a `Duration` its seconds. A cast to `String` keeps a
+  `Boolean` or an `Enum` as `categorical`. A key
   column is `id` whatever its dtype.
 - `as_of` drops later rows and restores updated columns in the exported
   tables.
