@@ -73,6 +73,11 @@ already does.
    model. Because tusk's casts only state what a column is, a recipe written
    for `numerical`, `categorical` and `datetime` columns fits the export.
    Revisit if the default recipe proves poor for exported databases.
+9. **Two conversion paths, chosen by the table's backend.** A table on cudf
+   goes to `TableTensor.from_cudf`, and stays on the GPU. A table on any other
+   backend narwhals can convert goes to pyarrow with `to_arrow()` and then
+   `TableTensor.from_arrow`. The caller does not choose. A database may mix
+   backends, and each table takes its own path.
 
 ### Dtype to semantic type
 
@@ -121,13 +126,15 @@ def to_relational_sampler(database: Database) -> RelationalSampler: ...
 
 For each table of the database:
 
-1. Read it with `database.get_table(name)`, collect it, and convert it to
-   pyarrow through narwhals. Every backend converts to pyarrow, and duckdb
-   already collects to it.
+1. Read it with `database.get_table(name)` and collect it. Lazy backends
+   collect here, and duckdb collects to pyarrow.
 2. Cast the columns the dtype table casts, and build the semantic types from
    the table's schema: `id` for its key columns, the dtype table above for the
    rest. A column left out is not given a type, so `from_arrow` ignores it.
-3. Build `TableTensor.from_arrow(arrow_table, types)`.
+3. Build the tensor. A cudf table gives
+   `TableTensor.from_cudf(native, types)`. Any other table gives
+   `TableTensor.from_arrow(table.to_arrow(), types)`. Both ignore a column
+   that `types` does not name.
 
 Then:
 
@@ -138,6 +145,13 @@ Then:
 - `time_columns` maps each table with a `row_creation_time` to that column.
 - The function returns `RelationalSampler(RelationalData(tables,
   relationships), time_columns)`.
+
+The casts of step 2 are narwhals expressions, so they run on the table's own
+backend before either path. A cudf table is never moved to the host. A sampler
+over tensors on a CUDA device is `sdm`'s GPU sampler, which `sdm` documents as
+needing its own GPU dependencies (cudf, cupy, pylibcugraph). tusk adds none of
+them to the `sdm` extra and passes no `device`, so the tensors land where
+`sdm` puts them by default.
 
 The function uses only `Database`'s public methods: `table_names`,
 `relationships`, `get_schema`, `get_table`, `require_primary_key`.
@@ -173,6 +187,11 @@ The function uses only `Database`'s public methods: `table_names`,
   cannot restore an old value of a column. The columns hold the value at the
   database's cutoff time, so callers cut with `as_of`. The guide says so.
 - `where` and `when` conditions have no `sdm` counterpart and are ignored.
+- The cudf path is written from `sdm`'s and narwhals' source and was not run:
+  the build environment has no GPU. Whether the casts work on cudf is open:
+  cudf reads an `Enum` as `Categorical` in narwhals, so the `Enum` cast does
+  not apply there, and `Duration` seconds on cudf is unchecked. The cudf tests
+  below skip without a GPU and run where one exists.
 - Composite keys stay unsupported, because `Database` rejects them. `sdm`
   would take them.
 - Task tables and task links stay with the caller. They belong to the model
@@ -193,6 +212,9 @@ The function uses only `Database`'s public methods: `table_names`,
   tables.
 - `time_columns` holds each `row_creation_time` and omits tables without one.
 - A polars, a pandas and a duckdb database export the same tables.
+- A cudf database exports the same tables as a pandas one, on a CUDA device.
+  It skips without `cudf` and a GPU.
+- A database with a cudf table and a polars table exports both.
 - A `Date` `row_creation_time` builds a sampler or fails with a clear message.
 - The sampler samples one task row end to end and returns `RelatedTables`.
 - `KumoRelational` runs on the sampled tables. The test records which warnings
