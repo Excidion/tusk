@@ -22,6 +22,10 @@ test:
 test-differential:
     uv run --group validation pytest -m differential
 
+# Run the tests that need structured-data-models.
+test-sdm:
+    uv run --group sdm pytest -m sdm
+
 # Measure performance against relbench datasets.
 benchmark:
     uv run --group benchmark pytest -m benchmark
@@ -39,7 +43,7 @@ build:
     uv build
 
 # Everything CI runs.
-check: lint test test-differential
+check: lint test test-differential test-sdm
 
 # Bump the version, tag it, and push, which starts the release pipeline.
 release bump="patch":

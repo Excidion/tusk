@@ -17,6 +17,7 @@ dependencies = ["narwhals>=2.24"]
 [project.optional-dependencies]
 sklearn = ["scikit-learn>=1.4"]
 plot = ["mermaidx>=0.9.5"]
+sdm = ["structured-data-models>=0.2.1"]
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13"]
@@ -59,6 +60,9 @@ validation = [
 benchmark = [
     "relbench>=3",
 ]
+sdm = [
+    "structured-data-models>=0.2.1",
+]
 docs = [
     "mkdocstrings[python]>=1.0.6",
     "zensical>=0.0.67",
@@ -69,8 +73,9 @@ testpaths = ["tests", "benchmarks"]
 markers = [
     "differential: cross-checks values against featuretools (opt-in)",
     "benchmark: relbench performance runs (opt-in)",
+    "sdm: needs structured-data-models, which requires torch (opt-in)",
 ]
-addopts = "-m 'not differential and not benchmark'"
+addopts = "-m 'not differential and not benchmark and not sdm'"
 
 [tool.ruff]
 # .claude/ holds a git submodule (the STE skill), not tusk code.
