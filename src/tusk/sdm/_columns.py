@@ -47,7 +47,7 @@ def _cast_expression(name: str, dtype: nw.dtypes.DType) -> nw.Expr:
     """
     if dtype == nw.Boolean or dtype == nw.Decimal:
         return nw.col(name).cast(nw.Float64)
-    if dtype == nw.Enum:
+    if isinstance(dtype, nw.Enum):
         return code_expression(name, list(dtype.categories))
     if dtype == nw.Duration:
         microseconds = nw.col(name).dt.total_microseconds()

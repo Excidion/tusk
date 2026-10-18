@@ -77,8 +77,9 @@
 - Test: `tests/test_sdm_columns.py`
 
 **Interfaces:**
-- Produces: `prepare_table(table: nw.DataFrame, schema: TableSchema, key_columns: frozenset[str]) -> tuple[nw.DataFrame, dict[str, str]]`. The table holds the cast columns and the columns left out are removed. The mapping is column name to semantic type string.
+- Produces: `prepare_table(table_name: str, table: nw.DataFrame, key_columns: frozenset[str]) -> tuple[nw.DataFrame, dict[str, str]]`. It reads the dtypes from the collected table, and the table name goes into the warning. The table holds the cast columns and the columns left out are removed. The mapping is column name to semantic type string.
 - Produces: `semantic_type(dtype) -> str | None` for the dtype table in the spec.
+- Task 6 found that `from_arrow` rejects `Decimal`, so `prepare_table` casts it to `Float64`. `Date`, time zones, nulls, unsigned and string keys need no cast.
 
 Task 7 makes `tusk/sdm/__init__.py` import `sdm`, so every `tusk.sdm` module needs `sdm` installed. The tests of Tasks 4, 5 and 7 therefore carry the marker `sdm` (`pytestmark = pytest.mark.sdm`) and `pytest.importorskip("sdm")` at the top. They run under `just test-sdm`.
 
