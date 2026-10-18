@@ -23,4 +23,5 @@ query plan on the backend you already use.
 - [Primitives](primitives.md)
 - [Custom primitives](custom-primitives.md)
 - [scikit-learn pipelines](sklearn.md)
+- [Relational deep learning with sdm](sdm.md)
 - [Differences from featuretools](featuretools.md)

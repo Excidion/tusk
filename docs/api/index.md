@@ -13,3 +13,4 @@ Everything importable from `tusk` and its submodules.
 - [dtypes][tusk.dtypes]: the families primitives match on.
 - [exceptions][tusk.exceptions]: errors and warnings.
 - [sklearn][tusk.sklearn]: estimators for pipelines.
+- [sdm][tusk.sdm]: the export to relational deep learning.

@@ -17,6 +17,7 @@ nav = [
         "guide/primitives.md",
         "guide/custom-primitives.md",
         "guide/sklearn.md",
+        "guide/sdm.md",
         "guide/featuretools.md",
         "guide/primitive-coverage.md",
     ] },
