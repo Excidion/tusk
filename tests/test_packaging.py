@@ -10,11 +10,16 @@ from tusk.exceptions import (
     PrimitiveError,
     SchemaError,
     TuskError,
+    UnsupportedDtypeWarning,
 )
 
 
 def test_package_imports():
     assert tusk.__version__
+
+
+def test_unsupported_dtype_warning_is_filterable():
+    assert issubclass(UnsupportedDtypeWarning, UserWarning)
 
 
 @pytest.mark.parametrize("exc", [SchemaError, PrimitiveError])

@@ -125,6 +125,17 @@ class UnencodedFeatureWarning(UserWarning):
     """
 
 
+class UnsupportedDtypeWarning(UserWarning):
+    """Warning issued when the sdm export leaves out a column of an unsupported dtype.
+
+    `sdm` has no semantic type for a `Time`, `Binary`, `List`, `Array`,
+    `Struct`, `Object` or `Unknown` column. The export leaves such a column out
+    of its table. Doing so silently could let a caller lose a column without
+    notice. This warning has its own class. A caller can filter it
+    independently of the others.
+    """
+
+
 class LineageWarning(UserWarning):
     """Warning issued when lineage is unrecoverable, so tusk prunes nothing.
 
