@@ -50,19 +50,38 @@ def _build_tensor(database: Database, name: str) -> TableTensor:
     return TableTensor.from_arrow(table.to_arrow(), types)
 
 
-def to_relational_sampler(database: Database) -> RelationalSampler:
-    """Build the `sdm` sampler of a database.
+def to_relational_data(database: Database) -> RelationalData:
+    """Build the `sdm` relational data of a database.
 
-    The sampler holds the database's tables and relationships as `sdm`
-    relational data, and limits the rows it samples by each table's row
-    creation time. The database is read as it stands at its cutoff time, so
-    `to_relational_sampler(database.as_of(cutoff_time))` exports the rows
-    created up to the cutoff time. Read the relational data from the sampler's
-    `data` attribute.
+    The data holds the database's tables and relationships. The database is
+    read as it stands at its cutoff time, so
+    `to_relational_data(database.as_of(cutoff_time))` exports the rows created
+    up to the cutoff time. Unlike the sampler, the data needs no `pyg-lib`.
 
     A key column gets the semantic type `id`. A `Boolean`, `Enum`,
     `Duration` or `Decimal` column becomes `Float64`. A column whose dtype has
     no semantic type is left out.
+
+    Args:
+        database: The database.
+
+    Returns:
+        The relational data of the database.
+
+    Warns:
+        UnsupportedDtypeWarning: If a column is left out of its table.
+    """
+    tables = {name: _build_tensor(database, name) for name in database.table_names}
+    return RelationalData(tables, relationship_mappings(database))
+
+
+def to_relational_sampler(database: Database) -> RelationalSampler:
+    """Build the `sdm` sampler of a database.
+
+    The sampler holds the relational data of
+    [`to_relational_data`][tusk.sdm.to_relational_data], and limits the rows it
+    samples by each table's row creation time. It reads the relational data
+    from its `data` attribute. Building it needs `pyg-lib`.
 
     Args:
         database: The database.
@@ -73,6 +92,4 @@ def to_relational_sampler(database: Database) -> RelationalSampler:
     Warns:
         UnsupportedDtypeWarning: If a column is left out of its table.
     """
-    tables = {name: _build_tensor(database, name) for name in database.table_names}
-    data = RelationalData(tables, relationship_mappings(database))
-    return RelationalSampler(data, time_columns(database))
+    return RelationalSampler(to_relational_data(database), time_columns(database))

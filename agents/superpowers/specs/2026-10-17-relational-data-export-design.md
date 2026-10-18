@@ -43,9 +43,11 @@ already does.
 2. **The export is a function in an optional submodule, not a `Database`
    method.** `tusk.sdm` needs the `sdm` extra, like `tusk.sklearn` needs the
    `sklearn` extra. `tusk` does not import it.
-3. **The function returns the `RelationalSampler`.** The user reads
-   `sampler.data` for the `RelationalData`. One call returns one object, and
-   no caller has to keep a `RelationalData` and its `time_columns` in step.
+3. **Two functions.** `to_relational_data(database)` returns the
+   `RelationalData`, and needs no `pyg-lib`. `to_relational_sampler(database)`
+   returns the `RelationalSampler` built from it and from the `time_columns`,
+   so no caller has to keep a `RelationalData` and its `time_columns` in step.
+   The sampler needs `pyg-lib`, and the data does not.
 4. **tusk settles what a column is. The `sdm` recipe settles how a model
    treats it.** tusk gives each column the semantic type its dtype states,
    and casts the three dtypes whose meaning is a number (below). Categories,
@@ -188,8 +190,7 @@ The function uses only `Database`'s public methods: `table_names`,
   database's cutoff time, so callers cut with `as_of`. The guide says so.
 - Building the sampler needs `pyg-lib`, which `sdm` imports and which has
   wheels only for stable torch releases. Without it `to_relational_sampler`
-  raises `sdm`'s `ImportError`, so a caller who wants only the
-  `RelationalData` also needs it. The guide says so.
+  raises `sdm`'s `ImportError`. `to_relational_data` needs none of it.
 - duckdb reads an `INTERVAL` column as narwhals `Unknown`, so a `Duration`
   column on duckdb is left out with the warning, like a `Time` column.
 - `where` and `when` conditions have no `sdm` counterpart and are ignored.

@@ -13,19 +13,20 @@ uv add "tusk-ml[sdm]"
 for stable torch releases. Install it as `sdm` explains, for example with
 `pip install pyg-lib -f https://data.pyg.org/whl/torch-2.14.0+cu130.html`.
 Without it, `to_relational_sampler` raises `sdm`'s `ImportError`.
+[`to_relational_data`][tusk.sdm.to_relational_data] returns the same tables and
+relationships without a sampler, and needs no `pyg-lib`.
 
 ## Export a database
 
 ```python
-from tusk.sdm import to_relational_sampler
+from tusk.sdm import to_relational_data, to_relational_sampler
 
-sampler = to_relational_sampler(db.as_of(cutoff_time))
-data = sampler.data  # sdm's RelationalData
+data = to_relational_data(db.as_of(cutoff_time))  # sdm's RelationalData
+sampler = to_relational_sampler(db.as_of(cutoff_time))  # needs pyg-lib
 ```
 
 [`to_relational_sampler`][tusk.sdm.to_relational_sampler] returns the `sdm`
-`RelationalSampler` of the database. It holds the tables and relationships as
-`RelationalData`, and limits the rows it samples by each table's
+`RelationalSampler` of the database. It holds the `RelationalData`, and limits the rows it samples by each table's
 `row_creation_time`. The sampler turns the data into the `RelatedTables` that
 `KumoRelational` takes. You build the task table and the task link, because
 they belong to your model task, not to the database.

@@ -6,6 +6,6 @@ This package needs the `sdm` extra: `pip install "tusk-ml[sdm]"`.
 
 from __future__ import annotations
 
-from tusk.sdm._export import to_relational_sampler
+from tusk.sdm._export import to_relational_data, to_relational_sampler
 
-__all__ = ["to_relational_sampler"]
+__all__ = ["to_relational_data", "to_relational_sampler"]

@@ -1,4 +1,5 @@
 import datetime as dt
+import sys
 import warnings
 
 import pytest
@@ -10,7 +11,7 @@ pytestmark = pytest.mark.sdm
 
 from sdm import Stype, TableTensor  # noqa: E402
 
-from tusk.sdm import to_relational_sampler  # noqa: E402
+from tusk.sdm import to_relational_data, to_relational_sampler  # noqa: E402
 
 
 def _types(tensor):
@@ -112,6 +113,24 @@ def test_every_backend_exports_the_same_tables(backend):
         left = tensor.to_pandas().sort_index(axis=1).to_dict("list")
         right = actual[name].to_pandas().sort_index(axis=1).to_dict("list")
         assert right == left
+
+
+def test_the_relational_data_equals_the_data_of_the_sampler(db):
+    data = to_relational_data(db)
+    sampled = to_relational_sampler(db).data
+    assert data.tables.keys() == sampled.tables.keys()
+    assert data.relationships == sampled.relationships
+
+
+def test_the_relational_data_needs_no_pyg_lib_but_the_sampler_does(db, monkeypatch):
+    monkeypatch.setitem(sys.modules, "pyg_lib", None)
+    assert set(to_relational_data(db).tables) == {
+        "customers",
+        "sessions",
+        "transactions",
+    }
+    with pytest.raises(ImportError, match="pyg_lib"):
+        to_relational_sampler(db)
 
 
 def test_the_sampler_samples_one_task_row(db):
