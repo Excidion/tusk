@@ -185,6 +185,8 @@ The function uses only `Database`'s public methods: `table_names`,
 - `row_update_times` cannot follow the sampler's per task row time. `sdm`
   cannot restore an old value of a column. The columns hold the value at the
   database's cutoff time, so callers cut with `as_of`. The guide says so.
+- duckdb reads an `INTERVAL` column as narwhals `Unknown`, so a `Duration`
+  column on duckdb is left out with the warning, like a `Time` column.
 - `where` and `when` conditions have no `sdm` counterpart and are ignored.
 - The cudf path is written from `sdm`'s and narwhals' source and was not run:
   the build environment has no GPU. Whether the casts work on cudf is open:
