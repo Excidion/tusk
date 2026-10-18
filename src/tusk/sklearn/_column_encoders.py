@@ -20,6 +20,7 @@ import numpy as np
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from tusk._codes import code_expression
 from tusk.exceptions import EncoderError
 from tusk.sklearn._narwhals import BaseEncoder
 
@@ -369,30 +370,6 @@ def reject_other_dtypes(
                 f"{owner} encodes {accepted.__name__} columns; column {name!r} "
                 f"is {dtype}",
             )
-
-
-def code_expression(name: str, categories: list[str]) -> nw.Expr:
-    """Return the position of each value of `name` in `categories`.
-
-    Args:
-        name: The column name.
-        categories: The categories, in order.
-
-    Returns:
-        A `Float64` expression, null where the value is null.
-    """
-    # default=None: pandas casts a null category to the string "nan", which
-    # replace_strict would otherwise reject as a value with no code.
-    return (
-        nw.col(name)
-        .cast(nw.String)
-        .replace_strict(
-            categories,
-            [float(position) for position in range(len(categories))],
-            default=None,
-            return_dtype=nw.Float64,
-        )
-    )
 
 
 def read_strings(table: nw.DataFrame, name: str) -> list[str]:
