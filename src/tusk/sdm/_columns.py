@@ -42,10 +42,10 @@ def _cast_expression(name: str, dtype: nw.dtypes.DType) -> nw.Expr:
         dtype: The column's narwhals dtype.
 
     Returns:
-        A `Float64` expression for a `Boolean`, `Enum` or `Duration` column,
-        and the column itself for any other dtype.
+        A `Float64` expression for a `Boolean`, `Enum`, `Duration` or `Decimal`
+        column, and the column itself for any other dtype.
     """
-    if dtype == nw.Boolean:
+    if dtype == nw.Boolean or dtype == nw.Decimal:
         return nw.col(name).cast(nw.Float64)
     if dtype == nw.Enum:
         return code_expression(name, list(dtype.categories))
@@ -79,7 +79,7 @@ def prepare_table(
     """Cast a table's columns and name their `sdm` semantic types.
 
     A key column keeps its values and gets the semantic type `"id"`. A
-    `Boolean`, `Enum` or `Duration` column becomes numbers. A column whose
+    `Boolean`, `Enum`, `Duration` or `Decimal` column becomes `Float64`. A column whose
     dtype has no semantic type is left out, and one warning names these
     columns.
 

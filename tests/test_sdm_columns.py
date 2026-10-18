@@ -22,12 +22,19 @@ def test_numeric_dtypes_stay_numerical():
         a=pl.Series([1, 2], dtype=pl.Int64),
         b=pl.Series([1, 2], dtype=pl.UInt8),
         c=pl.Series([1.5, None], dtype=pl.Float32),
-        d=pl.Series([Decimal("1.5"), Decimal("2.5")], dtype=pl.Decimal(10, 1)),
     )
     result, types = prepare_table("t", table, frozenset())
-    assert types == dict.fromkeys("abcd", "numerical")
-    assert result.columns == ["a", "b", "c", "d"]
+    assert types == dict.fromkeys("abc", "numerical")
+    assert result.columns == ["a", "b", "c"]
     assert result["c"].to_list() == [1.5, None]
+
+
+def test_decimal_becomes_float64_because_sdm_rejects_it():
+    table = _table(x=pl.Series([Decimal("1.5"), None], dtype=pl.Decimal(10, 1)))
+    result, types = prepare_table("t", table, frozenset())
+    assert types == {"x": "numerical"}
+    assert result["x"].to_list() == [1.5, None]
+    assert result.schema["x"] == nw.Float64
 
 
 def test_boolean_becomes_zero_and_one():

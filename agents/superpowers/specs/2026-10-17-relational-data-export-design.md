@@ -82,7 +82,8 @@ already does.
 
 | narwhals dtype | sdm semantic type | Column handed to `sdm` |
 | --- | --- | --- |
-| `Int*`, `UInt*`, `Float*`, `Decimal` | `numerical` | as is |
+| `Int*`, `UInt*`, `Float*` | `numerical` | as is |
+| `Decimal` | `numerical` | cast to `Float64`: `from_arrow` rejects a decimal column |
 | `Boolean` | `numerical` | 0 and 1; a null stays null |
 | `Enum` | `numerical` | position in the dtype's category order; a null stays null |
 | `Duration` | `numerical` | total seconds as `Float64`, from `total_microseconds() / 1e6` |
@@ -185,6 +186,10 @@ The function uses only `Database`'s public methods: `table_names`,
 - `row_update_times` cannot follow the sampler's per task row time. `sdm`
   cannot restore an old value of a column. The columns hold the value at the
   database's cutoff time, so callers cut with `as_of`. The guide says so.
+- Building the sampler needs `pyg-lib`, which `sdm` imports and which has
+  wheels only for stable torch releases. Without it `to_relational_sampler`
+  raises `sdm`'s `ImportError`, so a caller who wants only the
+  `RelationalData` also needs it. The guide says so.
 - duckdb reads an `INTERVAL` column as narwhals `Unknown`, so a `Duration`
   column on duckdb is left out with the warning, like a `Time` column.
 - `where` and `when` conditions have no `sdm` counterpart and are ignored.
